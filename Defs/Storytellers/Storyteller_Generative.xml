@@ -2,22 +2,218 @@
 <Defs>
 
   <!--
-    Narrator generatywny. Dziedziczy po BaseStoryteller, zeby przejac infrastrukture
-    wspolna dla wszystkich narratorow (questy koncowe, questy DLC, krzywe adaptacji),
-    ale NIE przejmuje waniliowej generacji zagrozen - te definiuje kazdy narrator
-    u siebie. W to miejsce wchodzi nasz komponent generatywny.
+  ===========================================================================
+   NARRATOR GENERATYWNY - zestaw hybrydowy
+  ===========================================================================
+
+  ZASADA: podmieniamy DOKLADNIE te compy, ktore decyduja o tym, JAKIE wydarzenia
+  narracyjne spotykaja gracza na mapie kolonii i KIEDY. Cala reszta - handel,
+  goscie, choroby, questy, wydarzenia biomowe, orbita - zostaje waniliowa.
+
+  Po co: ewaluacja porownawcza z Cassandra ma byc eksperymentem KONTROLOWANYM.
+  Rozniac sie mamy dokladnie tam, gdzie praca twierdzi, ze wnosi wklad, a nie
+  tym, ze u nas nie ma handlarzy. Bez tego porownanie mierzyloby braki
+  implementacyjne, a nie jakosc generacji narracyjnej.
+
+  Cassandra ma 20 compow wlasnych. My:
+    PODMIENIAMY 3     OnOffCycle(ThreatBig), OnOffCycle(ThreatSmall),
+                      CategoryMTB(Misc, Map_PlayerHome)
+                      -> jeden StorytellerCompProperties_Generative
+    PRZEJMUJEMY 17    reszta, skopiowana z Cassandry bez zmian
+    DZIEDZICZYMY      BaseStoryteller (questy koncowe, infrastruktura DLC)
+
+  KALIBRACJA TEMPA - czestotliwosc podmienianych compow u Cassandry:
+    OnOffCycle ThreatBig    1~2 incydentow / (4.6 on + 6.0 off) = ~0.14 /dzien
+    OnOffCycle ThreatSmall  0.2~1 incydentu / 10.6 dnia         = ~0.06 /dzien
+    CategoryMTB Misc        mtbDays 4.8                          = ~0.21 /dzien
+                                                          RAZEM   ~0.40 /dzien
+  Stad mtbDays = 2.5 (1 / 0.40). Dzieki temu nasz narrator generuje podobny
+  BUDZET wydarzen co Cassandra, a porownanie dotyczy tresci i kontekstu,
+  a nie samej liczby zdarzen.
+  ===========================================================================
   -->
+
   <StorytellerDef ParentName="BaseStoryteller">
     <defName>PN_GenerativeNarrator</defName>
     <label>Ariadne Generative</label>
-    <description>Ariadne nie losuje wydarzen z gotowej listy. Sklada je z elementarnych klockow - aktora, akcji, celu i modyfikatora - polaczonych grafem kompatybilnosci, tak by kazde zdarzenie mialo sens w biezacej sytuacji kolonii.\n\nEksperymentalny narrator z pracy inzynierskiej: system proceduralnej generacji wydarzen narracyjnych oparty o metody klasycznej sztucznej inteligencji.</description>
+    <description>Ariadne nie losuje wydarzen z gotowej listy. Sklada je z elementarnych klockow - aktora, akcji, celu i modyfikatora - polaczonych grafem kompatybilnosci, tak by kazde zdarzenie mialo sens w biezacej sytuacji kolonii.\n\nPoza torem wydarzen narracyjnych zachowuje sie jak Cassandra: handel, goscie, choroby i questy dzialaja bez zmian.\n\nEksperymentalny narrator z pracy inzynierskiej: system proceduralnej generacji wydarzen narracyjnych oparty o metody klasycznej sztucznej inteligencji.</description>
     <portraitLarge>UI/HeroArt/Storytellers/PN_Generative</portraitLarge>
     <portraitTiny>UI/HeroArt/Storytellers/PN_GenerativeTiny</portraitTiny>
     <listOrder>50</listOrder>
+
     <comps>
+
+      <!-- ================= NASZ TOR: wydarzenia narracyjne ================= -->
+      <!-- Zastepuje OnOffCycle(ThreatBig) + OnOffCycle(ThreatSmall)
+           + CategoryMTB(Misc) z Cassandry. Ograniczony do mapy kolonii,
+           bo klocki opisuja osade ("Rzecz dzieje sie w sercu osady"). -->
       <li Class="ProceduralNarrator.Integration.Storyteller.StorytellerCompProperties_Generative">
-        <mtbDays>1.2</mtbDays>
+        <mtbDays>2.5</mtbDays>
+        <allowedTargetTags>
+          <li>Map_PlayerHome</li>
+        </allowedTargetTags>
       </li>
+
+      <!-- ============ PONIZEJ: skopiowane z Cassandry bez zmian ============ -->
+
+      <!-- Intro -->
+      <li Class="StorytellerCompProperties_ClassicIntro"/>
+
+      <!-- Zagrozenia na mapach questowych typu raid beacon.
+           To osobny tor od naszego (inny tag celu), wiec go nie ruszamy -
+           bez niego questy obronne przestaja dzialac. -->
+      <li Class="StorytellerCompProperties_ThreatsGenerator">
+        <allowedTargetTags>
+          <li>Map_RaidBeacon</li>
+        </allowedTargetTags>
+        <parms>
+          <allowedThreats>Raids</allowedThreats>
+          <onDays>1.0</onDays>
+          <offDays>0.5</offDays>
+          <minSpacingDays>0.04</minSpacingDays>
+          <numIncidentsRange>1~2</numIncidentsRange>
+          <minThreatPoints>500</minThreatPoints>
+        </parms>
+      </li>
+
+      <li Class="StorytellerCompProperties_ShipChunkDrop"/>
+
+      <!-- Choroby -->
+      <li Class="StorytellerCompProperties_Disease">
+        <category>DiseaseHuman</category>
+        <minDaysPassed>9</minDaysPassed>
+      </li>
+      <li Class="StorytellerCompProperties_Disease">
+        <category>DiseaseAnimal</category>
+        <minDaysPassed>9</minDaysPassed>
+      </li>
+
+      <!-- Interakcje z frakcjami: sojusznicy, handlarze, goscie, podroznicy.
+           BEZ TEGO KOLONIA NIE MA KOMU NIC SPRZEDAC. -->
+      <li Class="StorytellerCompProperties_FactionInteraction">
+        <incident>RaidFriendly</incident>
+        <baseIncidentsPerYear>15</baseIncidentsPerYear>
+        <minSpacingDays>0.4</minSpacingDays>
+        <fullAlliesOnly>true</fullAlliesOnly>
+        <minDanger>High</minDanger>
+      </li>
+      <li Class="StorytellerCompProperties_FactionInteraction">
+        <incident>TraderCaravanArrival</incident>
+        <minDaysPassed>5</minDaysPassed>
+        <baseIncidentsPerYear>5</baseIncidentsPerYear>
+        <minSpacingDays>6</minSpacingDays>
+        <allowedTargetTags>
+          <li>Map_PlayerHome</li>
+        </allowedTargetTags>
+      </li>
+      <li Class="StorytellerCompProperties_FactionInteraction">
+        <incident>VisitorGroup</incident>
+        <minDaysPassed>3</minDaysPassed>
+        <baseIncidentsPerYear>4</baseIncidentsPerYear>
+        <minSpacingDays>5</minSpacingDays>
+        <allowedTargetTags>
+          <li>Map_PlayerHome</li>
+        </allowedTargetTags>
+      </li>
+      <li Class="StorytellerCompProperties_FactionInteraction">
+        <incident>TravelerGroup</incident>
+        <minDaysPassed>1</minDaysPassed>
+        <baseIncidentsPerYear>6</baseIncidentsPerYear>
+        <minSpacingDays>1</minSpacingDays>
+        <allowedTargetTags>
+          <li>Map_PlayerHome</li>
+        </allowedTargetTags>
+      </li>
+
+      <!-- Karawany i mapy tymczasowe (poza naszym torem) -->
+      <li Class="StorytellerCompProperties_CategoryIndividualMTBByBiome">
+        <category>Misc</category>
+        <allowedTargetTags>
+          <li>Caravan</li>
+          <li>Map_TempIncident</li>
+        </allowedTargetTags>
+      </li>
+      <li Class="StorytellerCompProperties_CategoryIndividualMTBByBiome">
+        <category>ThreatSmall</category>
+        <applyCaravanVisibility>true</applyCaravanVisibility>
+        <allowedTargetTags>
+          <li>Caravan</li>
+          <li>Map_TempIncident</li>
+        </allowedTargetTags>
+      </li>
+      <li Class="StorytellerCompProperties_CategoryIndividualMTBByBiome">
+        <category>ThreatBig</category>
+        <applyCaravanVisibility>true</applyCaravanVisibility>
+        <allowedTargetTags>
+          <li>Caravan</li>
+          <li>Map_TempIncident</li>
+        </allowedTargetTags>
+      </li>
+
+      <!-- Questy - wersja bez Royalty -->
+      <li Class="StorytellerCompProperties_RandomQuest">
+        <category>GiveQuest</category>
+        <allowedTargetTags>
+          <li>World</li>
+        </allowedTargetTags>
+        <onDays>10</onDays>
+        <numIncidentsRange>1</numIncidentsRange>
+        <acceptFractionByDaysPassedCurve>
+          <points>
+            <li>(8, 0)</li>
+            <li>(15, 1)</li>
+          </points>
+        </acceptFractionByDaysPassedCurve>
+        <minSpacingDays>3</minSpacingDays>
+        <disableIfAnyModActive>
+          <li>Ludeon.RimWorld.Royalty</li>
+        </disableIfAnyModActive>
+      </li>
+
+      <!-- Questy - wersja z Royalty -->
+      <li Class="StorytellerCompProperties_RandomQuest">
+        <category>GiveQuest</category>
+        <allowedTargetTags>
+          <li>World</li>
+        </allowedTargetTags>
+        <onDays>12</onDays>
+        <numIncidentsRange>2</numIncidentsRange>
+        <acceptFractionByDaysPassedCurve>
+          <points>
+            <li>(8, 0)</li>
+            <li>(15, 1)</li>
+          </points>
+        </acceptFractionByDaysPassedCurve>
+        <minSpacingDays>3</minSpacingDays>
+        <enableIfAnyModActive>
+          <li>Ludeon.RimWorld.Royalty</li>
+        </enableIfAnyModActive>
+      </li>
+
+      <!-- Wydarzenia swiatowe -->
+      <li Class="StorytellerCompProperties_CategoryMTB">
+        <category>Misc</category>
+        <allowedTargetTags>
+          <li>World</li>
+        </allowedTargetTags>
+        <minDaysPassed>15</minDaysPassed>
+        <mtbDays>15</mtbDays>
+      </li>
+
+      <!-- Handlarz orbitalny -->
+      <li Class="StorytellerCompProperties_OnOffCycle">
+        <incident>OrbitalTraderArrival</incident>
+        <onDays>7</onDays>
+        <offDays>8</offDays>
+        <numIncidentsRange>1</numIncidentsRange>
+      </li>
+
+      <!-- Wyzwalane -->
+      <li Class="StorytellerCompProperties_Triggered">
+        <incident>StrangerInBlackJoin</incident>
+        <delayTicks>180</delayTicks>
+      </li>
+
     </comps>
   </StorytellerDef>
 

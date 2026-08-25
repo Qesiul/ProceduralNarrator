@@ -23,6 +23,12 @@ namespace ProceduralNarrator.Integration.Storyteller
         private const float TicksPerInterval = 1000f;
         private const float TicksPerDay = 60000f;
 
+        /// <summary>Ile roznych kompozycji probujemy, zanim uznamy ture za PASS.</summary>
+        private const int MaxCompositionAttempts = 6;
+
+        /// <summary>Odstep ziarna miedzy kolejnymi probami (liczba pierwsza, zeby nie cyklowac).</summary>
+        private const int SeedStride = 7919;
+
         private EventComposer composer;
 
         private StorytellerCompProperties_Generative Props
@@ -46,46 +52,70 @@ namespace ProceduralNarrator.Integration.Storyteller
             EnsureComposer();
 
             EventRecipe recipe = BuildRecipe();
-            IRandomSource rng = new SeededRandom(CurrentSeed());
 
-            ComposedEvent composed = composer.TryCompose(recipe, rng);
-            if (composed == null)
+            // Jedna kompozycja na ture to za malo: klocek akcji moze wskazac incydent,
+            // ktory w tym kontekscie nie ma prawa wystartowac (Infestation bez stropu
+            // gorskiego, RaidEnemy bez odpowiedniej frakcji lub przy zbyt niskich punktach).
+            // Odmowa CanFireNow to informacja o kontekscie, a nie powod, zeby odpuscic ture.
+            // Od kroku 3 te odrzucenia stana sie czynnikiem scoringu ("logiczna zasadnosc
+            // w kontekscie"), a nie slepym ponawianiem.
+            var odrzucone = new List<string>();
+
+            for (int proba = 0; proba < MaxCompositionAttempts; proba++)
             {
-                // PASS jest pelnoprawna decyzja, wiec logujemy go tak samo jak wydarzenie.
-                PNLog.Decision("PASS - graf nie dopuscil spojnej kompozycji dla " + recipe);
+                // Ziarno zalezy od proby, wiec kolejne podejscia sa rozne, ale nadal
+                // w pelni odtwarzalne przy tym samym stanie gry.
+                IRandomSource rng = new SeededRandom(CurrentSeed() + proba * SeedStride);
+
+                ComposedEvent composed = composer.TryCompose(recipe, rng);
+                if (composed == null)
+                {
+                    odrzucone.Add("graf: brak spojnej kompozycji");
+                    continue;
+                }
+
+                IncidentDef incident = DefDatabase<IncidentDef>.GetNamedSilentFail(composed.ActionPayload);
+                if (incident == null)
+                {
+                    PNLog.Error("Klocek akcji wskazuje na nieistniejacy IncidentDef: " + composed.ActionPayload);
+                    odrzucone.Add(composed.ActionPayload + ": brak IncidentDef");
+                    continue;
+                }
+
+                if (!incident.TargetAllowed(target))
+                {
+                    odrzucone.Add(incident.defName + ": cel niedozwolony");
+                    continue;
+                }
+
+                IncidentParms parms = GenerateParms(incident.category, target);
+                parms.points *= composed.IntensityFactor;
+
+                if (!incident.Worker.CanFireNow(parms))
+                {
+                    odrzucone.Add(incident.defName + ": CanFireNow=false");
+                    continue;
+                }
+
+                PNLog.Decision(
+                    "ZLOZONO [" + string.Join(" + ", composed.Blocks.ConvertAll(b => b.ToString()).ToArray()) + "]"
+                    + " -> " + incident.defName
+                    + " | punkty=" + parms.points.ToString("0")
+                    + " | proba " + (proba + 1) + "/" + MaxCompositionAttempts
+                    + " | " + composed.Trace);
+                PNLog.Decision("  opis: " + composed.Description);
+                if (odrzucone.Count > 0)
+                {
+                    PNLog.Decision("  odrzucone po drodze: " + string.Join("; ", odrzucone.ToArray()));
+                }
+
+                yield return new FiringIncident(incident, this, parms);
                 yield break;
             }
 
-            IncidentDef incident = DefDatabase<IncidentDef>.GetNamedSilentFail(composed.ActionPayload);
-            if (incident == null)
-            {
-                PNLog.Error("Klocek akcji wskazuje na nieistniejacy IncidentDef: " + composed.ActionPayload);
-                yield break;
-            }
-
-            if (!incident.TargetAllowed(target))
-            {
-                PNLog.Decision("PASS - " + incident.defName + " niedozwolony dla tego celu");
-                yield break;
-            }
-
-            IncidentParms parms = GenerateParms(incident.category, target);
-            parms.points *= composed.IntensityFactor;
-
-            if (!incident.Worker.CanFireNow(parms))
-            {
-                PNLog.Decision("PASS - " + incident.defName + " nie moze teraz wystartowac");
-                yield break;
-            }
-
-            PNLog.Decision(
-                "ZLOZONO [" + string.Join(" + ", composed.Blocks.ConvertAll(b => b.ToString()).ToArray()) + "]"
-                + " -> " + incident.defName
-                + " | punkty=" + parms.points.ToString("0")
-                + " | " + composed.Trace);
-            PNLog.Decision("  opis: " + composed.Description);
-
-            yield return new FiringIncident(incident, this, parms);
+            // PASS jest pelnoprawna decyzja, wiec logujemy go ze sladem tak samo jak wydarzenie.
+            PNLog.Decision("PASS po " + MaxCompositionAttempts + " probach | odrzucone: "
+                           + string.Join("; ", odrzucone.ToArray()));
         }
 
         /// <summary>
