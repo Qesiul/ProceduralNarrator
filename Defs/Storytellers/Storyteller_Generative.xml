@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+    Narrator generatywny. Dziedziczy po BaseStoryteller, zeby przejac infrastrukture
+    wspolna dla wszystkich narratorow (questy koncowe, questy DLC, krzywe adaptacji),
+    ale NIE przejmuje waniliowej generacji zagrozen - te definiuje kazdy narrator
+    u siebie. W to miejsce wchodzi nasz komponent generatywny.
+  -->
+  <StorytellerDef ParentName="BaseStoryteller">
+    <defName>PN_GenerativeNarrator</defName>
+    <label>Ariadne Generative</label>
+    <description>Ariadne nie losuje wydarzen z gotowej listy. Sklada je z elementarnych klockow - aktora, akcji, celu i modyfikatora - polaczonych grafem kompatybilnosci, tak by kazde zdarzenie mialo sens w biezacej sytuacji kolonii.\n\nEksperymentalny narrator z pracy inzynierskiej: system proceduralnej generacji wydarzen narracyjnych oparty o metody klasycznej sztucznej inteligencji.</description>
+    <portraitLarge>UI/HeroArt/Storytellers/PN_Generative</portraitLarge>
+    <portraitTiny>UI/HeroArt/Storytellers/PN_GenerativeTiny</portraitTiny>
+    <listOrder>50</listOrder>
+    <comps>
+      <li Class="ProceduralNarrator.Integration.Storyteller.StorytellerCompProperties_Generative">
+        <mtbDays>1.2</mtbDays>
+      </li>
+    </comps>
+  </StorytellerDef>
+
+</Defs>

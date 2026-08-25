@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <packageId>luis.proceduralnarrator</packageId>
+  <name>Procedural Narrator</name>
+  <author>Luis Wysocki</author>
+  <supportedVersions>
+    <li>1.5</li>
+  </supportedVersions>
+  <description>System proceduralnej generacji wydarzen narracyjnych.
+
+Narrator sklada wydarzenia z elementarnych klockow polaczonych grafem kompatybilnosci,
+zamiast wybierac je z gotowej puli. Oparty o metody klasycznej sztucznej inteligencji,
+dziala w calosci lokalnie i offline.
+
+Praca inzynierska, Politechnika Bydgoska.</description>
+</ModMetaData>

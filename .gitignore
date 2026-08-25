@@ -1,0 +1,13 @@
+# Wyniki kompilacji (DLL trafia do Assemblies/, ale nie wersjonujemy artefaktow)
+obj/
+bin/
+*.pdb
+*.user
+*.suo
+
+# JetBrains Rider
+.idea/
+*.sln.DotSettings.user
+
+# Skopiowane DLL-e gry (nigdy nie commitujemy assembly RimWorlda)
+Source/**/Assemblies/
