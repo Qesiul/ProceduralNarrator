@@ -7,7 +7,8 @@ namespace ProceduralNarrator.Integration.Defs
 {
     /// <summary>
     /// Adapter danych: tlumaczy NarrativeBlockDef (typ RimWorlda) na Block (typ rdzenia).
-    /// To tutaj konczy sie zaleznosc od gry - dalej plyna juz tylko czyste struktury.
+    /// Tutaj konczy sie zaleznosc od gry - dalej plyna juz tylko czyste struktury.
+    /// Obiekty warunkow przechodza przez referencje, bo same z siebie sa typami z Core.
     /// </summary>
     public static class BlockCatalogLoader
     {
@@ -24,8 +25,11 @@ namespace ProceduralNarrator.Integration.Defs
                 {
                     Id = def.defName,
                     Type = def.blockType,
+                    Theme = def.theme,
+                    Valence = def.valence,
+                    Scale = def.scale,
+                    Intensity = def.intensity,
                     Payload = def.payload,
-                    IntensityFactor = def.intensityFactor,
                     TextFragment = def.textFragment
                 };
 
@@ -35,6 +39,16 @@ namespace ProceduralNarrator.Integration.Defs
                     {
                         block.Tags.Add(tag);
                     }
+                }
+
+                if (def.conditions != null)
+                {
+                    block.Conditions.AddRange(def.conditions);
+                }
+
+                if (def.preferences != null)
+                {
+                    block.Preferences.AddRange(def.preferences);
                 }
 
                 blocks.Add(block);

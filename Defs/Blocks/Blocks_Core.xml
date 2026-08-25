@@ -5,8 +5,24 @@
     Katalog klockow (sekcja 5.8 koncepcji) - warstwa DANYCH.
     Dodanie wydarzenia = dopisanie klockow tutaj, bez dotykania kodu decyzyjnego.
 
-    Konwencja: krawedzie grafu kompatybilnosci deklarujemy na klocku AKCJI,
-    zeby reguly dla jednego wydarzenia byly w jednym miejscu i dalo sie je czytac.
+    SCHEMAT (krok 2):
+      blockType    slot: Trigger / Actor / Action / Target / Modifier / Consequence
+      theme        os tematu (8 wartosci) - Raid to atak na kolonie,
+                   Military to sprawy zbrojne BEZ ataku
+      valence      Negative / Neutral / Positive
+      scale        Minor / Moderate / Major
+      intensity    Low / Normal / High - INTENCJA co do sily.
+                   Na punkty incydentu tlumaczy ja IntensityTable w Integration,
+                   zeby kalibracja zyla w jednym miejscu.
+      conditions   TWARDE bramki - klocek niedostepny, gdy ktorakolwiek nie przejdzie.
+                   Odpowiadaja za SPOJNOSC.
+      preferences  MIEKKIE preferencje 0..1 - nie blokuja, skladaja sie na contextFit
+                   gotowego kandydata. Odpowiadaja za KONTEKSTOWOSC.
+      incompatibleWith  krawedzie grafu, deklarowane przy klocku AKCJI, zeby reguly
+                   jednego wydarzenia byly w jednym miejscu.
+
+    UWAGA: wezel musi miec PELNA nazwe typu z namespace'em - sama <NarrativeBlockDef>
+    jest po cichu ignorowana przez DirectXmlLoader.
 
     Fragmenty tekstu skladaja sie w kolejnosci slotow:
         Trigger -> Actor -> Action -> Target -> Modifier
@@ -19,15 +35,37 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Trig_Bogactwo</defName>
     <blockType>Trigger</blockType>
-    <tags><li>ekonomiczny</li></tags>
+    <theme>Economic</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>High</intensity>
+    <tags><li>rozglos</li></tags>
     <textFragment>Wiesc o zamoznosci kolonii rozeszla sie po okolicy.</textFragment>
-    <intensityFactor>1.15</intensityFactor>
+    <!-- Zeby wiesc o bogactwie mogla sie rozejsc, kolonia musi cos miec -->
+    <!-- 2.0 = kolonia dwa razy bogatsza, niz gra sie spodziewa na tym etapie.
+         Prog wzgledny, bo absolutny zalezy od scenariusza startowego. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_WealthRelative">
+        <min>2.0</min>
+      </li>
+    </conditions>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.0</from>
+        <to>6.0</to>
+        <weight>2</weight>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Trig_Cisza</defName>
     <blockType>Trigger</blockType>
-    <tags><li>neutralny</li></tags>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Normal</intensity>
+    <tags><li>spokoj</li></tags>
     <textFragment>Po dniach spokoju cos w koncu zaklocilo rutyne.</textFragment>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
@@ -36,23 +74,67 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Piraci</defName>
     <blockType>Actor</blockType>
-    <tags><li>militarny</li><li>wrogi</li><li>ludzki</li></tags>
+    <theme>Raid</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>High</intensity>
+    <tags><li>wrogi</li><li>ludzki</li></tags>
     <textFragment>Banda piratow</textFragment>
-    <intensityFactor>1.1</intensityFactor>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+    </conditions>
+    <!-- Piratow przyciaga bogactwo i slabo broniona kolonia -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>0.8</from>
+        <to>4.0</to>
+        <weight>2</weight>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>10</from>
+        <to>2</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Dzikie</defName>
     <blockType>Actor</blockType>
-    <tags><li>naturalny</li></tags>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>zwierzeta</li></tags>
     <textFragment>Dzika zwierzyna</textFragment>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_WildAnimals">
+        <min>1</min>
+      </li>
+    </conditions>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WildAnimals">
+        <from>2</from>
+        <to>30</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Obcy</defName>
     <blockType>Actor</blockType>
+    <theme>Social</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Normal</intensity>
     <tags><li>neutralny</li><li>ludzki</li></tags>
     <textFragment>Ktos z zewnatrz</textFragment>
+    <!-- Wedrowcy trafiaja raczej do kolonii, ktora zdazyla zaistniec -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>0</from>
+        <to>30</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ================================= AKCJE =================================
@@ -61,10 +143,19 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Akcja_Napad</defName>
     <blockType>Action</blockType>
-    <tags><li>militarny</li><li>negatywny</li></tags>
+    <theme>Raid</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>Normal</intensity>
+    <tags><li>militarny</li></tags>
     <payload>RaidEnemy</payload>
     <textFragment>uderza na kolonie zbrojnie.</textFragment>
-    <intensityFactor>1.0</intensityFactor>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>5</min>
+      </li>
+    </conditions>
     <!-- Zbrojny napad prowadzi tylko wrogi oddzial ludzi -->
     <incompatibleWith>
       <li>PN_Aktor_Dzikie</li>
@@ -75,10 +166,18 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Akcja_Szal</defName>
     <blockType>Action</blockType>
-    <tags><li>militarny</li><li>negatywny</li><li>naturalny</li></tags>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Low</intensity>
+    <tags><li>militarny</li><li>zwierzeta</li></tags>
     <payload>ManhunterPack</payload>
     <textFragment>wpada w szal i rusza na osade.</textFragment>
-    <intensityFactor>0.9</intensityFactor>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_WildAnimals">
+        <min>1</min>
+      </li>
+    </conditions>
     <!-- W szal wpadaja zwierzeta, nie ludzie; bogactwo kolonii nie ma tu nic do rzeczy -->
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
@@ -90,10 +189,17 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Akcja_Rojenie</defName>
     <blockType>Action</blockType>
-    <tags><li>militarny</li><li>negatywny</li></tags>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>militarny</li><li>insekty</li></tags>
     <payload>Infestation</payload>
     <textFragment>wygryza sie spod podlogi.</textFragment>
-    <intensityFactor>1.2</intensityFactor>
+    <!-- Twardy warunek, ktory wczesniej odbijal sie od CanFireNow -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MountainRoof"/>
+    </conditions>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Obcy</li>
@@ -104,10 +210,20 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Akcja_Wedrowiec</defName>
     <blockType>Action</blockType>
-    <tags><li>spoleczny</li><li>pozytywny</li></tags>
+    <theme>Social</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>spoleczny</li></tags>
     <payload>WandererJoin</payload>
     <textFragment>prosi o przyjecie do kolonii.</textFragment>
-    <intensityFactor>0.5</intensityFactor>
+    <!-- Male kolonie bardziej potrzebuja rak do pracy -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
     <!-- O przyjecie prosi czlowiek z zewnatrz, nie piraci i nie zwierze -->
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
@@ -118,10 +234,20 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Akcja_Zrzut</defName>
     <blockType>Action</blockType>
-    <tags><li>ekonomiczny</li><li>pozytywny</li></tags>
+    <theme>Economic</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zasoby</li></tags>
     <payload>ResourcePodCrash</payload>
     <textFragment>zostawia po sobie rozbita kapsule z zaopatrzeniem.</textFragment>
-    <intensityFactor>0.5</intensityFactor>
+    <!-- Uboga kolonia bardziej potrzebuje zaopatrzenia -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.5</from>
+        <to>0.4</to>
+      </li>
+    </preferences>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Dzikie</li>
@@ -133,6 +259,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Cel_Osada</defName>
     <blockType>Target</blockType>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
     <tags><li>kolonia</li></tags>
     <textFragment>Rzecz dzieje sie w samym sercu osady.</textFragment>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -140,9 +270,12 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Cel_Obrzeza</defName>
     <blockType>Target</blockType>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
     <tags><li>kolonia</li><li>peryferia</li></tags>
     <textFragment>Rzecz dzieje sie na obrzezach terenu kolonii.</textFragment>
-    <intensityFactor>0.85</intensityFactor>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ========================= MODYFIKATORY (slot opcjonalny) ========================= -->
@@ -150,17 +283,30 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Mod_Noc</defName>
     <blockType>Modifier</blockType>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>High</intensity>
     <tags><li>czas</li></tags>
     <textFragment>Wszystko rozgrywa sie po zmroku.</textFragment>
-    <intensityFactor>1.2</intensityFactor>
+    <!-- Nie blokuje, ale opis o zmroku pasuje duzo lepiej faktycznie noca -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Night">
+        <wantNight>true</wantNight>
+        <weight>3</weight>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Mod_Slabo</defName>
     <blockType>Modifier</blockType>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
     <tags><li>skala</li></tags>
     <textFragment>Skala zdarzenia okazuje sie mniejsza, niz mogloby sie wydawac.</textFragment>
-    <intensityFactor>0.7</intensityFactor>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
 </Defs>

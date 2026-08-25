@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Util;
 
@@ -8,11 +9,15 @@ namespace ProceduralNarrator.Core.Composition
 {
     /// <summary>
     /// Warstwa kompozycji (sekcja 5.7). Sklada konkretne wydarzenie z klockow
-    /// zgodnie z przepisem i grafem kompatybilnosci.
+    /// zgodnie z przepisem, grafem kompatybilnosci i twardymi warunkami kontekstu.
     ///
-    /// Klocki wypelniaja sloty w ustalonej kolejnosci narracyjnej:
+    /// Sloty w kolejnosci narracyjnej:
     ///     Trigger (opcjonalny) -> Actor -> Action -> Target -> Modifier (opcjonalny)
     /// Kazdy kolejny klocek musi byc zgodny ze WSZYSTKIMI juz wybranymi.
+    ///
+    /// Dobor klockow jest LOSOWY sposrod dopuszczalnych - kontekst wchodzi dopiero
+    /// przy ocenie gotowego kandydata (ContextEvaluator), zgodnie z podzialem warstw
+    /// z koncepcji: kompozycja sklada, warstwa decyzyjna ocenia.
     ///
     /// Consequence dochodzi w kroku 6, razem z blackboardem.
     /// </summary>
@@ -36,10 +41,11 @@ namespace ProceduralNarrator.Core.Composition
         }
 
         /// <summary>
-        /// Sklada wydarzenie albo zwraca null, jesli graf nie dopuszcza zadnej
-        /// spojnej kombinacji dla tego przepisu.
+        /// Sklada wydarzenie albo zwraca null, jesli graf i warunki nie dopuszczaja
+        /// zadnej spojnej kombinacji. Snapshot moze byc null - wtedy twarde warunki
+        /// nie filtruja (przydatne w testach samej kompozycji).
         /// </summary>
-        public ComposedEvent TryCompose(EventRecipe recipe, IRandomSource rng)
+        public ComposedEvent TryCompose(EventRecipe recipe, IRandomSource rng, WorldSnapshot snapshot)
         {
             if (recipe == null || rng == null)
             {
@@ -52,7 +58,7 @@ namespace ProceduralNarrator.Core.Composition
 
             // Klocek akcji wybieramy pierwszy, bo to on niesie ladunek wydarzenia
             // i najmocniej zawezia reszte kompozycji.
-            Block action = PickCandidate(BlockType.Action, recipe.RequiredActionTag, chosen, rng);
+            Block action = PickCandidate(BlockType.Action, recipe.RequiredActionTag, chosen, rng, snapshot);
             if (action == null)
             {
                 return null;
@@ -66,10 +72,10 @@ namespace ProceduralNarrator.Core.Composition
                 {
                     continue;
                 }
-                Block block = PickCandidate(slot, null, chosen, rng);
+                Block block = PickCandidate(slot, null, chosen, rng, snapshot);
                 if (block == null)
                 {
-                    // Brak zgodnego klocka w wymaganym slocie = wydarzenie niespojne.
+                    // Brak dopuszczalnego klocka w wymaganym slocie = wydarzenie niespojne.
                     return null;
                 }
                 chosen.Add(block);
@@ -78,7 +84,7 @@ namespace ProceduralNarrator.Core.Composition
 
             foreach (BlockType slot in OptionalSlots)
             {
-                Block block = PickCandidate(slot, null, chosen, rng);
+                Block block = PickCandidate(slot, null, chosen, rng, snapshot);
                 if (block != null)
                 {
                     chosen.Add(block);
@@ -86,17 +92,21 @@ namespace ProceduralNarrator.Core.Composition
                 }
             }
 
-            return Assemble(chosen, action, trace.ToString());
+            ComposedEvent composed = Assemble(chosen, action, trace.ToString());
+            ContextEvaluator.Evaluate(composed, snapshot);
+            return composed;
         }
 
-        /// <summary>Losuje klocek danego typu, zgodny z tagiem i z juz wybranymi klockami.</summary>
-        private Block PickCandidate(BlockType type, string requiredTag, List<Block> chosen, IRandomSource rng)
+        /// <summary>Losuje klocek danego typu: zgodny z tagiem, grafem i twardymi warunkami.</summary>
+        private Block PickCandidate(BlockType type, string requiredTag, List<Block> chosen,
+                                    IRandomSource rng, WorldSnapshot snapshot)
         {
             List<string> chosenIds = chosen.Select(b => b.Id).ToList();
 
             List<Block> candidates = catalog
                 .Where(b => b.Type == type)
                 .Where(b => b.HasTag(requiredTag))
+                .Where(b => b.IsAvailable(snapshot))
                 .Where(b => graph.AllowsWithAll(chosenIds, b.Id))
                 .ToList();
 
@@ -105,16 +115,13 @@ namespace ProceduralNarrator.Core.Composition
 
         private static ComposedEvent Assemble(List<Block> chosen, Block action, string trace)
         {
-            var ordered = chosen
+            List<Block> ordered = chosen
                 .OrderBy(b => SlotOrder(b.Type))
                 .ToList();
 
-            float intensity = 1f;
             var description = new StringBuilder();
-
             foreach (Block block in ordered)
             {
-                intensity *= block.IntensityFactor;
                 if (!string.IsNullOrEmpty(block.TextFragment))
                 {
                     if (description.Length > 0)
@@ -125,13 +132,20 @@ namespace ProceduralNarrator.Core.Composition
                 }
             }
 
+            IntensityLevel intensity = ContextEvaluator.AggregateIntensity(ordered);
+
             return new ComposedEvent
             {
                 Blocks = ordered,
                 ActionPayload = action.Payload,
-                IntensityFactor = intensity,
+                // Charakter wydarzenia dziedziczymy po klocku akcji - to on decyduje,
+                // czym zdarzenie JEST; pozostale sloty je doprecyzowuja.
+                Theme = action.Theme,
+                Valence = action.Valence,
+                Scale = action.Scale,
+                Intensity = intensity,
                 Description = description.ToString(),
-                Trace = trace + " -> intensywnosc=" + intensity.ToString("0.00")
+                Trace = trace + " -> intensywnosc=" + intensity
             };
         }
 
