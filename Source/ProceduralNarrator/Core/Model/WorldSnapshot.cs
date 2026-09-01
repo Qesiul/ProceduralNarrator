@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace ProceduralNarrator.Core.Model
 {
     /// <summary>
@@ -61,17 +63,28 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Liczba dzikich zwierzat na mapie.</summary>
         public int WildAnimalCount;
 
+        /// <summary>
+        /// Dni gry od OSTATNIEGO WYDARZENIA narratora (decyzje PASS sie nie licza - cisza nie
+        /// przerywa spokoju). Przy pustej historii: wiek kolonii, bo spokoj trwa od zalozenia.
+        ///
+        /// Pole istnieje po to, by klocek stwierdzajacy fakt "po dniach spokoju" mogl ten fakt
+        /// SPRAWDZIC. Warunki widza wylacznie WorldSnapshot, wiec wielkosc pochodzaca z historii
+        /// musi trafic tutaj - inaczej tekst obiecywalby stan, ktorego nikt nie weryfikuje.
+        /// </summary>
+        public float DaysSinceLastEvent;
+
         public override string ToString()
         {
             return "dzien=" + DaysPassed
                    + " kolonistow=" + ColonistCount
-                   + " bogactwo=" + ColonyWealth.ToString("0")
-                   + " wzgl=" + WealthRelative.ToString("0.00")
+                   + " bogactwo=" + ColonyWealth.ToString("0", CultureInfo.InvariantCulture)
+                   + " wzgl=" + WealthRelative.ToString("0.00", CultureInfo.InvariantCulture)
                    + " gorstrop=" + MountainRoofCellsNearColony
                    + " wrog=" + HasHostileFaction
                    + " pora=" + Season
                    + " noc=" + IsNight
-                   + " zwierzat=" + WildAnimalCount;
+                   + " zwierzat=" + WildAnimalCount
+                   + " odOstatniego=" + DaysSinceLastEvent.ToString("0.00", CultureInfo.InvariantCulture);
         }
     }
 }

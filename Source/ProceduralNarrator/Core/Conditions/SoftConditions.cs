@@ -1,3 +1,4 @@
+using System.Globalization;
 using ProceduralNarrator.Core.Model;
 
 namespace ProceduralNarrator.Core.Conditions
@@ -26,7 +27,7 @@ namespace ProceduralNarrator.Core.Conditions
 
         public override string Describe()
         {
-            return "bogactwo wzgl " + from.ToString("0.##") + "->" + to.ToString("0.##");
+            return "bogactwo wzgl " + from.ToString("0.##", CultureInfo.InvariantCulture) + "->" + to.ToString("0.##", CultureInfo.InvariantCulture);
         }
     }
 
@@ -43,7 +44,7 @@ namespace ProceduralNarrator.Core.Conditions
 
         public override string Describe()
         {
-            return "kolonistow " + from.ToString("0") + "->" + to.ToString("0");
+            return "kolonistow " + from.ToString("0", CultureInfo.InvariantCulture) + "->" + to.ToString("0", CultureInfo.InvariantCulture);
         }
     }
 
@@ -92,7 +93,7 @@ namespace ProceduralNarrator.Core.Conditions
 
         public override string Describe()
         {
-            return "dzikich zwierzat " + from.ToString("0") + "->" + to.ToString("0");
+            return "dzikich zwierzat " + from.ToString("0", CultureInfo.InvariantCulture) + "->" + to.ToString("0", CultureInfo.InvariantCulture);
         }
     }
 
@@ -109,7 +110,7 @@ namespace ProceduralNarrator.Core.Conditions
 
         public override string Describe()
         {
-            return "dzien gry " + from.ToString("0") + "->" + to.ToString("0");
+            return "dzien gry " + from.ToString("0", CultureInfo.InvariantCulture) + "->" + to.ToString("0", CultureInfo.InvariantCulture);
         }
     }
 }

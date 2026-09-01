@@ -12,6 +12,25 @@ namespace ProceduralNarrator.Integration
     /// </summary>
     public static class WorldSnapshotBuilder
     {
+        /// <summary>
+        /// Buduje zrzut stanu swiata. Historia i biezacy dzien sa potrzebne dla pola
+        /// DaysSinceLastEvent - wielkosci, ktora pochodzi z pamieci narratora, a nie z gry,
+        /// ale MUSI trafic do snapshotu, bo warunki twarde widza wylacznie jego.
+        /// </summary>
+        public static WorldSnapshot Build(Map map, EventHistory history, float gameDay)
+        {
+            WorldSnapshot snapshot = Build(map);
+
+            // PASS nie przerywa spokoju, wiec liczymy od ostatniego WYDARZENIA (Newest pomija
+            // decyzje o ciszy - bufor ich nie zawiera). Pusta historia: spokoj trwa od zalozenia.
+            EventHistoryEntry ostatnie = history != null ? history.Newest : null;
+            snapshot.DaysSinceLastEvent = ostatnie == null
+                ? gameDay
+                : System.Math.Max(0f, gameDay - ostatnie.GameDay);
+
+            return snapshot;
+        }
+
         public static WorldSnapshot Build(Map map)
         {
             if (map == null)

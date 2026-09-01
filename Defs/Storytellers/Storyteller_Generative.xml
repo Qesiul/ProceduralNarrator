@@ -52,6 +52,165 @@
         <allowedTargetTags>
           <li>Map_PlayerHome</li>
         </allowedTargetTags>
+
+        <!--
+        =====================================================================
+         WARSTWA DECYZYJNA (krok 3) - kalibracja utility AI
+        =====================================================================
+        UWAGA: brak ktoregokolwiek z ponizszych wezlow NIE jest bledem - pole
+        zostanie wtedy na wartosci domyslnej z kodu. Jest to jednak CICHA
+        awaria, gdy wezel istnieje, ale ma literowke w nazwie: RimWorld pomija
+        nieznane wezly bez slowa. Dlatego PNStartup wypisuje do Player.log
+        linie "Parametry decyzyjne (PN_GenerativeNarrator): ..." z wartosciami
+        EFEKTYWNYMI - to jedyny dowod, ze ten blok w ogole zadzialal.
+        -->
+
+        <!-- Budzet OCEN na jedna decyzje: gorna granica liczby zlozonych
+             i ocenionych kandydatow. Dzisiejszy katalog (12 dostepnych akcji,
+             84 kombinacje) miesci sie w calosci, wiec decyzja jest w 100%
+             enumeracyjna i nie zuzywa ANI JEDNEGO losowania przy generowaniu
+             kandydatow - to najlepszy mozliwy punkt wyjscia do ewaluacji.
+             Przy okolo 40 akcjach warto przejsc na B = max(400, 8 * akcji),
+             zeby limit na akcje nie spadl ponizej 8 wariantow. -->
+        <candidateBudget>400</candidateBudget>
+
+        <!-- Prog BEZWZGLEDNY jakosci. Kandydat slabszy niz to nie wchodzi do
+             losowania NIGDY, niezaleznie od tego, jak slaba jest reszta stawki.
+             To jedyna gwarancja "narrator nie odpali bzdury": pasmo near-best
+             jej nie daje, bo jest wzgledne i opada razem z jakoscia stawki
+             w kolejnych rundach. Nie obnizac "tymczasowo" przy strojeniu. -->
+        <qualityCutoff>0.35</qualityCutoff>
+
+        <!-- Pasmo near-best: do losowania wchodza kandydaci w promieniu 25%
+             od najlepszego DOSTEPNEGO. Przeliczane w kazdej rundzie od nowa,
+             wiec po odmowie silnika pasmo opada i wpuszcza kolejnych. -->
+        <nearBestFraction>0.75</nearBestFraction>
+
+        <!-- Temperatura softmaksu. 0.1 jest OSTRE: roznica 0.1 uzytecznosci to
+             czynnik e = 2.72, roznica 0.3 to czynnik 20. Ta liczba decyduje,
+             czy narrator jest przewidywalny (male T), czy rozstrzelony (duze T),
+             i jest glownym zrodlem czulosci udzialu PASS na liczbe kandydatow
+             w pasmie. -->
+        <softmaxTemperature>0.1</softmaxTemperature>
+
+        <!-- Temperatura BRAMY "czy w ogole dzialac": dwuelementowego softmaksu miedzy
+             najlepszym dostepnym zdarzeniem a cisza.
+
+             PO CO ODDZIELNA BRAMA. Wczesniej PASS wchodzil do TEJ SAMEJ puli softmaksu co
+             zdarzenia, wiec jego szansa byla dzielona przez ich licznosc: przy 15 kandydatach
+             cisza byla kilkakrotnie bardziej prawdopodobna niz przy 37, mimo IDENTYCZNEJ
+             sytuacji w kolonii. Udzial swiadomego milczenia zalezal zatem od ROZMIARU
+             KATALOGU KLOCKOW, a nie od stanu rozgrywki. Zmierzone na 8 decyzjach z gry:
+             udzial PASS 0.25%, czyli jeden PASS na ~405 decyzji (~1000 dni gry) - przy pelnej
+             sprawnosci samego mechanizmu gestosci (passWynik rosl 0.250 -> 0.489). Koncepcja
+             wymaga natomiast, by PASS byl pelnoprawna decyzja sterujaca tempem.
+
+             Brama widzi DOKLADNIE DWIE opcje, wiec jej wynik nie zalezy od licznosci puli.
+
+             DLACZEGO NIE TA SAMA LICZBA CO softmaxTemperature: brama porownuje uzytecznosci
+             normalizowane po ROZLACZNYCH zestawach wag (<weights> kontra <pass>), czyli
+             wielkosci NIEWSPOLMIERNE - ich zestawienie jest konwencja kalibrowana empirycznie.
+             Etap B porownuje zdarzenia miedzy soba, czyli wielkosci wspolmierne z konstrukcji.
+             Zwiazanie tych dwoch niepewnosci jedna liczba oznaczaloby, ze strojenie udzialu
+             ciszy zmienia przy okazji ostrosc wyboru miedzy zdarzeniami.
+
+             Wartosc rowna softmaxTemperature jest CELOWA I TYMCZASOWA: nie mamy jeszcze danych,
+             ktore uzasadnialyby inna, a wpisanie tu liczby "na oko" udawaloby kalibracje,
+             ktorej nie przeprowadzono. Do przestrojenia po zebraniu okolo 50 decyzji.
+
+             STROJENIE UDZIALU PASS - dwa pokretla, w tej kolejnosci:
+               1. <densitySaturation> w bloku <pass> - ZMIENIA, kiedy cisza jest cenna
+                  (nizsza wartosc = cisza szybciej zyskuje na wartosci przy zageszczeniu).
+               2. gateTemperature - ZMIENIA, jak ostro brama reaguje na roznice uzytecznosci
+                  (wyzsza = brama bardziej losowa, udzial PASS blizszy 50%).
+             Kolumna "pBrama" w PN_decyzje.log podaje udzial ciszy WPROST, w kazdej turze,
+             niezaleznie od tego, co faktycznie wylosowano - wiec da sie go usrednic po turach
+             zamiast czekac na rzadkie wygrane PASS. -->
+        <gateTemperature>0.1</gateTemperature>
+
+        <!-- Weto spojnosci: kandydat o dopasowaniu kontekstowym ponizej tego
+             progu jest odrzucany bezwarunkowo. Prog czyta wartosc SUROWA, wiec
+             jest NIEZALEZNY od wagi contextFit - wyzerowanie tej wagi ponizej
+             wylacza wplyw dopasowania na wynik, ale NIE znosi weta. -->
+        <vetoContextFitBelow>0.15</vetoContextFitBelow>
+
+        <!-- Budzet rund petli wyboru. NIE jest to zabezpieczenie poprawnosci:
+             petla konczy sie sama, bo kazda runda bez trafienia usuwa dokladnie
+             jednego kandydata z puli. Jest to budzet KOSZTU, bo CanFireNow bywa
+             drogie (Infestation przeszukuje mape). 8 to odpowiednik dawnego
+             MaxCompositionAttempts = 6 z zapasem. -->
+        <maxSelectionRounds>8</maxSelectionRounds>
+
+        <!-- Wagi czynnikow ZDARZENIOWYCH. Nazwa wezla == nazwa pola == nazwa
+             czynnika w sladzie decyzji; to inwariant, nie zbieg okolicznosci.
+             Wynik jest srednia WAZONA znormalizowana przez sume wag, wiec licza
+             sie wylacznie PROPORCJE miedzy nimi, a nie wartosci bezwzgledne.
+             Czynnik o wadze 0 jest dokladnie NEUTRALNY (wnosi 0 do licznika
+             i 0 do mianownika), a nie rozcienczajacy - dlatego intentAlignment
+             moze byc juz wpiety, mimo ze krzywa dramaturgiczna wchodzi w kroku 4. -->
+        <weights>
+          <!-- Najwyzsza waga, bo spojnosc z sytuacja kolonii jest glownym
+               deklarowanym wkladem pracy wobec narratorow waniliowych. -->
+          <contextFit>2.0</contextFit>
+          <!-- Roznorodnosc - czynnik, ktory ma odsuwac powtorki tematu i akcji.
+               Ponizej contextFit, bo swieze, ale bezsensowne zdarzenie jest
+               gorsze niz trafne powtorzenie. -->
+          <freshness>1.5</freshness>
+          <!-- Potencjal dramaturgiczny liczony jako kontrast wobec rytmu
+               ostatnich zdarzen. Najnizsza z aktywnych wag: ma modulowac wybor,
+               a nie przejmowac sterowanie. -->
+          <dramaticContrast>1.0</dramaticContrast>
+          <!-- 0 do konca kroku 3: krzywej dramaturgicznej jeszcze nie ma,
+               intencja jest na stale Hold. Czynnik jest MIMO TO liczony
+               i trafia do sladu, zeby format logu badawczego byl identyczny
+               w kroku 3 i 4 i nie wymuszal przepisania skryptow w Pythonie. -->
+          <intentAlignment>0</intentAlignment>
+        </weights>
+
+        <!-- Pseudo-kandydat PASS (swiadoma cisza) - ROZLACZNA przestrzen wag.
+             Nazwa "intentAlignment" powtarza sie wzgledem <weights> CELOWO:
+             obie przestrzenie sa walidowane i kalibrowane niezaleznie i nie
+             wolno ich unifikowac "dla porzadku".
+             UWAGA metodologiczna: uzytecznosc PASS i uzytecznosc zdarzenia sa
+             normalizowane po ROZNYCH zestawach wag, wiec ich porownanie
+             w softmaksie jest KONWENCJA kalibrowana empirycznie. -->
+        <pass>
+          <!-- Polowiczny zanik pamieci o zdarzeniu, w dniach gry.
+               Wyprowadzenie: 2 * mtbDays = 2 * 2.5 = 5.0, czyli pamiec o dwa
+               typowe odstepy miedzy wydarzeniami. -->
+          <halfLifeDays>5</halfLifeDays>
+          <!-- Gestosc zdarzen, ponizej ktorej cisza nie jest nic warta.
+               Oczekiwana gestosc w stanie ustalonym to E[D] = H / (mtb * ln2)
+               = 5 / (2.5 * 0.6931) = 2.886; podloga to 0.52 * E[D]. -->
+          <densityFloor>1.5</densityFloor>
+          <!-- Gestosc, przy ktorej cisza jest maksymalnie cenna: 1.56 * E[D].
+               PIERWSZE z dwoch pokretel strojenia udzialu PASS (drugim jest
+               gateTemperature wyzej). Gdy zmierzony udzial przekroczy 12%, PODNIES
+               te wartosc; gdy jest za niski, OBNIZ ja. Nie ruszaj wag: nizsze
+               weightRestraint podnosi PODLOGE uzytecznosci ciszy i daje efekt
+               odwrotny do zamierzonego.
+               Zaleznosc jest liniowa i latwa do policzenia z logu:
+                 passWynik = weightRestraint * r + weightBaseline,  gdzie
+                 r = (gestosc - densityFloor) / (densitySaturation - densityFloor),
+               zweryfikowane na danych z gry co do trzeciego miejsca po przecinku. -->
+          <densitySaturation>4.5</densitySaturation>
+          <!-- Straznik serii: ile PASS-ow z rzedu wolno, zanim PASS zostanie
+               wykluczony z losowania (0 wylacza straznika). Ubezpieczenie przed
+               zla konfiguracja, a nie normalny tryb pracy - przy tych wartosciach
+               nie powinien nigdy zadzialac. Nie dziala przy pustej puli zdarzen:
+               straznik ogranicza milczenie Z WYBORU, a nie zmusza narratora
+               do odpalenia wydarzenia, ktorego nie ma. -->
+          <maxStreak>3</maxStreak>
+          <!-- Waga powsciagliwosci: ile cisza zawdziecza temu, ze ostatnio
+               dzialo sie duzo. -->
+          <weightRestraint>0.75</weightRestraint>
+          <!-- Waga czynnika stalego = bazowa sklonnosc do ciszy. Przy sumie wag
+               rownej 1.0 czyta sie wprost jako PODLOGA uzytecznosci PASS (0.25),
+               czyli wartosc ciszy przy zupelnie pustej historii. -->
+          <weightBaseline>0.25</weightBaseline>
+          <!-- 0 do konca kroku 3, jak intentAlignment po stronie zdarzen. -->
+          <weightIntentAlignment>0</weightIntentAlignment>
+        </pass>
       </li>
 
       <!-- ============ PONIZEJ: skopiowane z Cassandry bez zmian ============ -->

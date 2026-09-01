@@ -1,3 +1,4 @@
+using System.Globalization;
 using ProceduralNarrator.Core.Model;
 
 namespace ProceduralNarrator.Core.Conditions
@@ -74,7 +75,7 @@ namespace ProceduralNarrator.Core.Conditions
 
         public override string Describe()
         {
-            return "bogactwo wzgl >= " + min.ToString("0.##");
+            return "bogactwo wzgl >= " + min.ToString("0.##", CultureInfo.InvariantCulture);
         }
     }
 
@@ -107,6 +108,52 @@ namespace ProceduralNarrator.Core.Conditions
         public override string Describe()
         {
             return "dzikich zwierzat >= " + min;
+        }
+    }
+
+    /// <summary>
+    /// Wymaga okreslonej pory doby.
+    ///
+    /// REGULA PROJEKTU: fragment tekstu, ktory STWIERDZA sprawdzalny fakt o stanie swiata,
+    /// musi miec ten fakt jako warunek TWARDY, a nie preferencje. Preferencja mowi "to tu
+    /// pasuje", nie "to jest prawda". Zmierzone w grze: klocek PN_Mod_Noc mial sama preferencje,
+    /// wiec softmax wybral go w biale poludnie i narrator napisal "Wszystko rozgrywa sie
+    /// po zmroku" przy noc=False. Kompozycja byla formalnie poprawna, a tekst falszywy.
+    /// </summary>
+    public class Cond_Night : NarrativeCondition
+    {
+        public bool wantNight = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.IsNight == wantNight;
+        }
+
+        public override string Describe()
+        {
+            return wantNight ? "wymaga nocy" : "wymaga dnia";
+        }
+    }
+
+    /// <summary>
+    /// Wymaga, by od ostatniego WYDARZENIA narratora uplynelo co najmniej tyle dni gry.
+    /// Decyzje PASS sie nie licza - cisza nie przerywa spokoju, tylko go przedluza.
+    ///
+    /// Domyslne 1.5 dnia przy mtbDays = 2.5 odsiewa nastepstwa "tuz po sobie", a zostawia
+    /// typowe odstepy. Wartosc do przestrojenia razem z tempem w kroku 4.
+    /// </summary>
+    public class Cond_CalmPeriod : NarrativeCondition
+    {
+        public float minDays = 1.5f;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.DaysSinceLastEvent >= minDays;
+        }
+
+        public override string Describe()
+        {
+            return "spokoj >= " + minDays.ToString("0.##", CultureInfo.InvariantCulture) + " dnia";
         }
     }
 }

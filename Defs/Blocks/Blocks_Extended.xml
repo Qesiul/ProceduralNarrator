@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+    ROZSZERZENIE KATALOGU - przygotowanie pod utility AI (krok 3).
+
+    Cel jest waski i konkretny: dac scoringowi na czym roznicowac. Czynnik
+    "swiezosc typu" nie ma czego mierzyc, gdy na temat przypada jedna akcja -
+    narrator moze wtedy tylko przeskakiwac miedzy tematami, zamiast wybierac
+    inny sposob realizacji tego samego tematu.
+
+    Po tej dosypce rozklad akcji na tematy:
+        Raid 1 | Military 1 | Economic 3 | Social 3 | Natural 3 | Supernatural 1
+        Trade 0, Disease 0  <- tory oddane vanilli, celowo puste
+
+    Raid zostaje przy jednej akcji, bo w Core nie ma drugiego incydentu bedacego
+    bezposrednim szturmem na kolonie. Warianty oblezenia to RaidStrategyDef
+    przekazywany w IncidentParms, a nie osobny IncidentDef - wejscie w nie wymaga
+    rozszerzenia semantyki pola payload i jest robota na pozniej.
+
+    Wszystkie payloady pochodza z Core - zero zaleznosci od DLC.
+  -->
+
+  <!-- ============================== AKTORZY ==============================
+       Slot Actor jest wymagany przez kompozytora, a zdarzenia pogodowe
+       i nadprzyrodzone nie maja sprawcy wsrod pierwotnej trojki.
+       Oba w liczbie POJEDYNCZEJ - fragmenty akcji sa pisane pod trzecia
+       osobe liczby pojedynczej ("uderza", "prosi", "zrzuca").              -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Aktor_Natura</defName>
+    <blockType>Actor</blockType>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>zywioly</li><li>bezosobowy</li></tags>
+    <textFragment>Natura</textFragment>
+    <!-- Para przeciwstawna z PN_Aktor_Nieznane (tamten rosnie 10->90): zwyczajne sily przyrody
+         sa tlem wczesnej rozgrywki, a dziwnosc narasta z czasem. Bez wlasnej preferencji Natura
+         byla jedynym aktorem wolnym od kary i wygrywala slot samym brakiem zdania. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>90</from>
+        <to>10</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Aktor_Nieznane</defName>
+    <blockType>Actor</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>High</intensity>
+    <tags><li>nadprzyrodzony</li><li>bezosobowy</li></tags>
+    <textFragment>Cos nieznanego</textFragment>
+    <!-- Dziwne rzeczy pasuja bardziej do dojrzalej rozgrywki -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>10</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ================================ AKCJE ================================ -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Okup</defName>
+    <blockType>Action</blockType>
+    <theme>Military</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>militarny</li><li>szantaz</li></tags>
+    <payload>RansomDemand</payload>
+    <textFragment>zada okupu za porwanego czlonka kolonii.</textFragment>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>5</min>
+      </li>
+    </conditions>
+    <!-- Bogatszej kolonii oplaca sie stawiac wyzsze zadania -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>0.8</from>
+        <to>4.0</to>
+      </li>
+    </preferences>
+    <incompatibleWith>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Uchodzcy</defName>
+    <blockType>Action</blockType>
+    <theme>Social</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>spoleczny</li><li>kapsula</li></tags>
+    <payload>RefugeePodCrash</payload>
+    <textFragment>spada z nieba w kapsule ratunkowej i prosi o azyl.</textFragment>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Dzikus</defName>
+    <blockType>Action</blockType>
+    <theme>Social</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>spoleczny</li><li>dzicz</li></tags>
+    <payload>WildManWandersIn</payload>
+    <textFragment>wychodzi z dziczy i zaczyna krecic sie przy osadzie.</textFragment>
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <!-- Jak przy wedrowcu: mala kolonia bardziej potrzebuje rak do pracy. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Ambrozja</defName>
+    <blockType>Action</blockType>
+    <theme>Economic</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zasoby</li><li>uzywka</li></tags>
+    <payload>AmbrosiaSprout</payload>
+    <textFragment>sprawia, ze w okolicy wysypuje sie ambrozja.</textFragment>
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <!-- Ambrozja to roslina - wysypuje sie w cieplej porze roku. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>1</season>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Meteoryt</defName>
+    <blockType>Action</blockType>
+    <theme>Economic</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Normal</intensity>
+    <tags><li>zasoby</li><li>niebo</li></tags>
+    <payload>MeteoriteImpact</payload>
+    <textFragment>zrzuca na teren kolonii meteoryt pelen kruszcu.</textFragment>
+    <!-- Uboga kolonia bardziej sie ucieszy -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.5</from>
+        <to>0.4</to>
+      </li>
+    </preferences>
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Burza</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>pogoda</li><li>ogien</li></tags>
+    <payload>Flashstorm</payload>
+    <textFragment>rozpetuje nad osada burze z piorunami.</textFragment>
+    <!-- Burza ogniowa grozniejsza w suchym lecie -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>1</season>
+      </li>
+    </preferences>
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Emanator</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>psychika</li><li>wrak</li></tags>
+    <payload>PsychicEmanatorShipPartCrash</payload>
+    <textFragment>strzaska sie o grunt, a z wraku zaczyna saczyc sie psychiczny szum.</textFragment>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>20</min>
+      </li>
+    </conditions>
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <!-- Warunek twardy wpuszcza wrak od 20 dnia; preferencja sprawia, ze narasta dalej,
+         zamiast wskakiwac skokowo na pelna trafnosc dokladnie w dniu progowym. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+</Defs>

@@ -67,6 +67,23 @@
     <intensity>Normal</intensity>
     <tags><li>spokoj</li></tags>
     <textFragment>Po dniach spokoju cos w koncu zaklocilo rutyne.</textFragment>
+    <!-- Ten fragment stwierdza, ze BYL spokoj - a tego wczesniej nikt nie sprawdzal.
+         Gdy poprzednie wydarzenie wypadlo dzien wczesniej, zdanie bylo po prostu nieprawdziwe.
+         1.5 dnia przy mtbDays=2.5 odsiewa nastepstwa "tuz po sobie", zostawiajac typowe odstepy. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_CalmPeriod">
+        <minDays>1.5</minDays>
+      </li>
+    </conditions>
+    <!-- Para przeciwstawna z PN_Trig_Bogactwo: tamten wymaga kolonii dwa razy zamozniejszej
+         od normy, ten pasuje do kolonii zwyczajnej. Bez wlasnej preferencji "cisza" wygrywala
+         z "bogactwem" samym brakiem kary, gdy tylko bogactwo przekroczylo prog. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.0</from>
+        <to>0.5</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ================================ AKTORZY ================================ -->
@@ -160,7 +177,19 @@
     <incompatibleWith>
       <li>PN_Aktor_Dzikie</li>
       <li>PN_Aktor_Obcy</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
     </incompatibleWith>
+    <!-- Napady rosna z dojrzaloscia kolonii - ten sam kierunek, w ktorym vanilla skaluje
+         zagrozenie przez pointsFactorFromDaysPassed. Bez wlasnej preferencji caly contextFit
+         napadu pochodzil od klocka aktora, przez co napad przegrywal z wydarzeniami, ktore
+         mialy sufit 1.0 za darmo. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>0</from>
+        <to>45</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -183,7 +212,15 @@
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Obcy</li>
       <li>PN_Trig_Bogactwo</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
     </incompatibleWith>
+    <!-- Zwierzeta atakuja czlowieka, gdy brakuje zeru - zima jest po temu najlepsza pora. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>3</season>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -204,7 +241,16 @@
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Obcy</li>
       <li>PN_Trig_Bogactwo</li>
+      <li>PN_Aktor_Natura</li>
     </incompatibleWith>
+    <!-- Infestacja to zagrozenie fazy sredniej i poznej: zanim kolonia rozbuduje sie pod gora,
+         nie ma czego atakowac. Warunek twardy pilnuje stropu, preferencja - dojrzalosci. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>10</from>
+        <to>60</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -228,6 +274,8 @@
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
     </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
@@ -251,6 +299,7 @@
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Dzikie</li>
+      <li>PN_Aktor_Nieznane</li>
     </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
@@ -264,7 +313,22 @@
     <scale>Moderate</scale>
     <intensity>Normal</intensity>
     <tags><li>kolonia</li></tags>
-    <textFragment>Rzecz dzieje sie w samym sercu osady.</textFragment>
+    <!-- FRAGMENT PRZEPISANY. Poprzednia wersja stwierdzala, GDZIE dzieje sie zdarzenie -
+         a tego nie kontrolujemy: IncidentWorker sam wybiera miejsce, wiec zdanie bywalo
+         falszywe i zadnym warunkiem twardym nie dalo sie tego naprawic. Nowa wersja mowi
+         o WADZE sprawy, ktora ten klocek faktycznie koduje (scale + intensity), wiec jest
+         prawdziwa z konstrukcji. Dopoki slot Target nie parametryzuje IncidentParms,
+         nie wolno mu obiecywac polozenia. -->
+    <textFragment>Dla kolonii to sprawa pierwszej wagi.</textFragment>
+    <!-- "Serce osady" ma sens, gdy osada ma serce: rozwinieta kolonia ma gesty rdzen,
+         w ktory da sie uderzyc. Para przeciwstawna z PN_Cel_Obrzeza - bez tego jeden z celow
+         nie mial ZADNEJ preferencji i wygrywal remis samym brakiem kary. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>2</from>
+        <to>10</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -275,7 +339,21 @@
     <scale>Minor</scale>
     <intensity>Low</intensity>
     <tags><li>kolonia</li><li>peryferia</li></tags>
-    <textFragment>Rzecz dzieje sie na obrzezach terenu kolonii.</textFragment>
+    <!-- FRAGMENT PRZEPISANY. Poprzednia wersja stwierdzala, GDZIE dzieje sie zdarzenie -
+         a tego nie kontrolujemy: IncidentWorker sam wybiera miejsce, wiec zdanie bywalo
+         falszywe i zadnym warunkiem twardym nie dalo sie tego naprawic. Nowa wersja mowi
+         o WADZE sprawy, ktora ten klocek faktycznie koduje (scale + intensity), wiec jest
+         prawdziwa z konstrukcji. Dopoki slot Target nie parametryzuje IncidentParms,
+         nie wolno mu obiecywac polozenia. -->
+    <textFragment>Dla kolonii to na razie sprawa drugorzedna.</textFragment>
+    <!-- Mala kolonia to jeszcze nie osada z centrum - jej zycie toczy sie na obrzezach.
+         Rampa MALEJACA, przeciwstawna do PN_Cel_Osada. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>10</from>
+        <to>2</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ========================= MODYFIKATORY (slot opcjonalny) ========================= -->
@@ -289,11 +367,23 @@
     <intensity>High</intensity>
     <tags><li>czas</li></tags>
     <textFragment>Wszystko rozgrywa sie po zmroku.</textFragment>
+    <!-- REGULA: fragment STWIERDZAJACY sprawdzalny fakt musi miec go jako warunek TWARDY.
+         Zmierzone w grze: przy samej preferencji softmax wybral ten klocek w biale poludnie
+         (noc=False) i narrator napisal "po zmroku" - kompozycja formalnie poprawna, tekst
+         falszywy. Preferencja mowi "to tu pasuje", nie "to jest prawda".
+         Preferencja ZOSTAJE obok warunku: warunek dopuszcza, preferencja stopniuje. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_Night"/>
+    </conditions>
     <!-- Nie blokuje, ale opis o zmroku pasuje duzo lepiej faktycznie noca -->
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_Night">
         <wantNight>true</wantNight>
-        <weight>3</weight>
+        <!-- Bylo 3. Modyfikator jest SZCZEGOLEM zdarzenia, wiec nie moze dominowac
+             contextFit nad wlasnym dopasowaniem akcji: przy wadze 3 wartosc 0.20 w dzien
+             sciagala caly wynik kandydata i w praktyce wykluczala warianty nocne poza noca,
+             a w nocy je narzucala. 1.5 zostawia wyrazny wplyw bez przejmowania sterowania. -->
+        <weight>1.5</weight>
       </li>
     </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -306,7 +396,23 @@
     <scale>Minor</scale>
     <intensity>Low</intensity>
     <tags><li>skala</li></tags>
-    <textFragment>Skala zdarzenia okazuje sie mniejsza, niz mogloby sie wydawac.</textFragment>
+    <!-- FRAGMENT PRZEPISANY. "Skala OKAZUJE SIE mniejsza" stwierdzalo o WYNIKU zlozenia,
+         a ten klocek wnosi tylko -1 do intensywnosci - suma z pozostalymi slotami potrafi
+         wyjsc Normal albo wyzej i zdanie bylo wtedy nieprawdziwe. Nowa wersja mowi o WKLADZIE
+         tego klocka, ktory jest pewny. Prawdziwe rozwiazanie to warianty tekstu zalezne od
+         KONCOWEJ intensywnosci (sekcja 5.7 koncepcji) - do zrobienia przy podmianie listu. -->
+    <textFragment>Rozmach jest mniejszy, niz moglby byc.</textFragment>
+    <!-- ZNALEZISKO Z ROZGRYWKI: ten klocek nie mial zadnej preferencji, wiec nigdy nie byl
+         karany, podczas gdy PN_Mod_Noc w ciagu dnia dostawal 0.20. Skutek: trzy pierwsze
+         decyzje z rzedu wybraly "Skala zdarzenia okazuje sie mniejsza..." i opisy zaczely sie
+         powtarzac. Preferencja domyka te asymetrie: zlagodzenie ma sens wobec malej kolonii,
+         ktora i tak ledwo daje rade - to odpowiednik waniliowej krzywej adaptacji. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>10</from>
+        <to>2</to>
+      </li>
+    </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
 </Defs>

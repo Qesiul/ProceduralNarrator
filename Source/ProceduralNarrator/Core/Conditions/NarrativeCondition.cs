@@ -1,4 +1,5 @@
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.Util;
 
 namespace ProceduralNarrator.Core.Conditions
 {
@@ -38,19 +39,33 @@ namespace ProceduralNarrator.Core.Conditions
             return GetType().Name;
         }
 
+        // Ponizsze dwie metody sa CIENKIMI DELEGATAMI do Core/Util/Curves.
+        //
+        // Dlaczego delegaty, a nie usuniecie: krok 3 dokladal czynniki scoringu, ktore
+        // potrzebuja tych samych krzywych, ale nie dziedzicza po NarrativeCondition
+        // (te metody sa protected). Alternatywa - prywatna kopia Clamp01 w kazdym czynniku -
+        // dala by kilka wersji tej samej funkcji o roznym zachowaniu na wartosciach
+        // zdegenerowanych, czyli cichy rozjazd wynikow. Jedno zrodlo, jedno zachowanie.
+        //
+        // Dlaczego delegaty, a nie zamiana wywolan w warunkach: dziesiatki warunkow
+        // twardych i miekkich wolaja Clamp01/Ramp bez kwalifikatora. Delegat zostawia
+        // je bez zmian, wiec migracja nie ma prawa niczego popsuc w juz zweryfikowanej
+        // w grze warstwie kompozycji.
+        //
+        // Jedyna zmiana zachowania wobec wersji sprzed migracji: NaN jest teraz zbijany
+        // do zera zamiast przechodzic dalej. Dla kazdego skonczonego wejscia wynik jest
+        // bit w bit ten sam, a NaN i tak nie mial prawa wystapic w zadnym istniejacym
+        // warunku - liczy sie tylko z wartosci ze snapshotu, ktore sa skonczone.
+
         protected static float Clamp01(float v)
         {
-            return v < 0f ? 0f : (v > 1f ? 1f : v);
+            return Curves.Clamp01(v);
         }
 
         /// <summary>Rampa liniowa: from -> 0, to -> 1 (dziala tez malejaco, gdy from > to).</summary>
         protected static float Ramp(float value, float from, float to)
         {
-            if (from == to)
-            {
-                return value >= to ? 1f : 0f;
-            }
-            return Clamp01((value - from) / (to - from));
+            return Curves.Ramp(value, from, to);
         }
     }
 }

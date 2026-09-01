@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -48,8 +49,8 @@ namespace ProceduralNarrator.Core.Decision
                     sumaWag += waga;
 
                     wklady.Add(block.Id + "/" + pref.Describe()
-                               + "=" + fit.ToString("0.00")
-                               + (waga != 1f ? "*" + waga.ToString("0.#") : ""));
+                               + "=" + fit.ToString("0.00", CultureInfo.InvariantCulture)
+                               + (waga != 1f ? "*" + waga.ToString("0.#", CultureInfo.InvariantCulture) : ""));
                 }
             }
 
@@ -63,7 +64,7 @@ namespace ProceduralNarrator.Core.Decision
             candidate.ContextFit = sumaWazona / sumaWag;
 
             var sb = new StringBuilder();
-            sb.Append(candidate.ContextFit.ToString("0.00")).Append(" = [");
+            sb.Append(candidate.ContextFit.ToString("0.00", CultureInfo.InvariantCulture)).Append(" = [");
             sb.Append(string.Join(", ", wklady.ToArray()));
             sb.Append(']');
             candidate.FitTrace = sb.ToString();
