@@ -1,30 +1,29 @@
+using System;
+using System.Globalization;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.Util;
 
 namespace ProceduralNarrator.Core.Decision
 {
     /// <summary>
     /// Czynnik "zgodnosc z intencja narratora" po stronie ZDARZEN.
     ///
-    /// ZASLEPKA KROKU 3 - I JEST NIA CELOWO, A NIE PRZEZ NIEDOKONCZENIE.
-    /// Intencja (eskaluj / oddech / utrzymaj / cisza) jest wyjsciem KRZYWEJ DRAMATURGICZNEJ,
-    /// a ta powstaje dopiero w kroku 4 planu. W kroku 3 warstwa integracji ustawia
-    /// DecisionContext.Intent na stale Intent.Hold, wiec czynnik nie ma czego porownywac:
-    /// KAZDY kandydat jest tak samo (nie)zgodny z jedyna wystepujaca intencja. Zwracanie
-    /// czegokolwiek innego niz stalej bylo by tu wymyslaniem pomiaru, ktorego nie ma.
+    /// Od kroku 4 czynnik jest PELNY: krzywa dramaturgiczna wyznacza intencje i docelowa
+    /// intensywnosc, a ten czynnik mierzy, jak blisko kandydat jest tego, czego narrator chce.
+    /// Do kroku 3 wlacznie byl zaslepka zwracajaca stale 0.5 przy wadze 0 - wpieta juz wtedy
+    /// po to, zeby zestaw i kolejnosc kolumn logu badawczego byly identyczne przed i po
+    /// wlaczeniu krzywej, wiec serie rozgrywek daja sie porownac wprost.
     ///
-    /// DLACZEGO WPINAMY GO JUZ DZIS, SKORO NIC NIE LICZY. Domyslna waga w XML wynosi 0,
-    /// a czynnik z waga 0 jest w normalizacji przez sume wag DOKLADNIE neutralny: wnosi 0
-    /// do licznika i 0 do mianownika, wiec nie rozciencza pozostalych czynnikow. Zysk jest
-    /// w danych badawczych: zestaw i kolejnosc kolumn logu sa identyczne w kroku 3 i 4,
-    /// wiec skrypty agregujace w Pythonie (krok 8) nie wymagaja przepisania, a serie
-    /// rozgrywek sprzed i po wlaczeniu krzywej daja sie porownac wprost.
+    /// DWA SKLADNIKI, BO INTENCJA MOWI O DWOCH RZECZACH NARAZ:
+    ///   LADUNEK  - czy zdarzenie ma byc dobre czy zle i jak duze (walencja razy skala),
+    ///   MOC      - jak mocna ma byc dawka (IntensityLevel, ktory idzie na punkty zagrozenia).
+    /// Sam ladunek nie wystarcza, bo dwa zdarzenia o tej samej walencji i skali moga miec
+    /// rozna intensywnosc; sama moc nie wystarcza, bo nie ma znaku.
     ///
-    /// DLACZEGO 0.5, A NIE 1.0 ALBO 0.0. 0.5 jest w tym projekcie umowna wartoscia
-    /// "brak informacji" - ta sama zwraca czynnik swiezosci przy pustej historii i czynnik
-    /// kontrastu przy braku rytmu. Skrajnosci mialyby konsekwencje nawet przy wadze 0:
-    /// gdyby ktos podniosl wage przed krokiem 4, 1.0 podnioslo by uzytecznosc wszystkich
-    /// zdarzen wobec PASS-a, a 0.0 obnizylo - i to bez zadnego zwiazku z intencja.
-    /// Stala neutralna jest jedyna wartoscia, ktora nie przesuwa niczego w zadna strone.
+    /// LADUNEK LICZYMY PRZEZ Factor_DramaticContrast.Charge, A NIE WLASNYM MAPOWANIEM.
+    /// Kanoniczne przelozenie walencji i skali na liczby zyje tam i jest w projekcie jedyne.
+    /// Druga kopia rozjechalaby sie przy pierwszej zmianie osi, a oba wyniki nadal wygladalyby
+    /// sensownie - czyli awaria niewidoczna w zadnym logu.
     ///
     /// UWAGA NA BLIZNIAKA: identycznie nazwany czynnik istnieje w ROZLACZNEJ przestrzeni
     /// czynnikow PASS (zgodnosc CISZY z intencja) i ma wlasna wage w PassScoringParams.
@@ -43,26 +42,106 @@ namespace ProceduralNarrator.Core.Decision
         /// <summary>Umowna wartosc "brak informacji", wspolna dla calej warstwy decyzyjnej.</summary>
         public const float NeutralValue = 0.5f;
 
+        /// <summary>Udzial skladnika LADUNKU w wyniku. Znak wazy wiecej niz dawka.</summary>
+        public const float ChargeWeight = 0.70f;
+
+        /// <summary>Udzial skladnika MOCY.</summary>
+        public const float MagnitudeWeight = 0.30f;
+
+        /// <summary>
+        /// Pelna rozpietosc ladunku: Charge nalezy do [-1, 1], wiec najwieksza mozliwa
+        /// odleglosc miedzy kandydatem a zyczeniem wynosi 2.
+        /// </summary>
+        private const float ChargeSpan = 2f;
+
+        /// <summary>
+        /// Pelna rozpietosc skali IntensityLevel: od VeryLow (-2) do VeryHigh (+2).
+        /// </summary>
+        private const float IntensitySpan = 4f;
+
         public string Name
         {
             get { return FactorName; }
         }
 
         /// <summary>
-        /// Zwraca stala neutralna niezaleznie od kandydata i kontekstu.
+        /// Ladunek, ktorego narrator sobie zyczy przy danej intencji.
         ///
-        /// Slad WYMIENIA biezaca intencje, mimo ze wartosc od niej nie zalezy. To nie jest
-        /// ozdobnik: gdy krok 4 zacznie ustawiac intencje inne niz Hold, log od razu pokaze,
-        /// ze intencje juz plyna, a czynnik jeszcze ich nie czyta - i bedzie widac, ktora
-        /// czesc lancucha zostala podmieniona, a ktora nie.
+        /// WARTOSCI ODPOWIADAJA REALNIE OSIAGALNEMU ZBIOROWI, a nie teoretycznemu [-1, 1].
+        /// Dzisiejszy katalog produkuje dokladnie cztery ladunki: -1.00 (negatywne wielkie),
+        /// -0.60 (negatywne srednie), 0.00 (neutralne drobne) i +0.25 (pozytywne drobne).
+        /// Zyczenie +1.00 przy Breathe byloby wiec nieosiagalne dla KAZDEGO kandydata i cala
+        /// intencja "daj oddech" sprowadzalaby sie do stalego przesuniecia wyniku w dol -
+        /// czyli do niczego, bo softmax jest niewrazliwy na stala addytywna.
+        ///
+        /// Hold celuje w -0.30, czyli w srodek realnego zakresu, a nie w 0.00: katalog jest
+        /// przechylony ku zdarzeniom negatywnym i "utrzymaj poziom" ma znaczyc utrzymanie
+        /// TEGO rozkladu, a nie dryf ku rzadkim zdarzeniom neutralnym.
+        ///
+        /// Tablica, a nie wzor - swiadomie, tak samo jak w Factor_PassIntent.FitFor.
+        /// Wzor sugerowalby, ze intencje leza na jednej osi liczbowej w ustalonych odstepach,
+        /// a one leza na osi POJECIOWEJ i ich odstepy sa kalibracja, nie geometria.
+        /// </summary>
+        public static float DesiredCharge(Intent intent)
+        {
+            switch (intent)
+            {
+                case Intent.Escalate:
+                    return -1.00f;
+                case Intent.Breathe:
+                    return 0.25f;
+                case Intent.Hold:
+                    return -0.30f;
+                case Intent.Pass:
+                    // Intencja zarezerwowana - IntentSelector jej nie zwraca (patrz tam).
+                    // Gdyby jednak dotarla tu z zapisu w starszym formacie albo z testu,
+                    // traktujemy ja jak Breathe: obie znacza "nie dokladaj ciezaru".
+                    return 0.25f;
+                default:
+                    // Nowa wartosc enuma dodana bez aktualizacji tej tablicy. Neutralny
+                    // srodek realnego zakresu jest jedyna odpowiedzia, ktora nie klamie.
+                    return -0.30f;
+            }
+        }
+
+        /// <summary>
+        /// Mierzy, jak blisko kandydat jest tego, czego chce krzywa dramaturgiczna.
+        ///
+        /// Funkcja CZYSTA: zero stanu, zero losowosci, wynik w [0,1]. Kandydat PASS nie ma
+        /// zlozonego zdarzenia, wiec dostaje wartosc neutralna - jego wlasna zgodnosc
+        /// z intencja jest liczona osobno, w przestrzeni PASS, przez Factor_PassIntent.
         /// </summary>
         public float Evaluate(ScoredCandidate candidate, DecisionContext context, out string explanation)
         {
             Intent intent = context == null ? Intent.Hold : context.Intent;
 
-            explanation = "zaslepka kroku 3 - krzywa dramaturgiczna wchodzi w kroku 4 (intencja="
-                          + intent + ", wartosc neutralna 0.50)";
-            return NeutralValue;
+            ComposedEvent zdarzenie = candidate == null ? null : candidate.Event;
+            if (zdarzenie == null)
+            {
+                explanation = "brak zlozonego zdarzenia (kandydat PASS albo pusty) - wartosc neutralna 0.50";
+                return NeutralValue;
+            }
+
+            float zadanyLadunek = DesiredCharge(intent);
+            float ladunekKandydata = Factor_DramaticContrast.Charge(zdarzenie.Valence, zdarzenie.Scale);
+            float zgodnoscLadunku = 1f - Math.Abs(ladunekKandydata - zadanyLadunek) / ChargeSpan;
+
+            float zadanaMoc = context == null ? 0f : context.TargetIntensity;
+            float mocKandydata = (int)zdarzenie.Intensity;
+            float zgodnoscMocy = 1f - Math.Abs(mocKandydata - zadanaMoc) / IntensitySpan;
+
+            float wynik = Curves.Clamp01(ChargeWeight * Curves.Clamp01(zgodnoscLadunku)
+                                         + MagnitudeWeight * Curves.Clamp01(zgodnoscMocy));
+
+            explanation = "intencja=" + intent
+                          + " ladunek " + ladunekKandydata.ToString("0.00", CultureInfo.InvariantCulture)
+                          + " wobec " + zadanyLadunek.ToString("0.00", CultureInfo.InvariantCulture)
+                          + " (zgodnosc " + zgodnoscLadunku.ToString("0.00", CultureInfo.InvariantCulture) + ")"
+                          + ", moc " + mocKandydata.ToString("0", CultureInfo.InvariantCulture)
+                          + " wobec " + zadanaMoc.ToString("0.00", CultureInfo.InvariantCulture)
+                          + " (zgodnosc " + zgodnoscMocy.ToString("0.00", CultureInfo.InvariantCulture) + ")";
+
+            return wynik;
         }
     }
 }

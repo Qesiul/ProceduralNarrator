@@ -56,10 +56,41 @@ namespace ProceduralNarrator.Core.Model
         public int DecisionIndex;
 
         /// <summary>
+        /// Docelowa intensywnosc wyznaczona przez krzywa dramaturgiczna, na skali
+        /// IntensityLevel (-2 = VeryLow, 0 = Normal, +2 = VeryHigh).
+        ///
+        /// Drugie - obok intencji - wyjscie warstwy planowania wymagane przez sekcje 5.5
+        /// koncepcji. Czyta je Factor_IntentAlignment jako skladnik "zgodnosci mocy".
+        /// Domyslne 0 znaczy Normal, wiec kontekst zbudowany bez krzywej (walidator, test)
+        /// zachowuje sie neutralnie zamiast preferowac skrajnosci.
+        /// </summary>
+        public float TargetIntensity;
+
+        /// <summary>
+        /// Napiecie policzone przez krzywa dramaturgiczna, [0,1]. Nie wchodzi do zadnego
+        /// wzoru scoringu - intencja i docelowa moc sa juz jego pochodnymi. Jest tu WYLACZNIE
+        /// po to, zeby trafic do kolumny logu badawczego: bez surowego napiecia nie da sie
+        /// z danych odtworzyc, dlaczego narrator wybral akurat te intencje.
+        /// </summary>
+        public float Tension;
+
+        /// <summary>
         /// Jedyny poprawny sposob zbudowania kontekstu: numer decyzji bierze sie WYLACZNIE
         /// z licznika historii, wiec dwa zrodla tej liczby nie moga sie rozjechac.
+        ///
+        /// Przeciazenie czteroargumentowe zostawia napiecie i docelowa moc na wartosciach
+        /// neutralnych. Jest zachowane CELOWO, a nie z lenistwa: uzywaja go testy kompozycji
+        /// i te sekcje walidatora, ktore badaja scoring w oderwaniu od krzywej dramaturgicznej.
+        /// Dopisanie tam dwoch zer nic by nie wyjasnilo, a zacieralo by fakt, ze tamte testy
+        /// SWIADOMIE nie maja warstwy planowania.
         /// </summary>
         public static DecisionContext Create(WorldSnapshot snapshot, EventHistory history, float gameDay, Intent intent)
+        {
+            return Create(snapshot, history, gameDay, intent, 0f, 0f);
+        }
+
+        public static DecisionContext Create(WorldSnapshot snapshot, EventHistory history, float gameDay,
+                                             Intent intent, float targetIntensity, float tension)
         {
             var context = new DecisionContext();
             context.Snapshot = snapshot;
@@ -68,6 +99,8 @@ namespace ProceduralNarrator.Core.Model
             context.History = history ?? new EventHistory();
             context.GameDay = gameDay;
             context.Intent = intent;
+            context.TargetIntensity = targetIntensity;
+            context.Tension = tension;
             context.DecisionIndex = context.History.DecisionCount;
             return context;
         }
@@ -77,7 +110,9 @@ namespace ProceduralNarrator.Core.Model
             var sb = new StringBuilder();
             sb.Append("decyzja=").Append(DecisionIndex.ToString(CultureInfo.InvariantCulture))
               .Append(" dzien=").Append(GameDay.ToString("0.000", CultureInfo.InvariantCulture))
-              .Append(" intencja=").Append(Intent);
+              .Append(" intencja=").Append(Intent)
+              .Append(" napiecie=").Append(Tension.ToString("0.000", CultureInfo.InvariantCulture))
+              .Append(" docelowaMoc=").Append(TargetIntensity.ToString("0.00", CultureInfo.InvariantCulture));
 
             // Historia idzie do logu przy KAZDEJ decyzji (pole "wpisow" w Summary). To jedyny
             // sposob, zeby zauwazyc utrate pamieci narratora - np. przy przejsciu miedzy mapami

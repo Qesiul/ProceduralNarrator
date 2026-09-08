@@ -47,6 +47,14 @@ namespace ProceduralNarrator.Core.Model
         /// odmawia (kolonia bez stropu gorskiego odrzucajaca infestacje, wczesna gra
         /// odrzucajaca napady), czyli obciazenie bylo by skorelowane z kontekstem, a nie losowe.
         /// </summary>
+        /// <summary>
+        /// NIEOSIAGALNE od czasu, gdy brama "czy dzialac" rozstrzyga sie RAZ NA TURE,
+        /// przed jakakolwiek odmowa silnika: jesli brama wybrala dzialanie, kazda pozniejsza
+        /// cisza pochodzi z opustoszalej puli i ma powod AllRefusedByGame.
+        /// Wartosc ZOSTAJE z dwoch powodow: (1) starsze serie logow ja zawieraja i musza sie
+        /// dac sparsowac tym samym enumem, (2) warstwa integracji uzywa jej jako wyzwalacza
+        /// alarmowego - jej pojawienie sie oznacza, ze zamrozenie bramy przestalo dzialac.
+        /// </summary>
         CompetitiveAfterRefusal,
 
         /// <summary>Warstwa kompozycji nie zwrocila zadnego kandydata.</summary>

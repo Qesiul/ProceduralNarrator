@@ -58,12 +58,24 @@ namespace ProceduralNarrator.Core.Decision
 
         /// <summary>
         /// Wzmocnienie kontrastu, gdy kandydat jest CIEZSZY od rytmu (cios).
+        /// Asymetria wobec reliefGain mnozy WYLACZNIE skladnik ladunku - glosnosc nie ma kierunku.
         ///
-        /// Mniejsze od ulgi CELOWO: po serii katastrof kolejny cios jest slabszym bitem
-        /// narracyjnym niz oddech, a narrator, ktory tylko dokreca srube, jest nuzacy
-        /// i frustrujacy. Asymetria mnozy WYLACZNIE skladnik ladunku - glosnosc nie ma kierunku.
+        /// ZROWNANE Z ULGA W KROKU 4 (bylo 0.75) I JEST TO NAPRAWA, NIE REZYGNACJA.
+        ///
+        /// Uzasadnienie starej wartosci brzmialo: "po serii katastrof kolejny cios jest slabszym
+        /// bitem narracyjnym niz oddech". To prawda - ale od kroku 4 dokladnie to samo zdanie
+        /// realizuje krzywa dramaturgiczna przez Intent.Breathe, i realizuje je LEPIEJ, bo
+        /// patrzy na POZIOM napiecia, a nie tylko na kierunek odchylki od rytmu. Zostawienie
+        /// asymetrii tutaj znaczyloby, ze preferencja ulgi po serii ciosow jest liczona DWA RAZY:
+        /// raz jako ukryta stala w kontrascie, raz jako jawna intencja o wlasnej wadze w XML.
+        /// Skutkiem bylby narrator lagodniejszy, niz wynika z jego wlasnej kalibracji, i to
+        /// w sposob niewidoczny w sladzie decyzji - bo ukryta stala nie ma swojego wiersza.
+        ///
+        /// Preferencja ulgi nie znika; przenosi sie z miejsca, w ktorym byla zaszyta, do miejsca,
+        /// w ktorym jest parametrem osobowosci. Oba pola sa teraz wystawione do XML (blok
+        /// &lt;contrast&gt;), wiec przywrocenie asymetrii jest decyzja kalibracyjna, a nie zmiana kodu.
         /// </summary>
-        public float strikeGain = 0.75f;
+        public float strikeGain = 1.00f;
 
         /// <summary>
         /// Ile wpisow musi byc w historii, zeby rytm liczyl sie z pelnym glosem.

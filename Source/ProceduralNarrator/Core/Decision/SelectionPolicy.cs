@@ -151,6 +151,70 @@ namespace ProceduralNarrator.Core.Decision
     /// te sama liste w kolejnych rundach (po odmowie silnika usuwa z niej zwyciezce), wiec sortowanie
     /// w miejscu albo usuwanie z oryginalu dawaloby blad zalezny od numeru rundy.
     /// </summary>
+    /// <summary>
+    /// Rozstrzygniecie BRAMY "czy w ogole dzialac". Zapada RAZ NA TURE i jest przekazywane
+    /// niezmienione do kolejnych rund petli wyboru.
+    ///
+    /// DLACZEGO RAZ NA TURE, A NIE RAZ NA RUNDE. Petla rund istnieje wylacznie po to, by
+    /// naprawic odmowe silnika (CanFireNow) - jest mechanizmem NAPRAWCZYM, nie kolejna decyzja
+    /// narracyjna. Gdyby brama losowala sie w kazdej rundzie, to po kazdej odmowie zwyciezca
+    /// znikalby z puli, BestUtility spadaloby, uzytecznosc ciszy zostawalaby staia - i brama
+    /// dostawalaby kolejne, coraz korzystniejsze dla PASS losowanie. Faktyczne P(cisza) w turze
+    /// wynosiloby wtedy 1 - iloczyn(1 - p_i), czyli wielkosc rosnaca z LICZBA ODMOW SILNIKA.
+    /// A liczba odmow jest funkcja tego, ile klockow ma warunki twarde slabsze niz wymagania ich
+    /// IncidentWorkera - czyli zaleznosc udzialu ciszy od ZAWARTOSCI KATALOGU wracalaby pietro
+    /// wyzej, dokladnie ta, ktora brama zostala wprowadzona, zeby usunac.
+    ///
+    /// Skutek uboczny i pozadany: gdy brama powiedziala "dzialaj", zadna pozniejsza cisza nie
+    /// moze byc juz policzona jako SWIADOME MILCZENIE - jest porazka silnika. Patrz PassReason.
+    /// </summary>
+    public class GateOutcome
+    {
+        /// <summary>Brama wybrala cisze.</summary>
+        public bool ChoseSilence;
+
+        /// <summary>P(cisza) w tej turze - kolumna pBrama.</summary>
+        public float PassProbability;
+
+        /// <summary>Straznik serii wygasil PASS (brama nie losowala).</summary>
+        public bool SuppressedByStreak;
+
+        /// <summary>Pula zdarzen byla pusta, wiec brama nie miala z czym konkurowac.</summary>
+        public bool Degenerate;
+    }
+
+    /// <summary>
+    /// Wielkosci opisujace CALA TURE, zamrazane na PELNEJ puli w rundzie pierwszej.
+    ///
+    /// POWOD ISTNIENIA. Warstwa integracji po odmowie silnika FIZYCZNIE USUWA kandydata z puli
+    /// (inaczej Select, bedac funkcja czysta od puli, zwracalby w kolejnej rundzie tego samego
+    /// zwyciezce). Bez zamrozenia kazda kolejna runda liczylaby swoje statystyki z coraz
+    /// mniejszego zbioru, a do logu trafialaby runda OSTATNIA - czyli kolumny kandydatow,
+    /// zawetowanych, odrzuconeCutoff, odrzuconePasmo, wSoftmaksie, best i pasmo opisywalyby
+    /// mniejszy problem decyzyjny niz ten, ktory narrator faktycznie rozwiazywal.
+    ///
+    /// To jest obciazenie SKORELOWANE Z KONTEKSTEM (kurczy sie tam, gdzie gra duzo odmawia),
+    /// czyli ta sama klasa bledu, przed ktora broni PassReason.CompetitiveAfterRefusal.
+    /// Mianownik metryk z rozdzialu o ewaluacji musi opisywac TURE, nie ostatnia runde.
+    /// </summary>
+    public class TurnStats
+    {
+        public int CountScored;
+        public int CountVetoed;
+        public int CountBelowCutoff;
+        public int CountBelowBand;
+        public int CountInSoftmax;
+        public float BestUtility;
+        public float BandThreshold;
+
+        /// <summary>
+        /// Ranking z PELNEJ puli tury wraz z PASS. Kandydaci odrzuceni pozniej przez silnik
+        /// zostaja w nim jako te same referencje, wiec ich RejectionStage.EngineRefused i pelne
+        /// rozbicie na czynniki NIE GINIE po usunieciu z puli roboczej.
+        /// </summary>
+        public List<ScoredCandidate> Ranking;
+    }
+
     public class SelectionPolicy
     {
         private readonly SelectionParameters parameters;
@@ -198,6 +262,23 @@ namespace ProceduralNarrator.Core.Decision
         /// </param>
         public NarratorDecision Select(IReadOnlyList<ScoredCandidate> candidates, ScoredCandidate pass,
                                        IRandomSource rng, bool passSuppressedByStreak)
+        {
+            return Select(candidates, pass, rng, passSuppressedByStreak, null, null);
+        }
+
+        /// <param name="frozenGate">
+        /// Rozstrzygniecie bramy z RUNDY PIERWSZEJ tej tury, albo null w rundzie pierwszej.
+        /// Podane - brama NIE losuje ponownie (zuzycie rng spada z 2 na 1 w tej rundzie).
+        /// </param>
+        /// <param name="frozenStats">
+        /// Statystyki PELNEJ puli z rundy pierwszej, albo null w rundzie pierwszej. Podane -
+        /// liczniki i ranking w zwroconej decyzji opisuja TURE, a nie okrojona pule biezacej rundy.
+        /// UWAGA: PassReason liczy sie mimo to z wartosci ZYWYCH, bo odpowiada na pytanie
+        /// "dlaczego TERAZ nie ma czego odpalic", a nie "jak szeroka byla stawka na poczatku tury".
+        /// </param>
+        public NarratorDecision Select(IReadOnlyList<ScoredCandidate> candidates, ScoredCandidate pass,
+                                       IRandomSource rng, bool passSuppressedByStreak,
+                                       GateOutcome frozenGate, TurnStats frozenStats)
         {
             var decyzja = new NarratorDecision();
             var slad = new StringBuilder();
@@ -338,8 +419,18 @@ namespace ProceduralNarrator.Core.Decision
 
             double pBramaPass;
             bool bramaDalaPass;
+            GateOutcome brama;
 
-            if (pulaZdarzen.Count == 0)
+            if (frozenGate != null)
+            {
+                // RUNDA DALSZA. Brama zapadla juz w rundzie pierwszej i NIE jest losowana ponownie -
+                // to jest cala istota poprawki. Ta runda zuzyje wiec tylko JEDNO pobranie (etap B).
+                brama = frozenGate;
+                pBramaPass = frozenGate.PassProbability;
+                bramaDalaPass = frozenGate.ChoseSilence;
+                slad.Append("brama z rundy 1 (nie losowana ponownie); ");
+            }
+            else if (pulaZdarzen.Count == 0)
             {
                 // Nie ma z czym konkurowac. To cisza z BRAKU MATERIALU, nie z wyboru -
                 // rozroznia je PassReason ustawiany w C10.
@@ -347,6 +438,7 @@ namespace ProceduralNarrator.Core.Decision
                 bramaDalaPass = true;
                 losowan += BurnDraw(rng);
                 slad.Append("brama pominieta (pula zdarzen pusta); ");
+                brama = new GateOutcome { ChoseSilence = true, PassProbability = 1f, Degenerate = true };
             }
             else if (straznikZadzialal)
             {
@@ -354,6 +446,7 @@ namespace ProceduralNarrator.Core.Decision
                 bramaDalaPass = false;
                 losowan += BurnDraw(rng);
                 slad.Append("PASS wygaszony przez straznika serii; ");
+                brama = new GateOutcome { ChoseSilence = false, PassProbability = 0f, SuppressedByStreak = true };
             }
             else
             {
@@ -369,6 +462,11 @@ namespace ProceduralNarrator.Core.Decision
                 pBramaPass = pBramy[1];
                 bramaDalaPass = ScoreMath.PickByThresholds(progiBramy, rng) == 1;
                 losowan += rng == null ? 0 : 1;
+                brama = new GateOutcome
+                {
+                    ChoseSilence = bramaDalaPass,
+                    PassProbability = (float)pBramaPass,
+                };
             }
 
             // ---- C6. ETAP B: WYBOR ZDARZENIA ----
@@ -376,8 +474,13 @@ namespace ProceduralNarrator.Core.Decision
             // w bramie - wiec licznosc puli wplywa wylacznie na to, KTORE zdarzenie padnie,
             // a nie na to, CZY jakiekolwiek padnie.
             //
-            // Etap wykonuje sie takze wtedy, gdy brama wybrala cisze, i jego wynik jest wtedy
-            // porzucany. To nie jest marnotrawstwo, tylko warunek stalej liczby pobran.
+            // Etap wykonuje sie ZAWSZE - takze wtedy, gdy brama wybrala cisze albo gdy pula jest
+            // pusta (BurnDraw) - i jego wynik jest wtedy porzucany. To nie jest marnotrawstwo,
+            // tylko warunek przewidywalnego zuzycia losowosci:
+            //     runda pierwsza  = 1 (brama) + 1 (wybor) = 2 pobrania
+            //     runda kolejna   = 0 (brama zamrozona) + 1 (wybor) = 1 pobranie
+            //     cala tura       = 1 + liczba rund
+            // Zuzycie zalezy WYLACZNIE od liczby rund, nigdy od tresci ani rozmiaru puli.
             double[] pZdarzen;
             int idxZdarzenia = -1;
 
@@ -420,6 +523,9 @@ namespace ProceduralNarrator.Core.Decision
 
             decyzja.RandomDraws = losowan;
 
+            // Pusta pula wygrywa PASS NIEZALEZNIE od tego, co powiedziala brama: gdy silnik
+            // odmowil wszystkiemu, narrator nie ma czego odpalic, choc chcial dzialac.
+            // PassReason odrozni to od ciszy z wyboru (patrz C10 i warstwa integracji).
             ScoredCandidate zwyciezca = (bramaDalaPass || idxZdarzenia < 0)
                 ? passKandydat
                 : pulaZdarzen[idxZdarzenia];
@@ -433,19 +539,36 @@ namespace ProceduralNarrator.Core.Decision
             ranking.Add(passKandydat);
             ranking.Sort(CompareCandidates);
 
+            // Statystyki TURY. W rundzie pierwszej powstaja z pelnej puli i sa od tej pory
+            // niezmienne; w rundach dalszych bierzemy je gotowe, bo pula robocza jest juz
+            // okrojona o kandydatow odrzuconych przez silnik.
+            TurnStats tura = frozenStats ?? new TurnStats
+            {
+                CountScored = liczbaOcenionych,
+                CountVetoed = zawetowanych,
+                CountBelowCutoff = ponizejProgu,
+                CountBelowBand = ponizejPasma,
+                CountInSoftmax = pulaZdarzen.Count,
+                BestUtility = best,
+                BandThreshold = progPasma,
+                Ranking = ranking,
+            };
+
             decyzja.Winner = zwyciezca;
-            decyzja.Ranking = ranking;
+            decyzja.Ranking = tura.Ranking;
             decyzja.PassCandidate = passKandydat;
-            decyzja.BestUtility = best;
-            decyzja.BandThreshold = progPasma;
+            decyzja.BestUtility = tura.BestUtility;
+            decyzja.BandThreshold = tura.BandThreshold;
             decyzja.PassUtility = passKandydat.Utility;
-            decyzja.PassSuppressedByStreak = straznikZadzialal;
-            decyzja.CountScored = liczbaOcenionych;
-            decyzja.CountVetoed = zawetowanych;
-            decyzja.CountBelowCutoff = ponizejProgu;
-            decyzja.CountBelowBand = ponizejPasma;
-            decyzja.CountInSoftmax = pulaZdarzen.Count;
-            decyzja.GatePassProbability = (float)pBramaPass;
+            decyzja.PassSuppressedByStreak = brama.SuppressedByStreak;
+            decyzja.CountScored = tura.CountScored;
+            decyzja.CountVetoed = tura.CountVetoed;
+            decyzja.CountBelowCutoff = tura.CountBelowCutoff;
+            decyzja.CountBelowBand = tura.CountBelowBand;
+            decyzja.CountInSoftmax = tura.CountInSoftmax;
+            decyzja.GatePassProbability = brama.PassProbability;
+            decyzja.Gate = brama;
+            decyzja.TurnStats = tura;
 
             // ---- C10. Powod PASS-a ----
             // Kolejnosc sprawdzania jest istotna: od przyczyny najbardziej zewnetrznej do najbardziej
@@ -481,7 +604,8 @@ namespace ProceduralNarrator.Core.Decision
                 .Append(" zawetowanych=").Append(zawetowanych.ToString(CultureInfo.InvariantCulture))
                 .Append(" ponizejProgu=").Append(ponizejProgu.ToString(CultureInfo.InvariantCulture))
                 .Append(" ponizejPasma=").Append(ponizejPasma.ToString(CultureInfo.InvariantCulture))
-                .Append(" wSoftmaksie=").Append(pulaZdarzen.Count.ToString(CultureInfo.InvariantCulture))
+                .Append(" wPasmieTury=").Append(tura.CountInSoftmax.ToString(CultureInfo.InvariantCulture))
+                .Append(" wPasmieRundy=").Append(pulaZdarzen.Count.ToString(CultureInfo.InvariantCulture))
                 .Append(" pBrama=").Append(pBramaPass.ToString("0.0000", CultureInfo.InvariantCulture))
                 .Append(" best=").Append(best.ToString("0.000", CultureInfo.InvariantCulture))
                 .Append(" progPasma=").Append(progPasma.ToString("0.000", CultureInfo.InvariantCulture))

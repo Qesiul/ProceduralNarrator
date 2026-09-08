@@ -77,8 +77,19 @@
     <tags><li>militarny</li><li>szantaz</li></tags>
     <payload>RansomDemand</payload>
     <textFragment>zada okupu za porwanego czlonka kolonii.</textFragment>
+    <!-- REGULA "fakt w tekscie = warunek TWARDY". Fragment stwierdza, ze ktos ZOSTAL PORWANY -
+         to sprawdzalny fakt o stanie swiata, wiec musi go pilnowac warunek, nie preferencja.
+         Cond_KidnappedColonist odwzorowuje IncidentWorker_RansomDemand.RandomKidnappedColonist().
+         Cond_PoweredCommsConsole nie dotyczy prawdziwosci tekstu, tylko WYKONALNOSCI: waniliowy
+         worker wymaga zasilanej konsoli (CommsConsoleUtility.PlayerHasPoweredCommsConsole).
+         Bez niego kompozycja produkowala kandydatow skazanych na odmowe CanFireNow i marnowala
+         rundy petli wyboru - dokladnie ten sam blad, ktory naprawiono przy Cond_MountainRoof. -->
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_KidnappedColonist">
+        <min>1</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_PoweredCommsConsole"/>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
         <min>5</min>
       </li>

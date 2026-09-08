@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+  ===========================================================================
+   OSOBOWOSCI NARRATORA - wzorzec Strategia (sekcja 4 koncepcji)
+  ===========================================================================
+
+  CZYM TO NIE JEST: to NIE sa pozycje w menu wyboru narratora. W menu zostaje
+  jedna pozycja - "Ariadne Generative". Profil jest stanem WEWNETRZNYM systemu:
+  losowanym raz na starcie rozgrywki, utrwalanym w zapisie gry i NIEUJAWNIANYM
+  graczowi.
+
+  DLACZEGO TAK. Menu wyboru osobowosci jest dokladnie tym modelem, ktory ta praca
+  krytykuje: Cassandra, Phoebe i Randy to trzy pozycje na liscie, a zmierzona
+  dekompilacja roznica miedzy Cassandra a Phoebe to SIEDEM LICZB sterujacych
+  tempem (16 z 20 compow identycznych co do bajta, wszystkie trzy waniliowe
+  narratory dziela te same krzywe adaptacji). Powielenie tego modelu z ladniejszym
+  wnetrzem nie bylo by wkladem. Ukryty, losowany profil sprawia natomiast, ze
+  kolejna rozgrywka to nie tylko inne zdarzenia, ale INNY NARRATOR - co wprost
+  obsluguje teze o grywalnosci powtornej z sekcji 1.
+
+  CO PROFIL NIESIE, A CZEGO NIE. Wylacznie to, co go ODROZNIA: wektor czterech
+  wag scoringu i ksztalt krzywej napiecia. Cala maszyneria - budzet ocen, progi
+  jakosci, temperatury softmaksu, parametry gestosci PASS - jest WSPOLNA i zyje
+  w Storyteller_Generative.xml.
+
+  To rozgraniczenie jest metodologiczne, nie oszczednosciowe. Gdyby profil mogl
+  zmieniac takze maszynerie, roznicy miedzy dwoma przebiegami nie dalo by sie
+  przypisac osobowosci - a caly sens tego typu polega na tym, ze przy tym samym
+  ziarnie i tym samym stanie swiata JEDYNA zmienna jest profil. Na tym stoi
+  demonstracja wzorca Strategia w rozdziale o ewaluacji.
+
+  UWAGA SKLADNIOWA: wezel musi uzywac PELNEJ nazwy typu z namespace'em. Sama
+  <NarratorProfileDef> jest po cichu ignorowana przez DirectXmlLoader - patrz
+  pulapka opisana w sekcji 2 CLAUDE.md.
+  ===========================================================================
+  -->
+
+  <!--
+  ===========================================================================
+   POWSCIAGLIWY
+  ===========================================================================
+  Narrator, ktory szybko uznaje, ze kolonii wystarczy, i dlugo pamieta, ze bylo
+  ciezko. Rzadko dochodzi do wniosku, ze "nic sie nie dzieje".
+  -->
+  <ProceduralNarrator.Integration.Defs.NarratorProfileDef>
+    <defName>PN_Profil_Powsciagliwy</defName>
+    <label>powsciagliwy</label>
+    <description>Daje kolonii odetchnac wczesnie i dlugo. Rzadko uznaje cisze za nude.</description>
+    <selectionWeight>1.0</selectionWeight>
+
+    <tension>
+      <!-- Prog "za spokojnie" ustawiony nisko: zeby ten narrator zaczal eskalowac,
+           napiecie musi naprawde spasc do zera. -->
+      <calmBelow>0.15</calmBelow>
+      <!-- Prog "za goraco" ustawiony nisko: oddech przychodzi wczesnie. -->
+      <tenseAbove>0.45</tenseAbove>
+      <!-- Dluga pamiec ciezaru: po serii nieszczesc napiecie opada powoli, wiec
+           przerwa jest dluzsza. 8 dni to ponad trzy typowe odstepy miedzy zdarzeniami. -->
+      <halfLifeDays>8</halfLifeDays>
+      <!-- Wezsze dawkowanie - nie siega po skrajne natezenia w zadna strone. -->
+      <intensitySpan>0.7</intensitySpan>
+      <!-- Mocniej slucha tego, co dzieje sie NA MAPIE teraz, niz wlasnej historii:
+           jesli kolonisci leza ranni, to wazniejsze niz to, co bylo tydzien temu. -->
+      <narrativeWeight>1.0</narrativeWeight>
+      <situationalWeight>1.5</situationalWeight>
+    </tension>
+
+    <weights>
+      <contextFit>2.0</contextFit>
+      <freshness>1.5</freshness>
+      <!-- Nizej niz u pozostalych: ten narrator woli sluchac krzywej niz gonic za kontrastem. -->
+      <dramaticContrast>0.75</dramaticContrast>
+      <intentAlignment>1.5</intentAlignment>
+    </weights>
+  </ProceduralNarrator.Integration.Defs.NarratorProfileDef>
+
+
+  <!--
+  ===========================================================================
+   ZROWNOWAZONY
+  ===========================================================================
+  Kalibracja z kroku 3, uzupelniona o wlaczona intencje. Punkt odniesienia dla
+  pozostalych dwoch profili i profil uzywany w ewaluacji porownawczej z Cassandra.
+  -->
+  <ProceduralNarrator.Integration.Defs.NarratorProfileDef>
+    <defName>PN_Profil_Zrownowazony</defName>
+    <label>zrownowazony</label>
+    <description>Trzyma rowna miare miedzy naciskiem a oddechem.</description>
+    <selectionWeight>1.0</selectionWeight>
+
+    <tension>
+      <calmBelow>0.30</calmBelow>
+      <tenseAbove>0.60</tenseAbove>
+      <!-- 5 dni = 2 * mtbDays, ta sama stala co PassScoringParams.halfLifeDays.
+           Pamiec o dwa typowe odstepy miedzy wydarzeniami. -->
+      <halfLifeDays>5</halfLifeDays>
+      <intensitySpan>1.0</intensitySpan>
+      <narrativeWeight>1.0</narrativeWeight>
+      <situationalWeight>1.0</situationalWeight>
+    </tension>
+
+    <weights>
+      <contextFit>2.0</contextFit>
+      <freshness>1.5</freshness>
+      <dramaticContrast>1.0</dramaticContrast>
+      <intentAlignment>1.0</intentAlignment>
+    </weights>
+  </ProceduralNarrator.Integration.Defs.NarratorProfileDef>
+
+
+  <!--
+  ===========================================================================
+   NAPASTLIWY
+  ===========================================================================
+  Narrator, ktory szybko zapomina, ze bylo ciezko, i latwo uznaje cisze za nude.
+  Nie jest to "wyzszy poziom trudnosci": punkty zagrozenia licza sie tak samo,
+  zmienia sie RYTM i dobor zdarzen, a nie ich sila bezwzgledna.
+  -->
+  <ProceduralNarrator.Integration.Defs.NarratorProfileDef>
+    <defName>PN_Profil_Napastliwy</defName>
+    <label>napastliwy</label>
+    <description>Krotko pamieta spokoj i szybko wraca do naciskania.</description>
+    <selectionWeight>1.0</selectionWeight>
+
+    <tension>
+      <!-- Prog "za spokojnie" wysoko: nawet umiarkowane napiecie czyta jako nude. -->
+      <calmBelow>0.45</calmBelow>
+      <!-- Prog "za goraco" wysoko: oddech dopiero przy naprawde zlej sytuacji. -->
+      <tenseAbove>0.80</tenseAbove>
+      <!-- Krotka pamiec ciezaru: po trzech dniach ciszy napiecie jest juz w polowie. -->
+      <halfLifeDays>3</halfLifeDays>
+      <!-- Szersze dawkowanie - siega dalej w obie strony skali IntensityLevel. -->
+      <intensitySpan>1.4</intensitySpan>
+      <!-- Odwrotnie niz powsciagliwy: bardziej slucha wlasnego rytmu niz biezacej
+           sytuacji na mapie. Stad wrazenie narratora, ktory "ma swoj plan". -->
+      <narrativeWeight>1.5</narrativeWeight>
+      <situationalWeight>1.0</situationalWeight>
+    </tension>
+
+    <weights>
+      <!-- Nizsze dopasowanie kontekstowe niz u pozostalych, ale NADAL najwyzsza waga
+           w zestawie: weto spojnosci dziala niezaleznie od wag, wiec obnizenie jej
+           nie otwiera drogi zdarzeniom bezsensownym - tylko przesuwa akcent
+           z "najtrafniejsze" na "najciekawsze". -->
+      <contextFit>1.5</contextFit>
+      <freshness>1.25</freshness>
+      <dramaticContrast>1.25</dramaticContrast>
+      <intentAlignment>1.5</intentAlignment>
+    </weights>
+  </ProceduralNarrator.Integration.Defs.NarratorProfileDef>
+
+</Defs>

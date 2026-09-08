@@ -96,6 +96,51 @@ namespace ProceduralNarrator.Core.Conditions
     }
 
     /// <summary>Wymaga obecnosci dzikich zwierzat (np. szal zwierzat).</summary>
+    /// <summary>
+    /// Wymaga, by ktos z kolonii byl przetrzymywany przez wroga frakcje.
+    ///
+    /// REGULA PROJEKTU: fragment tekstu, ktory STWIERDZA sprawdzalny fakt o stanie swiata, musi
+    /// miec ten fakt jako warunek TWARDY. PN_Akcja_Okup pisze "zada okupu za porwanego czlonka
+    /// kolonii" - bez tego warunku narrator mogl zazadac okupu za nikogo, dokladnie tak, jak
+    /// wczesniej pisal "wszystko rozgrywa sie po zmroku" w biale poludnie.
+    /// </summary>
+    public class Cond_KidnappedColonist : NarrativeCondition
+    {
+        public int min = 1;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.KidnappedColonistCount >= min;
+        }
+
+        public override string Describe()
+        {
+            return "porwanych kolonistow >= " + min;
+        }
+    }
+
+    /// <summary>
+    /// Wymaga zasilanej konsoli lacznosci.
+    ///
+    /// Nie pilnuje prawdziwosci tekstu, tylko WYKONALNOSCI: waniliowy IncidentWorker_RansomDemand
+    /// odrzuca zdarzenie bez konsoli. Ten sam wzorzec co Cond_MountainRoof - warunek twardy
+    /// odwzorowuje realne wymaganie workera, zeby nie produkowac kandydatow skazanych na odmowe.
+    /// </summary>
+    public class Cond_PoweredCommsConsole : NarrativeCondition
+    {
+        public bool required = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.HasPoweredCommsConsole == required;
+        }
+
+        public override string Describe()
+        {
+            return required ? "zasilana konsola lacznosci" : "brak konsoli lacznosci";
+        }
+    }
+
     public class Cond_WildAnimals : NarrativeCondition
     {
         public int min = 1;

@@ -50,8 +50,7 @@ namespace ProceduralNarrator.Core.Decision
 
             explanation = "intencja=" + intencja + " -> dopasowanie "
                           + fit.ToString("0.00", CultureInfo.InvariantCulture)
-                          + "; waga " + p.For(FactorName).ToString("0.00", CultureInfo.InvariantCulture)
-                          + " (0 do kroku 4)";
+                          + "; waga " + p.For(FactorName).ToString("0.00", CultureInfo.InvariantCulture);
             return fit;
         }
 

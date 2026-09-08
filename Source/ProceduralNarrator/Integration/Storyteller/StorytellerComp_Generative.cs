@@ -1,10 +1,13 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
 using ProceduralNarrator.Integration.Defs;
+using ProceduralNarrator.Integration.Persistence;
 using RimWorld;
 using Verse;
 
@@ -50,50 +53,80 @@ namespace ProceduralNarrator.Integration.Storyteller
         private SelectionPolicy policy;
 
         /// <summary>
-        /// Pamiec zdarzen narratora, OSOBNA DLA KAZDEJ MAPY (klucz: Map.uniqueID).
+        /// Awaryjna pamiec lokalna. Uzywana WYLACZNIE wtedy, gdy nie ma NarratorMemoryComponent -
+        /// czyli w sytuacji, ktora nie powinna zajsc, bo Game.FillComponents() tworzy go przez
+        /// refleksje w kazdej grze. Narrator dziala wtedy dalej, tylko bez trwalosci.
         ///
-        /// Dlaczego nie jedna wspolna: StorytellerComp istnieje JEDEN na cala gre, nie jeden
-        /// na mape. Przy drugiej kolonii wspolny bufor psulby trzy rzeczy naraz, kazda po cichu:
-        ///   swiezosc - zdarzenie na kolonii A "zuzywaloby" temat dla kolonii B, wiec narrator
-        ///              unikalby na drugiej mapie tego, czego uzyl na pierwszej, bez powodu,
-        ///   kontrast - rytm mieszalby dwa niezalezne ciagi, wiec "po serii katastrof" znaczyloby
-        ///              katastrofy w zupelnie innym miejscu,
-        ///   gestosc PASS - licznik decyzji roslby dwa razy szybciej, wiec narrator uznalby, ze
-        ///              jest gesto, i zaczalby milczec na OBU mapach.
-        /// Kazda kolonia prowadzi wlasna narracje, wiec kazda ma wlasna pamiec.
-        ///
-        /// OGRANICZENIE KROKU 3: slownik zyje w instancji komponentu, wiec nie przezywa save/load
-        /// (StorytellerComp jest odtwarzany z Defa). Zdejmuje to krok 6, przenoszac pamiec do
-        /// GameComponent z ExposeData - i wtedy ten slownik przenosi sie tam w calosci, bez zmiany
-        /// ksztaltu. Kazda decyzja loguje mape, histWpisow i histDecyzji wlasnie po to, zeby utrata
-        /// pamieci byla widoczna od pierwszego wiersza danych, a nie dopiero po zebraniu serii.
+        /// Degradacja jest swiadoma: brak pamieci przez jedna sesje jest mniej szkodliwy niz
+        /// wyjatek co 1000 tickow. Zeby jednak nie byla CICHA, towarzyszy jej jednorazowy Error -
+        /// patrz ostrzezonoOBrakuKomponentu.
         /// </summary>
-        private readonly Dictionary<int, EventHistory> histories = new Dictionary<int, EventHistory>();
+        private readonly Dictionary<int, EventHistory> historieAwaryjne = new Dictionary<int, EventHistory>();
+
+        private bool ostrzezonoOBrakuKomponentu;
 
         /// <summary>
-        /// Pamiec dla danej mapy; tworzona przy pierwszej decyzji na tej mapie.
-        /// Map.uniqueID, a NIE Map.Index: indeks jest pozycja na liscie map i przesuwa sie,
-        /// gdy gracz porzuci kolonie, wiec pamiec przeskoczylaby wtedy na inna mape.
+        /// Pamiec dla danej mapy. Od kroku 6 comp jej NIE POSIADA - tylko o nia pyta.
+        ///
+        /// Wlascicielem jest NarratorMemoryComponent, bo ten comp nie przezywa wczytania:
+        /// Storyteller.ExposeData w fazie ResolvingCrossRefs wola InitializeStorytellerComps(),
+        /// a ta robi Activator.CreateInstance(compClass), czyli buduje comp od zera z Defa.
+        /// Kazde pole instancyjne przepada przy kazdym wczytaniu i przy kazdej zmianie narratora.
+        ///
+        /// Referencji do komponentu CELOWO NIE CACHUJEMY. GetComponent to skan liniowy listy,
+        /// ale wolany raz na 1000 tickow jest darmowy, a cache przetrwalby wyjscie do menu
+        /// i wczytanie innego zapisu - czyli wskazywalby na pamiec CUDZEJ rozgrywki.
+        ///
+        /// Rozdzial per mapa (klucz Map.uniqueID) i jego uzasadnienie mieszkaja teraz razem
+        /// z pamiecia, w NarratorMemoryComponent.
         /// </summary>
         private EventHistory HistoryFor(Map map)
         {
             int klucz = map != null ? map.uniqueID : -1;
+
+            NarratorMemoryComponent pamiec = Current.Game == null
+                ? null
+                : Current.Game.GetComponent<NarratorMemoryComponent>();
+
+            if (pamiec != null)
+            {
+                return pamiec.HistoryFor(klucz);
+            }
+
+            if (!ostrzezonoOBrakuKomponentu)
+            {
+                ostrzezonoOBrakuKomponentu = true;
+                PNLog.Error("BRAK NarratorMemoryComponent - pamiec narratora NIE PRZEZYJE zapisu gry. "
+                            + "Szukaj w Player.log wpisu 'Could not instantiate a GameComponent of type "
+                            + "ProceduralNarrator.Integration.Persistence.NarratorMemoryComponent' - najczestsza "
+                            + "przyczyna to brak publicznego konstruktora przyjmujacego Game. "
+                            + "Narrator dziala dalej na pamieci lokalnej, ktora ginie razem z procesem.");
+            }
+
             EventHistory h;
-            if (!histories.TryGetValue(klucz, out h))
+            if (!historieAwaryjne.TryGetValue(klucz, out h))
             {
                 h = new EventHistory();
-                histories[klucz] = h;
-                if (histories.Count > 1)
-                {
-                    PNLog.Decision("Nowa pamiec narratora dla mapy " + klucz.ToString(CultureInfo.InvariantCulture)
-                                   + " (map z wlasna pamiecia: " + histories.Count.ToString(CultureInfo.InvariantCulture)
-                                   + "). Kazda kolonia prowadzi osobna narracje.");
-                }
+                historieAwaryjne[klucz] = h;
             }
             return h;
         }
 
         private bool runtimeReady;
+
+        /// <summary>
+        /// Krzywa dramaturgiczna i profil, z ktorego powstala. Budowane leniwie i przebudowywane
+        /// TYLKO wtedy, gdy zmieni sie profil - czyli w praktyce raz na rozgrywke, a przy seriach
+        /// kontrolnych takze po wymuszeniu profilu akcja debugowa.
+        ///
+        /// Scorer jest tu razem z nimi, bo wagi czynnikow naleza do profilu: gdyby zostal
+        /// zbudowany raz w EnsureRuntime, wymuszenie profilu zmienialoby krzywa, ale NIE wagi,
+        /// i narrator dzialalby na hybrydzie dwoch osobowosci - roznicy nie dalo by sie wtedy
+        /// przypisac zadnej z nich.
+        /// </summary>
+        private TensionModel tensionModel;
+
+        private string activeProfileId;
 
         private StorytellerCompProperties_Generative Props
         {
@@ -108,15 +141,23 @@ namespace ProceduralNarrator.Integration.Storyteller
                 yield break;
             }
 
-            // Bramka tempa - bez zmian wzgledem kroku 2. mtbDays jest wyprowadzone z czestotliwosci
-            // podmienionych compow Cassandry, zeby budzet wydarzen byl porownywalny; krok 4
-            // zastapi te stala krzywa dramaturgiczna.
+            // Bramka tempa. mtbDays jest wyprowadzone z czestotliwosci podmienionych compow
+            // Cassandry (0.14 + 0.06 + 0.21 = 0.40/dzien), zeby budzet wydarzen byl porownywalny.
+            //
+            // KROK 4 CELOWO JEJ NIE RUSZYL. Wczesniejszy komentarz zapowiadal, ze krzywa
+            // dramaturgiczna zastapi te stala - odrzucone po policzeniu konsekwencji: ruchome
+            // mtbDays kasuje parytet budzetu wobec Cassandry, czyli ten sam argument
+            // metodologiczny, na ktorym stoi caly rozdzial o ewaluacji porownawczej.
+            // Zamiast tego mtbDays zostaje SUFITEM, a krzywa decyduje, ile z niego narrator
+            // zuzyje - przez brame PASS (PassScoringParams.weightIntentAlignment). Tempo jest
+            // wiec zmienne, a porownanie nadal dotyczy tresci, a nie liczby zdarzen.
             if (!Rand.MTBEventOccurs(Props.mtbDays, TicksPerDay, TicksPerInterval))
             {
                 yield break;
             }
 
             EnsureRuntime();
+            EnsureProfileRuntime();
 
             int tick = CurrentTick();
             float gameDay = tick / TicksPerDay;
@@ -125,8 +166,18 @@ namespace ProceduralNarrator.Integration.Storyteller
             // wiec ranking jest wewnetrznie spojny i da sie go w calosci odtworzyc z logu.
             EventHistory history = HistoryFor(map);
             WorldSnapshot snapshot = WorldSnapshotBuilder.Build(map, history, gameDay);
-            EventRecipe recipe = BuildRecipe();
-            DecisionContext context = DecisionContext.Create(snapshot, history, gameDay, recipe.Intent);
+
+            // WARSTWA PLANOWANIA (krok 4): napiecie -> intencja + docelowa moc.
+            // Liczona PO snapshocie, bo czlon sytuacyjny czyta powalonych i poziom zagrozenia.
+            TensionReading napiecie = tensionModel.Compute(history, snapshot, gameDay);
+            IntentDecision zamiar = IntentSelector.Select(napiecie.Tension, tensionModel.Parameters);
+
+            EventRecipe recipe = BuildRecipe(zamiar);
+            DecisionContext context = DecisionContext.Create(snapshot, history, gameDay,
+                                                             recipe.Intent, recipe.TargetIntensity,
+                                                             napiecie.Tension);
+
+            PNLog.Decision("Krzywa dramaturgiczna: " + napiecie.Trace + " -> " + zamiar.Trace);
 
             IRandomSource rngGen = new SeededRandom(tick);
             IRandomSource rngSel = new SeededRandom(unchecked(tick + SelectionSeedSalt));
@@ -223,6 +274,20 @@ namespace ProceduralNarrator.Integration.Storyteller
 
             NarratorDecision decyzja = null;
 
+            // STAN TURY, ustalany w rundzie pierwszej i niezmienny do konca tury.
+            //
+            // brama            - rozstrzygniecie "czy w ogole dzialac". Petla rund jest mechanizmem
+            //                    NAPRAWCZYM po odmowie silnika, a nie ciagiem kolejnych decyzji
+            //                    narracyjnych, wiec nie wolno jej losowac bramy raz za razem.
+            // statystykiTury   - liczniki i ranking z PELNEJ puli. Odrzuc() kurczy pule robocza,
+            //                    wiec bez zamrozenia mianownik metryk malalby z kazda odmowa,
+            //                    a to obciazenie skorelowane z kontekstem.
+            // losowaniaTury    - faktyczne zuzycie rng, sumowane po rundach. NIE liczymy go wzorem:
+            //                    zrodlem prawdy jest to, co zaraportowal Select.
+            GateOutcome brama = null;
+            TurnStats statystykiTury = null;
+            int losowaniaTury = 0;
+
             while (rundy < maxRund)
             {
                 rundy++;
@@ -234,8 +299,16 @@ namespace ProceduralNarrator.Integration.Storyteller
                 // z przedzialu zaczepionego o opcje, ktorej gra wlasnie odmowila.
                 // Prog BEZWZGLEDNY (qualityCutoff) nie przelicza sie nigdy i to on, a nie pasmo,
                 // jest gwarancja jakosci w kolejnych rundach.
-                decyzja = policy.Select(pula, pass, rng, straznikSerii);
+                decyzja = policy.Select(pula, pass, rng, straznikSerii, brama, statystykiTury);
                 decyzja.AttachTurnContext(scorer.LastPassDensity, context.History.ConsecutivePassCount);
+                losowaniaTury += decyzja.RandomDraws;
+
+                if (brama == null)
+                {
+                    // Runda pierwsza jest jedyna, ktora rozstrzyga brame i widzi pelna pule.
+                    brama = decyzja.Gate;
+                    statystykiTury = decyzja.TurnStats;
+                }
 
                 if (decyzja.IsPass)
                 {
@@ -257,7 +330,18 @@ namespace ProceduralNarrator.Integration.Storyteller
                         }
                         else if (decyzja.PassReason == PassReason.Competitive)
                         {
+                            // NIEOSIAGALNE od czasu przeniesienia bramy na poziom TURY, i to jest
+                            // wlasnie zysk z tamtej zmiany: brama zapada w rundzie pierwszej, PRZED
+                            // jakakolwiek odmowa silnika. Jesli powiedziala "dzialaj", to kazda
+                            // pozniejsza cisza bierze sie z opustoszalej puli, czyli ma powod
+                            // NoCandidates (mapowany wyzej na AllRefusedByGame), a nie Competitive.
+                            // Galaz zostaje jako WYZWALACZ ALARMOWY: jej wykonanie oznacza, ze
+                            // zamrozenie bramy przestalo dzialac i metryka swiadomego milczenia
+                            // znowu jest zawyzana tam, gdzie gra duzo odmawia.
                             decyzja.PassReason = PassReason.CompetitiveAfterRefusal;
+                            PNLog.Error("PassReason.CompetitiveAfterRefusal wystapil mimo bramy "
+                                        + "rozstrzyganej raz na ture - zamrozenie bramy nie dziala. "
+                                        + "Metryka swiadomego milczenia jest od tej tury obciazona.");
                         }
                     }
                     break;
@@ -329,10 +413,14 @@ namespace ProceduralNarrator.Integration.Storyteller
                                       + maxRund.ToString(CultureInfo.InvariantCulture) + ")";
             }
 
-            // Select liczy JEDNO pobranie z rng na runde, wiec laczne zuzycie losowosci w turze
-            // rowna sie liczbie rund. Tylko warstwa integracji zna te liczbe, wiec ona domyka
-            // niezmiennik "losowan == liczba rund, niezaleznie od rozmiaru puli".
-            decyzja.RandomDraws = rundy;
+            // Laczne zuzycie losowosci w CALEJ turze, zsumowane z tego, co zaraportowaly kolejne
+            // wywolania Select - a nie policzone wzorem. Po przeniesieniu bramy na poziom tury
+            // rozklad jest taki: runda pierwsza 2 pobrania (brama + wybor), kazda kolejna 1
+            // (sam wybor), czyli lacznie 1 + liczba rund. Wzor trzymamy w komentarzu, bo zrodlem
+            // prawdy ma byc pomiar: gdyby ktos zmienil liczbe etapow, suma nadal bedzie zgodna,
+            // a zaszyty wzor po cichu falszowalby kolumne badawcza - dokladnie tak, jak robilo to
+            // poprzednie `= rundy`, ktore zanizalo zuzycie dwukrotnie.
+            decyzja.RandomDraws = losowaniaTury;
             return decyzja;
         }
 
@@ -427,18 +515,84 @@ namespace ProceduralNarrator.Integration.Storyteller
         }
 
         /// <summary>
-        /// Miejsce wpiecia warstwy planowania. Intencja jest tu ustawiana w JEDNYM miejscu
-        /// i na stale na Hold - krok 4 podmieni te stala na wyjscie krzywej dramaturgicznej.
-        /// Przepis NIE filtruje kandydatow po intencji: utility AI ma wazyc, a nie wykluczac,
-        /// inaczej slad decyzji nie pokazywalby, ile narrator poswiecil, zeby posluchac krzywej.
+        /// Miejsce wpiecia warstwy planowania - od kroku 4 wypelnione wyjsciem krzywej
+        /// dramaturgicznej zamiast stala Hold.
+        ///
+        /// Przepis NADAL NIE FILTRUJE kandydatow po intencji i to sie nie zmienilo: utility AI
+        /// ma wazyc, a nie wykluczac. Filtrowanie odcinaloby kandydatow, zanim ktokolwiek
+        /// policzy ich uzytecznosc, wiec ze sladu decyzji nie dalo by sie odczytac, ILE narrator
+        /// poswiecil, zeby posluchac krzywej - a to jest jedna z ciekawszych wielkosci
+        /// do rozdzialu o ewaluacji.
         /// </summary>
-        private EventRecipe BuildRecipe()
+        private EventRecipe BuildRecipe(IntentDecision zamiar)
         {
             return new EventRecipe
             {
                 RequiredActionTag = Props.requiredActionTag,
-                TargetIntensity = 1f,
-                Intent = Intent.Hold
+                TargetIntensity = zamiar == null ? 0f : zamiar.TargetIntensity,
+                Intent = zamiar == null ? Intent.Hold : zamiar.Intent
+            };
+        }
+
+        /// <summary>
+        /// Buduje scorer i krzywa pod AKTUALNY profil; przebudowuje je, gdy profil sie zmienil.
+        ///
+        /// Porownanie po defName, a nie po referencji: NarratorProfileCatalog.Resolve zwraca
+        /// swieza kopie przy kazdym wywolaniu (celowo - patrz tam), wiec porownanie referencji
+        /// przebudowywaloby wszystko co ture.
+        /// </summary>
+        private void EnsureProfileRuntime()
+        {
+            NarratorMemoryComponent pamiec = Current.Game == null
+                ? null
+                : Current.Game.GetComponent<NarratorMemoryComponent>();
+
+            string chcianyId = pamiec == null ? string.Empty : pamiec.ProfileId;
+            if (tensionModel != null && string.Equals(activeProfileId, chcianyId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            NarratorProfile profil = pamiec == null
+                ? NarratorProfile.Fallback()
+                : pamiec.ActiveProfile();
+
+            activeProfileId = chcianyId;
+            tensionModel = new TensionModel(profil.Tension, Props.contrast);
+
+            // Wagi czynnikow zdarzeniowych pochodza z PROFILU, a nie z bloku <weights>
+            // StorytellerDefa. Ten ostatni zostaje jako wartosc awaryjna i jako czesc kanarka
+            // konfiguracji w logu startowym.
+            scorer = new UtilityScorer(BuildEventFactors(), profil.Weights,
+                                       UtilityScorer.BuildPassFactors(Props.pass), Props.pass,
+                                       Props.vetoContextFitBelow);
+
+            string problem;
+            if (!scorer.Validate(out problem))
+            {
+                PNLog.Error("Konfiguracja scoringu (profil " + profil.Id + "): " + problem);
+            }
+
+            PNLog.Decision("Profil narratora aktywny: " + profil);
+        }
+
+        /// <summary>
+        /// KOLEJNOSC REJESTRACJI CZYNNIKOW JEST CZESCIA FORMATU DANYCH BADAWCZYCH:
+        /// [contextFit, freshness, dramaticContrast, intentAlignment]. Ustala kolejnosc wierszy
+        /// sladu w logu czytelnym i musi byc stala miedzy rozgrywkami - jej zmiana uniewaznia
+        /// porownywalnosc wczesniej zebranych serii.
+        ///
+        /// Factor_DramaticContrast dostaje strojenie z XML, zeby liczylo rytm identycznie
+        /// jak TensionModel.
+        /// </summary>
+        private IScoringFactor[] BuildEventFactors()
+        {
+            return new IScoringFactor[]
+            {
+                new Factor_ContextFit(),
+                new Factor_Freshness(),
+                new Factor_DramaticContrast(Props.contrast),
+                new Factor_IntentAlignment()
             };
         }
 
@@ -478,24 +632,9 @@ namespace ProceduralNarrator.Integration.Storyteller
             composer = new EventComposer(blocks, graph);
             generator = new CandidateGenerator(composer);
 
-            // KOLEJNOSC REJESTRACJI CZYNNIKOW JEST CZESCIA FORMATU DANYCH BADAWCZYCH:
-            // [contextFit, freshness, dramaticContrast, intentAlignment]. Ustala kolejnosc
-            // wierszy sladu w logu czytelnym i musi byc stala miedzy rozgrywkami - jej zmiana
-            // uniewaznia porownywalnosc wczesniej zebranych serii.
-            // intentAlignment jest wpiety JUZ TERAZ z waga 0: czynnik o wadze zerowej wnosi 0
-            // do licznika i 0 do mianownika normalizacji, wiec jest dokladnie neutralny, a nie
-            // rozcienczajacy - dzieki temu format logu bedzie identyczny w kroku 3 i 4.
-            var czynnikiZdarzen = new IScoringFactor[]
-            {
-                new Factor_ContextFit(),
-                new Factor_Freshness(),
-                new Factor_DramaticContrast(),
-                new Factor_IntentAlignment()
-            };
-
-            scorer = new UtilityScorer(czynnikiZdarzen, Props.weights,
-                                       UtilityScorer.BuildPassFactors(Props.pass), Props.pass,
-                                       Props.vetoContextFitBelow);
+            // Scorer NIE powstaje tutaj, tylko w EnsureProfileRuntime: jego wagi naleza
+            // do profilu narratora, a profil jest znany dopiero po wczytaniu gry.
+            // Tutaj zostaje wylacznie to, co jest wspolne dla wszystkich osobowosci.
             policy = new SelectionPolicy(Props.ToSelectionParameters());
 
             if (blocks.Count == 0)

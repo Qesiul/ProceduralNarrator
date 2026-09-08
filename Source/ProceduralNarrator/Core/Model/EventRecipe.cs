@@ -11,8 +11,20 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Wymagany tag klocka akcji (np. "militarny"). null = dowolny.</summary>
         public string RequiredActionTag;
 
-        /// <summary>Docelowa intensywnosc wydarzenia wyznaczona przez krzywa dramaturgiczna.</summary>
-        public float TargetIntensity = 1f;
+        /// <summary>
+        /// Docelowa intensywnosc wydarzenia wyznaczona przez krzywa dramaturgiczna, wyrazona
+        /// NA SKALI IntensityLevel: -2 = VeryLow, 0 = Normal, +2 = VeryHigh. Typ jest float,
+        /// bo krzywa interpoluje plynnie, a kandydaci maja wartosci calkowite.
+        ///
+        /// SEMANTYKA ZMIENILA SIE W KROKU 4 i jest to zmiana swiadoma. Do kroku 3 pole mialo
+        /// wartosc 1f i NIE MIALO ZADNEGO KONSUMENTA - nikt go nie czytal poza ToString().
+        /// Przy tym 1f na skali IntensityLevel znaczy "High", wiec martwe pole nioslo wartosc
+        /// mylaca: kto by je wtedy podlaczyl, dostalby narratora domyslnie podkrecajacego
+        /// kazde zdarzenie. Redefinicja byla darmowa wlasnie dlatego, ze konsumenta nie bylo.
+        ///
+        /// Czyta je Factor_IntentAlignment jako skladnik "zgodnosci mocy".
+        /// </summary>
+        public float TargetIntensity;
 
         /// <summary>
         /// Intencja narracyjna na te ture. Przepis NIE filtruje po niej kandydatow - intencja

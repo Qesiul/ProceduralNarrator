@@ -16,11 +16,16 @@ namespace ProceduralNarrator.Integration.Storyteller
     /// czynnikow zdarzeniowych i &lt;pass&gt; dla czynnikow ciszy. Rozlaczne, bo obie przestrzenie
     /// nazw sa kalibrowane niezaleznie i nazwa "intentAlignment" wystepuje w obu CELOWO.
     ///
-    /// PULAPKA, KTORA TE POLA WPROWADZAJA: gdy wezel &lt;weights&gt; albo &lt;pass&gt; nie zostanie
-    /// w XML rozpoznany, RimWorld po prostu go pominie, a obiekt zostanie na inicjalizatorach C#.
-    /// Narrator dziala wtedy pozornie poprawnie, tylko kalibracja z XML nie ma zadnego wplywu -
-    /// dokladnie ta sama cicha awaria, ktora w kroku 1 dala pusty katalog klockow. Dlatego
-    /// DescribeEffective() jest logowane na starcie przez PNStartup: to jedyny dowod, ze XML zadzialal.
+    /// PULAPKA, KTORA TE POLA WPROWADZAJA - i jej FAKTYCZNY zasieg, sprawdzony dekompilacja.
+    /// Literowka w nazwie wezla NIE jest cicha awaria: Verse.DirectXmlToObject loguje wtedy
+    /// "XML error: ... doesn't correspond to any field in type", a zly Class= daje
+    /// "Could not find type named". Te dwa przypadki pokrywa wiec silnik.
+    /// Niepokryty zostaje jeden: caly blok &lt;li&gt; nie bierze udzialu w deserializacji. Wtedy
+    /// wszystkie pola zostaja na inicjalizatorach C#, a te sa dzis CO DO JEDNEGO rowne wartosciom
+    /// z XML - wiec samo wypisanie ich przez DescribeEffective() NICZEGO by nie dowiodlo.
+    /// Dowodza tego dopiero trzy rzeczy razem: (1) waniliowe bledy DirectXmlToObject powyzej,
+    /// (2) licznik compow w PNStartup.AuditDecisionConfig, (3) NIEPUSTY configStamp - jedyne pole
+    /// bez sensownej wartosci domyslnej, wiec mogace pochodzic wylacznie z pliku XML.
     /// </summary>
     public class StorytellerCompProperties_Generative : StorytellerCompProperties
     {
@@ -82,6 +87,23 @@ namespace ProceduralNarrator.Integration.Storyteller
         public float gateTemperature = 0.1f;
 
         /// <summary>
+        /// KANAREK KONFIGURACJI - jedyne pole bez sensownej wartosci domyslnej.
+        ///
+        /// Kod inicjalizuje je PUSTYM napisem, wiec cokolwiek pojawi sie w logu startowym musi
+        /// pochodzic z XML-a. To zamyka jedyna luke, ktorej nie pokrywa silnik: waniliowy
+        /// DirectXmlToObject sam zglasza "doesn't correspond to any field in type" przy literowce
+        /// w nazwie wezla i "Could not find type named" przy zlym Class=, ale nie ma jak zglosic
+        /// sytuacji, w ktorej caly blok &lt;li&gt; nie wzialby udzialu w deserializacji.
+        ///
+        /// SPROSTOWANIE wobec pierwotnego uzasadnienia: nie jest prawda, ze wszystkie pola sa rowne
+        /// inicjalizatorom C#. Odziedziczone minDaysPassed ma domyslnie 0f, a XML wysyla 5, wiec
+        /// jest DRUGIM, niezaleznym kanarkiem. configStamp zostaje mimo to, bo jego wartosc nie jest
+        /// parametrem kalibracji: minDaysPassed moze kiedys wrocic do zera i wtedy tamten kanarek
+        /// milczy, a ten nie. Kanarek ma byc odporny na przyszle strojenie, nie tylko na dzisiejsze.
+        /// </summary>
+        public string configStamp = string.Empty;
+
+        /// <summary>
         /// Prog weta spojnosci. Kandydat o dopasowaniu kontekstowym ponizej tej wartosci jest
         /// odrzucany bezwarunkowo, NIEZALEZNIE od wagi contextFit - wyzerowanie wagi w XML nie
         /// jest furtka omijajaca gwarancje spojnosci.
@@ -102,6 +124,21 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// nie unifikowac, bo obie kalibracje sa niezalezne.
         /// </summary>
         public PassScoringParams pass = new PassScoringParams();
+
+        /// <summary>
+        /// Strojenie czynnika kontrastu dramaturgicznego. Wystawione do XML w kroku 4.
+        ///
+        /// Powod jest konkretny: pola reliefGain i strikeGain byly zaszytymi stalymi (1.00
+        /// i 0.75), ktore realizowaly preferencje "po serii ciosow lepsza jest ulga" - czyli
+        /// dokladnie to, co od kroku 4 robi krzywa dramaturgiczna przez Intent.Breathe.
+        /// Ukryta stala nie ma swojego wiersza w sladzie decyzji, wiec podwojne liczenie
+        /// tej preferencji byloby niewidoczne w danych. Po wystawieniu do XML asymetria jest
+        /// decyzja kalibracyjna widoczna w logu startowym, a nie wlasnoscia kodu.
+        ///
+        /// Ten sam obiekt dostaje TensionModel, zeby napiecie i kontrast liczyly rytm
+        /// z identycznego strojenia - inaczej opisywalyby dwie rozne historie tej samej kolonii.
+        /// </summary>
+        public ContrastTuning contrast = ContrastTuning.Default();
 
         public StorytellerCompProperties_Generative()
         {
@@ -229,6 +266,12 @@ namespace ProceduralNarrator.Integration.Storyteller
         public string DescribeEffective()
         {
             var sb = new StringBuilder(320);
+            // configStamp NAJPIERW - to jedyna pozycja w tej linii, ktora dowodzi, ze blok XML
+            // w ogole wzial udzial w deserializacji. Reszta wartosci jest dzis rowna
+            // inicjalizatorom C#, wiec sama z siebie niczego nie rozstrzyga.
+            sb.Append("configStamp=").Append(string.IsNullOrEmpty(configStamp) ? "(PUSTY!)" : configStamp)
+              .Append(" minDaysPassed=").Append(Num(minDaysPassed))
+              .Append(' ');
             sb.Append("mtbDays=").Append(Num(mtbDays))
               .Append(" tagAkcji=").Append(string.IsNullOrEmpty(requiredActionTag) ? "dowolny" : requiredActionTag)
               .Append(" candidateBudget=").Append(Int(candidateBudget))

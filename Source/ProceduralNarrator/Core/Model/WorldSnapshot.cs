@@ -73,6 +73,56 @@ namespace ProceduralNarrator.Core.Model
         /// </summary>
         public float DaysSinceLastEvent;
 
+        /// <summary>
+        /// Liczba kolonistow przetrzymywanych przez wrogie frakcje (porwanych).
+        ///
+        /// PO CO: klocek PN_Akcja_Okup stwierdza w tekscie, ze ktos ZOSTAL PORWANY - a to jest
+        /// sprawdzalny fakt o stanie swiata, wiec wedlug reguly projektu musi go pilnowac warunek
+        /// TWARDY, nie preferencja. Bez tego pola warunku nie dalo sie napisac i narrator mogl
+        /// zazadac okupu za nikogo.
+        ///
+        /// Odwzorowuje RimWorld.IncidentWorker_RansomDemand.RandomKidnappedColonist(): liczy
+        /// pionki HUMANOIDALNE nalezace do frakcji gracza, przetrzymywane przez dowolna frakcje.
+        /// Waniliowy worker odejmuje jeszcze tych, dla ktorych list z zadaniem okupu juz wisi
+        /// w skrzynce - tego NIE odwzorowujemy, bo to stan UI, a nie swiata; skutek jest taki,
+        /// ze warunek bywa nieznacznie luzniejszy od workera i wtedy CanFireNow odrzuci kandydata
+        /// w normalnym trybie. Tekst pozostaje prawdziwy, bo ktos porwany faktycznie jest.
+        /// </summary>
+        public int KidnappedColonistCount;
+
+        /// <summary>
+        /// Czy kolonia ma zasilana konsole lacznosci.
+        ///
+        /// To NIE jest fakt stwierdzany przez zaden fragment tekstu - to wymaganie techniczne
+        /// waniliowego IncidentWorker_RansomDemand (CommsConsoleUtility.PlayerHasPoweredCommsConsole).
+        /// Trafia do snapshotu z tego samego powodu co Cond_MountainRoof: warunek twardy ma
+        /// odwzorowywac to, czego NAPRAWDE wymaga IncidentWorker, inaczej kompozycja produkuje
+        /// kandydatow skazanych na odrzucenie i marnuje rundy petli wyboru.
+        /// </summary>
+        public bool HasPoweredCommsConsole;
+
+        /// <summary>
+        /// Ilu kolonistow jest POWALONYCH (Downed) w tej chwili.
+        ///
+        /// Wchodzi WYLACZNIE do krzywej napiecia (krok 4), nie do zadnego warunku klocka.
+        /// Powod doboru: to najbardziej bezposredni sygnal "kolonii dzieje sie zle TERAZ",
+        /// i jest to ten sam sygnal, na ktory reaguje waniliowa adaptacja
+        /// (StoryWatcher_Adaptation.Notify_PawnEvent z AdaptationEvent.Downed).
+        ///
+        /// Liczba, a nie ulamek: normalizacja nalezy do krzywej, bo to ona zna prog,
+        /// przy ktorym kolonia jest "w opalach". Snapshot podaje FAKT, nie interpretacje.
+        /// </summary>
+        public int DownedColonistCount;
+
+        /// <summary>
+        /// Biezacy poziom zagrozenia na mapie (odwzorowanie waniliowego StoryDanger).
+        ///
+        /// Uzupelnia historie o wymiar, ktorego ona z definicji nie ma: historia wie, jakie
+        /// zdarzenie narrator wyslal, ale nie wie, czy jego skutki juz minely. Uzasadnienie
+        /// braku podwojnego liczenia - w komentarzu przy DangerLevel.
+        /// </summary>
+        public DangerLevel Danger;
+
         public override string ToString()
         {
             return "dzien=" + DaysPassed
@@ -84,7 +134,11 @@ namespace ProceduralNarrator.Core.Model
                    + " pora=" + Season
                    + " noc=" + IsNight
                    + " zwierzat=" + WildAnimalCount
-                   + " odOstatniego=" + DaysSinceLastEvent.ToString("0.00", CultureInfo.InvariantCulture);
+                   + " odOstatniego=" + DaysSinceLastEvent.ToString("0.00", CultureInfo.InvariantCulture)
+                   + " porwanych=" + KidnappedColonistCount
+                   + " konsola=" + HasPoweredCommsConsole
+                   + " powalonych=" + DownedColonistCount
+                   + " zagrozenie=" + Danger;
         }
     }
 }

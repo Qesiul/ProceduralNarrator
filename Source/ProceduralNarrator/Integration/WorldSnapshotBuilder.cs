@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using ProceduralNarrator.Core.Model;
 using RimWorld;
@@ -56,7 +57,11 @@ namespace ProceduralNarrator.Integration
                 HasHostileFaction = HasHostileFaction(),
                 Season = SeasonIndex(GenLocalDate.Season(map)),
                 IsNight = hour < 6 || hour >= 18,
-                WildAnimalCount = CountWildAnimals(map)
+                WildAnimalCount = CountWildAnimals(map),
+                DownedColonistCount = CountDownedColonists(map),
+                Danger = MapDanger(map),
+                KidnappedColonistCount = CountKidnappedColonists(),
+                HasPoweredCommsConsole = CommsConsoleUtility.PlayerHasPoweredCommsConsole(map)
             };
         }
 
@@ -111,6 +116,58 @@ namespace ProceduralNarrator.Integration
             return count;
         }
 
+        /// <summary>
+        /// Odwzorowuje RimWorld.IncidentWorker_RansomDemand.RandomKidnappedColonist(): pionki
+        /// humanoidalne frakcji gracza przetrzymywane przez dowolna frakcje.
+        ///
+        /// Waniliowy worker odejmuje jeszcze tych, dla ktorych list z zadaniem okupu juz wisi
+        /// w skrzynce (ChoiceLetter_RansomDemand). Swiadomie tego NIE odwzorowujemy: to stan
+        /// interfejsu, a nie swiata, a snapshot ma opisywac swiat. Skutkiem jest warunek
+        /// nieznacznie luzniejszy od workera - w takiej sytuacji CanFireNow odrzuci kandydata
+        /// w normalnym trybie, a petla rund wezmie kolejnego. Tekst pozostaje przy tym prawdziwy,
+        /// bo porwany faktycznie istnieje.
+        /// </summary>
+        private static int CountKidnappedColonists()
+        {
+            int n = 0;
+            Faction gracz = Faction.OfPlayer;
+            if (gracz == null || Find.FactionManager == null)
+            {
+                return 0;
+            }
+
+            List<Faction> frakcje = Find.FactionManager.AllFactionsListForReading;
+            for (int i = 0; i < frakcje.Count; i++)
+            {
+                if (frakcje[i].kidnapped == null)
+                {
+                    continue;
+                }
+                // Liczymy WYLACZNIE porwanych trzymanych przez frakcje WROGA. Waniliowy worker
+                // wrogosci nie sprawdza (FactionWhichKidnapped moze byc neutralna), ale zlozony
+                // tekst brzmi "Wroga grupa zbrojna zada okupu za porwanego czlonka kolonii" -
+                // a Cond_HostileFaction gwarantuje tylko, ze JAKAS wroga frakcja istnieje, niekoniecznie
+                // ta sama, ktora porwala. Bez tego filtra zdanie nadal potrafiloby byc falszywe,
+                // tym razem co do wrogosci zadajacego okup, a nie co do nazwy frakcji.
+                // Warunek jest przez to OSTRZEJSZY od workera, co jest bezpieczne: nigdy nie
+                // wyprodukuje kandydata, ktoremu silnik odmowi z tego powodu.
+                if (!frakcje[i].HostileTo(gracz))
+                {
+                    continue;
+                }
+                List<Pawn> porwani = frakcje[i].kidnapped.KidnappedPawnsListForReading;
+                for (int j = 0; j < porwani.Count; j++)
+                {
+                    Pawn p = porwani[j];
+                    if (p != null && p.Faction == Faction.OfPlayer && p.RaceProps != null && p.RaceProps.Humanlike)
+                    {
+                        n++;
+                    }
+                }
+            }
+            return n;
+        }
+
         private static bool HasHostileFaction()
         {
             Faction player = Faction.OfPlayer;
@@ -118,8 +175,25 @@ namespace ProceduralNarrator.Integration
             {
                 return false;
             }
-            return Find.FactionManager.AllFactions
-                .Any(f => !f.defeated && !f.IsPlayer && !f.temporary && f.HostileTo(player));
+            // GetFactions(...) zamiast AllFactions - ten sam wzorzec co przy Cond_MountainRoof:
+            // warunek twardy ma odwzorowywac to, co NAPRAWDE moze sie zdarzyc, a nie flage ozdobna.
+            //
+            // AllFactions zawiera frakcje UKRYTE (FactionManager.AllFactionsVisible filtruje je
+            // dopiero osobno). Wsrod nich sa Mechanoid i HoraxCult - obie permanentEnemy=true
+            // i requiredCountAtGameStart=1, wiec obecne w KAZDEJ rozgrywce od ticku 0. Na tej
+            // liscie flaga byla wiec praktycznie zawsze prawdziwa, niezaleznie od tego, czy
+            // istnieje ktokolwiek, kogo klocek PN_Aktor_Piraci moglby opisac jako "wroga grupe
+            // zbrojna", i czy RaidEnemy ma z kogo zlozyc napad (mechanoidy maja earliestRaidDays).
+            //
+            // Uwaga na marginesie: NIE jest prawda, ze gwarantowane frakcje wrogie sa wylacznie
+            // nieludzkie - Pirate tez ma requiredCountAtGameStart=1 i permanentEnemy=true, jest
+            // widoczna i humanlikeFaction (domyslnie true). Zawezenie zmienia wiec niewiele
+            // w typowej rozgrywce; robimy je dlatego, ze warunek ma znaczyc DOKLADNIE to, co glosi
+            // tekst klocka, a nie "cokolwiek wrogiego istnieje gdzies w swiecie".
+            return Find.FactionManager
+                       .GetFactions(allowHidden: false, allowDefeated: false,
+                                    allowNonHumanlike: false, allowTemporary: false)
+                       .Any(f => f.HostileTo(player));
         }
 
         private static int CountWildAnimals(Map map)
@@ -149,5 +223,63 @@ namespace ProceduralNarrator.Integration
                 default: return 0;
             }
         }
+
+        /// <summary>
+        /// Ilu kolonistow lezy powalonych. Sygnal dla krzywej dramaturgicznej (krok 4);
+        /// zaden warunek twardy tego nie czyta.
+        ///
+        /// FreeColonistsSpawned, a NIE FreeColonistsCount: liczymy tych, ktorzy sa NA TEJ MAPIE,
+        /// bo napiecie jest wielkoscia lokalna dla kolonii. Kolonista lezacy w karawanie po
+        /// drugiej stronie planety nie opisuje sytuacji tej osady.
+        ///
+        /// UWAGA NA MIANOWNIK: WorldSnapshot.ColonistCount pochodzi z FreeColonistsCount, ktore
+        /// powalonych LICZY (Downed jest stanem, nie utrata przynaleznosci). Ulamek powalonych
+        /// jest wiec dobrze okreslony i nie moze przekroczyc 1.
+        /// </summary>
+        private static int CountDownedColonists(Map map)
+        {
+            List<Pawn> kolonisci = map.mapPawns.FreeColonistsSpawned;
+            int n = 0;
+            for (int i = 0; i < kolonisci.Count; i++)
+            {
+                if (kolonisci[i] != null && kolonisci[i].Downed)
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Biezacy poziom zagrozenia na mapie, przemapowany z waniliowego StoryDanger.
+        ///
+        /// Wanilia liczy to za nas i cache'uje co 101 tickow (DangerWatcher.DangerRating),
+        /// wiec odczyt jest tani. Co wazniejsze, ta wielkosc NIE wchodzi do
+        /// StorytellerUtility.DefaultThreatPointsNow - sprawdzone dekompilacja calego assembly,
+        /// wanilia uzywa jej wylacznie do bramki minDanger przy RaidFriendly oraz do rzeczy
+        /// nienarracyjnych (muzyka, auto-przyspieszenie czasu, blokada imprez). Czytanie jej
+        /// do wlasnej krzywej NIE jest wiec podwojnym liczeniem trudnosci.
+        ///
+        /// Mapowanie jawnym switchem, a nie rzutowaniem int-int: obie enumeracje maja dzis
+        /// zgodna kolejnosc, ale to zbieg okolicznosci po stronie Ludeona, a nie kontrakt.
+        /// </summary>
+        private static DangerLevel MapDanger(Map map)
+        {
+            if (map.dangerWatcher == null)
+            {
+                return DangerLevel.None;
+            }
+
+            switch (map.dangerWatcher.DangerRating)
+            {
+                case StoryDanger.High:
+                    return DangerLevel.High;
+                case StoryDanger.Low:
+                    return DangerLevel.Low;
+                default:
+                    return DangerLevel.None;
+            }
+        }
+
     }
 }

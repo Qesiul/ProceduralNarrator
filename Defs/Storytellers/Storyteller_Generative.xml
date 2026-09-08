@@ -49,6 +49,52 @@
            bo klocki opisuja osade ("Rzecz dzieje sie w sercu osady"). -->
       <li Class="ProceduralNarrator.Integration.Storyteller.StorytellerCompProperties_Generative">
         <mtbDays>2.5</mtbDays>
+
+        <!-- PRZENIESIONE Z PODMIENIANYCH COMPOW CASSANDRY - warunek eksperymentu kontrolowanego.
+             Silnik bramkuje to w Storyteller.MakeIncidentsForInterval:
+                 if (GenDate.DaysPassedSinceSettleFloat <= comp.props.minDaysPassed) yield break;
+
+             Podmieniamy TRZY compy, a kazdy ma INNY prog startowy:
+                 OnOffCycle  ThreatBig                  minDaysPassed 11
+                 OnOffCycle  ThreatSmall                minDaysPassed 11
+                 CategoryMTB Misc / Map_PlayerHome      minDaysPassed  5   (mtbDays 4.8)
+
+             Nasz comp jest JEDEN, wiec moze miec tylko jeden prog - a nasze akcje rozkladaja sie
+             na kategorie nierowno (policzone w Data/Core/Defs/Storyteller/Incidents_Map_*.xml):
+                 Misc       8 z 12   (Zrzut, Ambrozja, Meteoryt, Burza, Wedrowiec, Uchodzcy, Dzikus, Okup)
+                 ThreatBig  4 z 12   (Napad, Rojenie, Szal, Emanator)
+                 ThreatSmall 0
+             Dlatego prog compa rowna sie progowi toru WIEKSZOSCIOWEGO (Misc = 5), a wyzszy prog
+             ThreatBig jest realizowany PER AKCJA przez Cond_MinDaysPassed min=11.
+
+             UWAGA - to jest poprawka poprawki. Najpierw wpisano tu 11, patrzac wylacznie na oba
+             compy OnOffCycle i pomijajac trzeci. Skutek byl symetrycznie zly: znikala nasza
+             przewaga w dniach 0-11 dla 4 akcji, ale powstawal BRAK dla pozostalych 8 - w dniach
+             5-11 Cassandra produkuje ~1.25 zdarzenia Misc (6 dni / mtb 4.8), a my zero.
+             Wniosek na przyszlosc: przy przenoszeniu kalibracji sprawdzac WSZYSTKIE podmieniane
+             compy, nie te, ktore pasuja do tezy.
+
+             Cond_MinDaysPassed w klockach dziala PONAD tym progiem, nie zamiast niego. -->
+        <minDaysPassed>5</minDaysPassed>
+
+        <!-- KANAREK KONFIGURACJI. Jedyne pole bez sensownej wartosci domyslnej: kod inicjalizuje
+             je pustym napisem, wiec cokolwiek widac w logu MUSI pochodzic z tego pliku.
+
+             Po co, skoro RimWorld sam zglasza bledy XML: waniliowy DirectXmlToObject loguje
+             "doesn't correspond to any field in type" przy literowce w nazwie wezla oraz
+             "Could not find type named" przy zlym Class=, wiec te dwa przypadki sa pokryte przez
+             silnik. Nie jest natomiast pokryty przypadek, w ktorym CALY blok <li> nie wzialby
+             udzialu w deserializacji - wtedy wszystkie pola zostalyby na inicjalizatorach C#.
+
+             SPROSTOWANIE: pierwotnie napisano tu, ze wartosci sa "co do jednego rowne"
+             inicjalizatorom, wiec log niczego by nie dowiodl. To juz nieprawda - odziedziczone
+             minDaysPassed ma domyslnie 0, a wysylamy 5, wiec jest drugim kanarkiem.
+             configStamp zostaje, bo nie jest parametrem kalibracji: minDaysPassed moze kiedys
+             wrocic do zera, a ten kanarek ma dzialac takze wtedy.
+
+             Wartosc jest opisowa i ma sie zmieniac razem z kalibracja - dzieki temu w serii
+             ewaluacyjnej widac w logu, na ktorej wersji konfiguracji powstal dany wiersz. -->
+        <configStamp>krok4-krzywa-i-profile</configStamp>
         <allowedTargetTags>
           <li>Map_PlayerHome</li>
         </allowedTargetTags>
@@ -141,8 +187,14 @@
              MaxCompositionAttempts = 6 z zapasem. -->
         <maxSelectionRounds>8</maxSelectionRounds>
 
-        <!-- Wagi czynnikow ZDARZENIOWYCH. Nazwa wezla == nazwa pola == nazwa
-             czynnika w sladzie decyzji; to inwariant, nie zbieg okolicznosci.
+        <!-- Wagi czynnikow ZDARZENIOWYCH - WARTOSC AWARYJNA OD KROKU 4.
+             Faktyczne wagi pochodza z wylosowanego PROFILU narratora
+             (Defs/Storytellers/Profiles_Core.xml); ten blok dziala tylko wtedy, gdy
+             katalog profili jest pusty albo zapis wskazuje profil, ktorego juz nie ma.
+             Zostaje takze jako czesc kanarka konfiguracji w logu startowym.
+
+             Nazwa wezla == nazwa pola == nazwa czynnika w sladzie decyzji; to inwariant,
+             nie zbieg okolicznosci.
              Wynik jest srednia WAZONA znormalizowana przez sume wag, wiec licza
              sie wylacznie PROPORCJE miedzy nimi, a nie wartosci bezwzgledne.
              Czynnik o wadze 0 jest dokladnie NEUTRALNY (wnosi 0 do licznika
@@ -160,11 +212,10 @@
                ostatnich zdarzen. Najnizsza z aktywnych wag: ma modulowac wybor,
                a nie przejmowac sterowanie. -->
           <dramaticContrast>1.0</dramaticContrast>
-          <!-- 0 do konca kroku 3: krzywej dramaturgicznej jeszcze nie ma,
-               intencja jest na stale Hold. Czynnik jest MIMO TO liczony
-               i trafia do sladu, zeby format logu badawczego byl identyczny
-               w kroku 3 i 4 i nie wymuszal przepisania skryptow w Pythonie. -->
-          <intentAlignment>0</intentAlignment>
+          <!-- Od kroku 4 czynnik jest PELNY: mierzy, jak blisko kandydat jest tego,
+               czego chce krzywa dramaturgiczna (zadany ladunek + zadana moc).
+               Wartosc tutaj jest awaryjna; profile ustawiaja 1.0-1.5. -->
+          <intentAlignment>1.0</intentAlignment>
         </weights>
 
         <!-- Pseudo-kandydat PASS (swiadoma cisza) - ROZLACZNA przestrzen wag.
@@ -201,16 +252,50 @@
                straznik ogranicza milczenie Z WYBORU, a nie zmusza narratora
                do odpalenia wydarzenia, ktorego nie ma. -->
           <maxStreak>3</maxStreak>
-          <!-- Waga powsciagliwosci: ile cisza zawdziecza temu, ze ostatnio
-               dzialo sie duzo. -->
-          <weightRestraint>0.75</weightRestraint>
-          <!-- Waga czynnika stalego = bazowa sklonnosc do ciszy. Przy sumie wag
-               rownej 1.0 czyta sie wprost jako PODLOGA uzytecznosci PASS (0.25),
-               czyli wartosc ciszy przy zupelnie pustej historii. -->
-          <weightBaseline>0.25</weightBaseline>
-          <!-- 0 do konca kroku 3, jak intentAlignment po stronie zdarzen. -->
-          <weightIntentAlignment>0</weightIntentAlignment>
+          <!-- TRZY WAGI PONIZEJ SUMUJA SIE DO 1.0 I TO JEST WYMOG, NIE PRZYPADEK.
+               Przy sumie rownej 1.0 weightBaseline czyta sie WPROST jako podloga
+               uzytecznosci ciszy, a na tej wlasnosci opiera sie cale wyprowadzenie
+               kalibracji w PassScoringParams. Dolozenie wagi intencji w kroku 4 bez
+               renormalizacji podnioslo by sume do 1.25 i po cichu obnizylo podloge -
+               czyli zmienilo zachowanie bramy bez zmiany ani jednej liczby "widocznej".
+
+               KROK 3 -> KROK 4:  0.75 -> 0.55  |  0.25 -> 0.20  |  0 -> 0.25
+               Podloga U_pass:    0.25 -> 0.20 -->
+
+          <!-- Waga powsciagliwosci: ile cisza zawdziecza temu, ze ostatnio dzialo sie duzo. -->
+          <weightRestraint>0.55</weightRestraint>
+          <!-- Waga czynnika stalego = bazowa sklonnosc do ciszy, czyli PODLOGA U_pass. -->
+          <weightBaseline>0.20</weightBaseline>
+          <!-- KANAL, KTORYM KRZYWA DRAMATURGICZNA STERUJE TEMPEM.
+               Intencja Breathe podnosi wartosc ciszy, Escalate ja obniza. Dzieki temu
+               tempo jest zmienne, a mtbDays pozostaje NIERUSZONE - i to jest decyzja
+               projektowa, nie zaniechanie: mtbDays 2.5 ma wyprowadzenie z czestotliwosci
+               trzech podmienianych compow Cassandry, a ruchome mtbDays skasowaloby parytet
+               budzetu zdarzen, czyli argument, na ktorym stoi ewaluacja porownawcza.
+               mtbDays jest SUFITEM, intencja decyduje, ile z niego narrator zuzyje.
+
+               PO PIERWSZYM PRZEBIEGU: zmierzyc udzial PASS. Jesli odbiegnie od ~12.5%
+               z testu dymnego kroku 3, stroic <densitySaturation>, NIGDY wagami. -->
+          <weightIntentAlignment>0.25</weightIntentAlignment>
         </pass>
+
+        <!-- Strojenie czynnika kontrastu dramaturgicznego. Wystawione do XML w kroku 4.
+
+             POWOD JEST KONKRETNY, A NIE PORZADKOWY. reliefGain i strikeGain byly zaszytymi
+             stalymi (1.00 i 0.75) realizujacymi regule "po serii ciosow lepsza jest ulga".
+             Od kroku 4 dokladnie to samo robi krzywa dramaturgiczna przez Intent.Breathe,
+             i robi to lepiej, bo patrzy na POZIOM napiecia, a nie tylko na kierunek odchylki
+             od rytmu. Zostawienie asymetrii tutaj liczylo by te preferencje DWA RAZY - raz
+             jako ukryta stala bez wiersza w sladzie decyzji, raz jako jawna intencja z wlasna
+             waga. Skutkiem bylby narrator lagodniejszy, niz wynika z jego kalibracji,
+             w sposob niewidoczny w danych badawczych.
+
+             Dlatego oba wzmocnienia sa teraz ROWNE, a asymetria - jesli kiedys wroci - bedzie
+             decyzja kalibracyjna widoczna w logu startowym, a nie wlasnoscia kodu. -->
+        <contrast>
+          <reliefGain>1.0</reliefGain>
+          <strikeGain>1.0</strikeGain>
+        </contrast>
       </li>
 
       <!-- ============ PONIZEJ: skopiowane z Cassandry bez zmian ============ -->

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Integration.Defs;
 using ProceduralNarrator.Integration.Storyteller;
 using RimWorld;
@@ -124,6 +125,7 @@ namespace ProceduralNarrator.Integration
                 : "UWAGA: StorytellerDef PN_GenerativeNarrator NIE zaladowal sie.");
 
             AuditDecisionConfig();
+            AuditProfiles();
 
             // Naglowek formatu danych badawczych wypisujemy raz, przed jakakolwiek decyzja.
             // Dzieki temu skrypt agregujacy z kroku 8 czyta kolejnosc kolumn z tego samego pliku,
@@ -173,6 +175,20 @@ namespace ProceduralNarrator.Integration
                         PNLog.Warn("Konfiguracja " + st.defName + " poprawiona: " + poprawki);
                     }
 
+                    // KANAREK. Pusty configStamp znaczy, ze blok <li Class=...Generative> nie wzial
+                    // udzialu w deserializacji i WSZYSTKIE parametry decyzyjne siedza na
+                    // inicjalizatorach C#. Poniewaz te sa dzis co do jednego rowne wartosciom
+                    // z XML, jest to awaria NIEWIDOCZNA w samych liczbach - narrator dziala,
+                    // tylko kalibracja z pliku nie ma zadnego wplywu. Stad osobny, glosny blad.
+                    if (string.IsNullOrEmpty(nasz.configStamp))
+                    {
+                        PNLog.Error("configStamp PUSTY w " + st.defName + " - blok konfiguracyjny "
+                                    + "<li Class=\"...StorytellerCompProperties_Generative\"> nie zostal "
+                                    + "wczytany z XML, a narrator pracuje na wartosciach domyslnych z kodu. "
+                                    + "Sprawdz Defs/Storytellers/Storyteller_Generative.xml oraz czy gra "
+                                    + "zostala URUCHOMIONA PONOWNIE po zmianie plikow.");
+                    }
+
                     PNLog.Decision("Parametry decyzyjne (" + st.defName + "): " + nasz.DescribeEffective());
                 }
             }
@@ -184,5 +200,49 @@ namespace ProceduralNarrator.Integration
                            + "w Defs/Storytellers/Storyteller_Generative.xml (wymagana PELNA nazwa typu).");
             }
         }
+
+        /// <summary>
+        /// Audyt katalogu OSOBOWOSCI narratora (krok 4).
+        ///
+        /// Pusty katalog jest awaria CICHA tej samej rodziny co pusty katalog klockow: narrator
+        /// dziala dalej, tylko na profilu awaryjnym z wartosciami domyslnymi z kodu - czyli
+        /// wszystkie rozgrywki dostaja te sama osobowosc, a wzorzec Strategia po prostu nie
+        /// zachodzi. Z zewnatrz wyglada to jak poprawnie dzialajacy narrator.
+        ///
+        /// Najczestsza przyczyna jest zawsze ta sama: wezel XML bez PELNEJ nazwy typu.
+        /// </summary>
+        private static void AuditProfiles()
+        {
+            List<NarratorProfileDef> profile = DefDatabase<NarratorProfileDef>.AllDefsListForReading;
+
+            if (profile.NullOrEmpty())
+            {
+                PNLog.Error(
+                    "KATALOG PROFILI NARRATORA PUSTY - zero NarratorProfileDef w DefDatabase. "
+                    + "Kazda rozgrywka dostanie ten sam profil awaryjny, wiec wzorzec Strategia "
+                    + "nie zadziala, a narrator bedzie wygladal na sprawny. Sprawdz: "
+                    + "(1) czy istnieje Defs/Storytellers/Profiles_Core.xml; "
+                    + "(2) czy wezly uzywaja PELNEJ nazwy typu, czyli "
+                    + "<ProceduralNarrator.Integration.Defs.NarratorProfileDef> - sama "
+                    + "<NarratorProfileDef> NIE zadziala; "
+                    + "(3) czy gra zostala uruchomiona PONOWNIE po zmianie plikow.");
+                return;
+            }
+
+            PNLog.Decision("Profile narratora: " + NarratorProfileCatalog.DescribeCatalog()
+                           + ". Profil jest LOSOWANY na starcie rozgrywki i nie jest wybierany "
+                           + "przez gracza - w menu narratorow zostaje jedna pozycja.");
+
+            foreach (NarratorProfileDef def in profile)
+            {
+                string poprawki = (def.tension ?? TensionParams.Default()).Sanitize();
+                if (!string.IsNullOrEmpty(poprawki))
+                {
+                    PNLog.Warn("Profil " + def.defName + " - poprawiono parametry krzywej: " + poprawki);
+                }
+                PNLog.Decision("  " + def.ToProfile());
+            }
+        }
+
     }
 }

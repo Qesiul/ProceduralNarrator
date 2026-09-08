@@ -89,6 +89,19 @@ namespace ProceduralNarrator.Core.Decision
         /// <summary>Czy straznik serii wykluczyl PASS z losowania w tej turze.</summary>
         public bool PassSuppressedByStreak;
 
+        /// <summary>
+        /// Rozstrzygniecie bramy tej TURY. Warstwa integracji podaje je z powrotem do Select
+        /// w kolejnych rundach, zeby brama nie losowala sie ponownie po odmowie silnika.
+        /// Nie trafia wprost do logu - do danych idzie GatePassProbability.
+        /// </summary>
+        public GateOutcome Gate;
+
+        /// <summary>
+        /// Statystyki PELNEJ puli tej TURY. Jak wyzej: przekazywane z powrotem do Select, zeby
+        /// liczniki i ranking nie kurczyly sie razem z pula robocza. Nie trafia wprost do logu.
+        /// </summary>
+        public TurnStats TurnStats;
+
         public int CountScored;
         public int CountVetoed;
         public int CountBelowCutoff;

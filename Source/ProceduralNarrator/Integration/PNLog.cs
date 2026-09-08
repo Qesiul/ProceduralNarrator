@@ -5,6 +5,7 @@ using System.Text;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Integration.Persistence;
 using RimWorld;
 using Verse;
 
@@ -31,6 +32,7 @@ namespace ProceduralNarrator.Integration
         private const string Prefix = "[PN] ";
         private const string DataPrefix = "[PN-DATA] ";
         private const string ColumnsPrefix = "[PN-DATA-COLS] ";
+        private const string LoadPrefix = "[PN-LOAD] ";
 
         /// <summary>
         /// Wersja formatu linii maszynowej. PODBIC przy KAZDEJ zmianie zawartosci DataColumns -
@@ -42,7 +44,22 @@ namespace ProceduralNarrator.Integration
         /// znaczenie - liczy teraz SAME zdarzenia etapu B, bez pseudo-kandydata PASS, ktory
         /// rozstrzyga sie osobno w bramie. Kolumna "losowan" jest odtad rowna dwukrotnosci
         /// liczby rund, nie liczbie rund.
-        public const int DataFormatVersion = 2;
+        ///
+        /// WERSJA 3 (trwalosc pamieci): doszla kolumna "runId" - identyfikator ROZGRYWKI,
+        /// staly przez cale zycie zapisu gry. Do wersji 2 wlacznie jedyna granica w danych byla
+        /// linia [PN-SESSION], ktora oznacza URUCHOMIENIE PROCESU: rozgrywka grana na raty
+        /// rozpadala sie wiec na N nieodroznialnych kawalkow, a dwie rozne rozgrywki z jednego
+        /// wieczoru zlewaly sie w jedna. Od tej wersji grupowanie idzie po runId, a [PN-SESSION]
+        /// zostaje wylacznie znacznikiem technicznym.
+        ///
+        /// WERSJA 4 (krzywa dramaturgiczna): doszly kolumny "profil" i "napiecie".
+        /// "profil" jest NIEZBEDNY, a nie ozdobny: od kroku 4 osobowosc narratora jest losowana
+        /// na starcie rozgrywki i nieujawniana graczowi, wiec bez tej kolumny dwie rozgrywki
+        /// "naszego narratora" prowadziliby DWAJ ROZNI narratorzy, a analiza nie mialaby jak
+        /// tego rozwarstwic - losowy przydzial stalby sie niekontrolowana zmienna w ewaluacji.
+        /// "napiecie" jest surowym wejsciem krzywej; bez niego z danych nie da sie odtworzyc,
+        /// dlaczego narrator wybral akurat te intencje.
+        public const int DataFormatVersion = 4;
 
         /// <summary>
         /// PELNA lista kolumn linii [PN-DATA] w ich OBOWIAZUJACEJ kolejnosci. Jedyne zrodlo
@@ -56,8 +73,9 @@ namespace ProceduralNarrator.Integration
         private static readonly string[] DataColumns =
         {
             // --- preambula: kto, kiedy, w jakim stanie pamieci (warstwa integracji) ---
-            "wersjaLogu", "tick", "dzien", "decyzjaNr", "mapa", "histWpisow", "histDecyzji",
-            "intencja", "odmowSilnika",
+            "wersjaLogu", "runId", "profil", "tick", "dzien", "decyzjaNr", "mapa",
+            "histWpisow", "histDecyzji",
+            "napiecie", "intencja", "docelowaMoc", "odmowSilnika",
 
             // --- generowanie kandydatow (CandidateSet) ---
             "wygenerowanych", "budzet", "akcji", "limitNaAkcje", "przestrzen",
@@ -174,6 +192,97 @@ namespace ProceduralNarrator.Integration
         }
 
         /// <summary>
+        /// Identyfikator biezacej rozgrywki, czytany wprost z magazynu trwalego stanu.
+        ///
+        /// Czytany za kazdym razem, a nie cache'owany w polu statycznym: PNLog zyje tak dlugo
+        /// jak PROCES gry, a rozgrywka moze sie w tym czasie zmienic (wyjscie do menu, wczytanie
+        /// innego zapisu). Cache przezylby te zmiane i po cichu podpisywalby wiersze nowej
+        /// rozgrywki identyfikatorem poprzedniej - czyli produkowalby dane gorsze niz ich brak.
+        /// Koszt to skan listy komponentow raz na 1000 tickow, czyli zero.
+        /// </summary>
+        private static string CurrentRunId()
+        {
+            if (Current.Game == null)
+            {
+                return string.Empty;
+            }
+
+            NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
+            return pamiec == null ? string.Empty : pamiec.RunId;
+        }
+
+        /// <summary>
+        /// defName profilu przydzielonego tej rozgrywce. Czytany za kazdym razem z tego samego
+        /// powodu co runId: PNLog zyje tak dlugo jak proces, a rozgrywka moze sie zmienic.
+        /// </summary>
+        private static string CurrentProfileId()
+        {
+            if (Current.Game == null)
+            {
+                return string.Empty;
+            }
+
+            NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
+            return pamiec == null ? string.Empty : pamiec.ProfileId;
+        }
+
+        /// <summary>
+        /// Kanarek wczytania pamieci narratora - jedna linia na uruchomienie rozgrywki.
+        ///
+        /// Pelni dwie role naraz i obie sa potrzebne:
+        ///   1. DIAGNOSTYCZNA - rozstrzyga, czy pamiec przetrwala zapis. Bez niej "narrator
+        ///      zaczyna od zera po wczytaniu" i "narrator ma pusta pamiec, bo to nowa kolonia"
+        ///      wygladaja w danych identycznie, a to jest dokladnie ta awaria, przed ktora
+        ///      warstwa trwalosci ma chronic.
+        ///   2. STRUKTURALNA - jest GRANICA WCZYTANIA dla skryptu agregujacego. Wiersze
+        ///      [PN-DATA] po tej linii naleza do tej samej rozgrywki co przed zapisem, mimo ze
+        ///      dzieli je nowa linia [PN-SESSION].
+        ///
+        /// Nie rusza kontraktu kolumn [PN-DATA], wiec nie wymaga wlasnego numeru wersji -
+        /// parser, ktory jej nie zna, po prostu ja pominie po prefiksie.
+        /// </summary>
+        public static void Load(string runId, string zrodlo, string profil, int mapCount, int wpisow,
+                                int decyzji, int odrzuconych, int wersjaPamieci)
+        {
+            string linia = LoadPrefix
+                           + "runId=" + (string.IsNullOrEmpty(runId) ? "?" : runId)
+                           + "; zrodlo=" + zrodlo
+                           + "; profil=" + (string.IsNullOrEmpty(profil) ? "?" : profil)
+                           + "; map=" + mapCount.ToString(CultureInfo.InvariantCulture)
+                           + "; wpisow=" + wpisow.ToString(CultureInfo.InvariantCulture)
+                           + "; decyzji=" + decyzji.ToString(CultureInfo.InvariantCulture)
+                           + "; odrzuconych=" + odrzuconych.ToString(CultureInfo.InvariantCulture)
+                           + "; wersjaPamieci=" + wersjaPamieci.ToString(CultureInfo.InvariantCulture);
+
+            WriteData(linia);
+
+            // Ta sama tresc idzie do logu czytelnego, bo przy diagnozowaniu "czemu narrator
+            // zapomnial" pierwszym miejscem, w ktore sie patrzy, jest Player.log, a nie plik danych.
+            string opis;
+            if (zrodlo == "nowaGra")
+            {
+                opis = "Nowa rozgrywka, runId=" + runId + ", profil=" + profil
+                       + ". Pamiec narratora startuje pusta.";
+            }
+            else if (zrodlo == "zapisBezPamieci")
+            {
+                opis = "Wczytano zapis BEZ pamieci narratora (runId=" + runId
+                       + "). To normalne dla zapisu sprzed kroku 6 albo dla moda dolozonego do "
+                       + "trwajacej rozgrywki - narracja zaczyna sie od tego momentu.";
+            }
+            else
+            {
+                opis = "Wczytano pamiec narratora: runId=" + runId
+                       + ", map=" + mapCount.ToString(CultureInfo.InvariantCulture)
+                       + ", wpisow=" + wpisow.ToString(CultureInfo.InvariantCulture)
+                       + ", decyzji=" + decyzji.ToString(CultureInfo.InvariantCulture)
+                       + ", odrzuconych linii=" + odrzuconych.ToString(CultureInfo.InvariantCulture) + ".";
+            }
+
+            Decision(opis);
+        }
+
+        /// <summary>
         /// Jedna linia maszynowa na jedna decyzje narratora - takze na decyzje o ciszy.
         ///
         /// Kolumny czynnikow ZDARZENIOWYCH dla wiersza PASS zostaja PUSTE, a nie zerowe.
@@ -198,16 +307,21 @@ namespace ProceduralNarrator.Integration
 
             // ---- preambula ----
             Append(sb, "wersjaLogu", DataFormatVersion.ToString(CultureInfo.InvariantCulture));
+            Append(sb, "runId", CurrentRunId());
+            Append(sb, "profil", CurrentProfileId());
             Append(sb, "tick", Int(tick));
             Append(sb, "dzien", Num(context == null ? 0f : context.GameDay));
             Append(sb, "decyzjaNr", Int(context == null ? 0 : context.DecisionIndex));
-            // Identyfikator mapy: pamiec narratora zyje w instancji komponentu, a nie w zapisie
-            // gry, wiec skok liczby wpisow przy zmianie mapy musi byc widoczny w danych od razu,
-            // a nie dopiero po zebraniu serii rozgrywek.
+            // Identyfikator mapy: kazda kolonia prowadzi WLASNA pamiec (klucz Map.uniqueID),
+            // wiec bez tej kolumny skok liczby wpisow przy przejsciu miedzy mapami wygladalby
+            // w danych jak utrata pamieci. Od kroku 6 pamiec zyje w NarratorMemoryComponent
+            // i przezywa zapis gry, ale rozdzial per mapa zostaje - i nadal trzeba go widziec.
             Append(sb, "mapa", Int(mapId));
             Append(sb, "histWpisow", Int(context == null || context.History == null ? 0 : context.History.Count));
             Append(sb, "histDecyzji", Int(context == null || context.History == null ? 0 : context.History.DecisionCount));
+            Append(sb, "napiecie", Num(context == null ? 0f : context.Tension));
             Append(sb, "intencja", context == null ? string.Empty : context.Intent.ToString());
+            Append(sb, "docelowaMoc", Num(context == null ? 0f : context.TargetIntensity));
             Append(sb, "odmowSilnika", Int(engineRefusals));
 
             // ---- generowanie kandydatow ----

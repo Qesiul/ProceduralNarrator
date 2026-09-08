@@ -38,11 +38,11 @@ namespace ProceduralNarrator.Core.Decision
 
         /// <summary>
         /// Waga 0 w kroku 3: czynnik jest zarejestrowany i trafia do sladu, ale nie wplywa
-        /// na wynik. Krok 4 podniesie ja razem z krzywa dramaturgiczna. Dzieki temu format
+        /// na wynik. Podniesiona w kroku 4 razem z krzywa dramaturgiczna (bylo 0). UWAGA: od kroku 4 ta wartosc jest AWARYJNA - faktyczne wagi pochodza z wylosowanego profilu narratora (NarratorProfileDef). Dzieki temu format
         /// danych badawczych (zestaw i kolejnosc kolumn) nie zmienia sie miedzy krokami
         /// i skrypty agregujace w Pythonie nie wymagaja przepisania.
         /// </summary>
-        public float intentAlignment = 0f;
+        public float intentAlignment = 1.0f;
 
         /// <summary>
         /// Kanoniczna KOLEJNOSC czynnikow zdarzeniowych. Ustala kolejnosc kolumn w logu

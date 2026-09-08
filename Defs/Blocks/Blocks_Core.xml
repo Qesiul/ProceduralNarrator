@@ -96,7 +96,17 @@
     <scale>Moderate</scale>
     <intensity>High</intensity>
     <tags><li>wrogi</li><li>ludzki</li></tags>
-    <textFragment>Banda piratow</textFragment>
+    <!-- REGULA "fakt w tekscie = warunek TWARDY". Poprzedni fragment brzmial "Banda piratow",
+         czyli NAZYWAL konkretna frakcje - a Cond_HostileFaction sprawdza tylko, czy istnieje
+         JAKAKOLWIEK wroga frakcja (WorldSnapshot.HasHostileFaction to zwykly bool). Frakcji
+         napastnika przy tym nie wybieramy: do IncidentParms trafiaja wylacznie punkty, wiec
+         RaidEnemy dobiera ja sam. Skutek: napad plemienia albo zbuntowanych osadnikow bylby
+         opisany jako piraci.
+         Zabezpieczenie warunkiem jest dzis niemozliwe (wymagaloby parametryzacji frakcji
+         w IncidentParms - patrz dlug otwarty o slocie Target), wiec zgodnie z przyjeta zasada
+         TEKST PRZESTAJE STWIERDZAC to, czego nie kontrolujemy. Nowy fragment mowi wylacznie to,
+         co Cond_HostileFaction faktycznie gwarantuje: ze napastnik jest wrogi i ludzki. -->
+    <textFragment>Wroga grupa zbrojna</textFragment>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
     </conditions>
@@ -169,8 +179,10 @@
     <textFragment>uderza na kolonie zbrojnie.</textFragment>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <!-- 11, nie 5: odwzorowuje OnOffCycle(ThreatBig) u Cassandry. Comp ma prog 5 (tor Misc,
+           8 z 12 akcji), wiec wyzszy prog zagrozen musi byc na poziomie akcji. -->
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
-        <min>5</min>
+        <min>11</min>
       </li>
     </conditions>
     <!-- Zbrojny napad prowadzi tylko wrogi oddzial ludzi -->
@@ -206,6 +218,13 @@
       <li Class="ProceduralNarrator.Core.Conditions.Cond_WildAnimals">
         <min>1</min>
       </li>
+      <!-- Prog 11 dnia odwzorowuje minDaysPassed podmienianego compa OnOffCycle(ThreatBig)
+           u Cassandry. Comp ma prog 5 (tor Misc, 8 z 12 akcji), wiec wyzszy prog dla zagrozen
+           musi siedziec TUTAJ - inaczej narrator wypuszczalby duze zagrozenia wczesniej
+           niz narrator, z ktorym sie porownujemy. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
     </conditions>
     <!-- W szal wpadaja zwierzeta, nie ludzie; bogactwo kolonii nie ma tu nic do rzeczy -->
     <incompatibleWith>
@@ -236,6 +255,13 @@
     <!-- Twardy warunek, ktory wczesniej odbijal sie od CanFireNow -->
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MountainRoof"/>
+      <!-- Prog 11 dnia odwzorowuje minDaysPassed podmienianego compa OnOffCycle(ThreatBig)
+           u Cassandry. Comp ma prog 5 (tor Misc, 8 z 12 akcji), wiec wyzszy prog dla zagrozen
+           musi siedziec TUTAJ - inaczej narrator wypuszczalby duze zagrozenia wczesniej
+           niz narrator, z ktorym sie porownujemy. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
     </conditions>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>

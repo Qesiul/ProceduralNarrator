@@ -54,7 +54,7 @@ namespace ProceduralNarrator.Core.Decision
         public int maxStreak = 3;
 
         /// <summary>Waga czynnika "powsciagliwosc" (gestosc ostatnich zdarzen).</summary>
-        public float weightRestraint = 0.75f;
+        public float weightRestraint = 0.55f;
 
         /// <summary>
         /// Waga czynnika stalego - bazowa sklonnosc narratora do ciszy.
@@ -62,14 +62,20 @@ namespace ProceduralNarrator.Core.Decision
         /// jednoczesnie wartosci i wagi stalego wyrazu jest nadmiarowe, bo liczy sie tylko
         /// ich iloczyn. Przy sumie wag rownej 1.0 ta liczba to wprost podloga U_pass.
         /// </summary>
-        public float weightBaseline = 0.25f;
+        public float weightBaseline = 0.20f;
 
         /// <summary>
-        /// Waga zgodnosci ciszy z intencja narratora. 0 w kroku 3 (intencja jest stale Hold),
-        /// 1.0 od kroku 4. Czynnik mimo zerowej wagi jest liczony i trafia do sladu, zeby
-        /// format danych badawczych byl identyczny w obu krokach.
+        /// Waga zgodnosci ciszy z intencja narratora. 0 w kroku 3 (intencja byla stale Hold),
+        /// 0.25 od kroku 4, gdy krzywa dramaturgiczna zaczela produkowac Escalate i Breathe.
+        ///
+        /// TO JEST KANAL, KTORYM KRZYWA STERUJE TEMPEM. Decyzja projektowa: krzywa NIE rusza
+        /// mtbDays, bo ta stala ma wyprowadzenie z czestotliwosci trzech podmienianych compow
+        /// Cassandry (0.14 + 0.06 + 0.21 = 0.40/dzien) i na niej stoi argument o eksperymencie
+        /// kontrolowanym. mtbDays zostaje SUFITEM budzetu zdarzen, a intencja decyduje, ile
+        /// z tego sufitu narrator faktycznie zuzyje: Breathe podnosi wartosc ciszy, Escalate
+        /// ja obniza. Tempo jest wiec zmienne, a parytet budzetu wobec Cassandry - zachowany.
         /// </summary>
-        public float weightIntentAlignment = 0f;
+        public float weightIntentAlignment = 0.25f;
 
         /// <summary>Nazwa czynnika powsciagliwosci. Musi zgadzac sie z Factor_PassRestraint.FactorName.</summary>
         public const string RestraintFactorName = "restraint";
