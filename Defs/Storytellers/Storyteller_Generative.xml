@@ -296,6 +296,25 @@
           <reliefGain>1.0</reliefGain>
           <strikeGain>1.0</strikeGain>
         </contrast>
+
+        <!-- ZLOZONY OPIS ZAMIAST WANILIOWEGO LISTU - DECYZJA DO PODJECIA, nie zaniechanie.
+
+             Mechanizm jest gotowy (IncidentParmsBuilder). Wylaczony, bo zmierzone pokrycie
+             wynosi 7 z 12: waniliowy IncidentWorker.SendIncidentLetter honoruje customLetterText
+             tylko dla workerow, ktore przez niego przechodza -
+               DZIALA:     ResourcePodCrash, Flashstorm, Infestation, WandererJoin,
+                           PsychicEmanatorShipPartCrash, AmbrosiaSprout, WildManWandersIn
+               IGNORUJE:   MeteoriteImpact, RefugeePodCrash, ManhunterPack, RaidEnemy,
+                           RansomDemand  (buduja list samodzielnie)
+
+             Wlaczenie da wiec rozgrywke, w ktorej czesc zdarzen ma opis zlozony z klockow,
+             a czesc waniliowy. Ta niespojnosc jest widoczna dla gracza i trudna do obronienia
+             w rozdziale o ewaluacji - stad decyzja nalezy do autora, a nie do kodu.
+
+             Po stronie TEKSTU katalog jest juz bezpieczny: regula "fakt w tekscie = warunek
+             twardy" zostala przeprowadzona, a fragmenty, ktorych nie dalo sie zabezpieczyc
+             (polozenie, koncowa skala), przepisano tak, by nic nie stwierdzaly. -->
+        <useComposedLetter>false</useComposedLetter>
       </li>
 
       <!-- ============ PONIZEJ: skopiowane z Cassandry bez zmian ============ -->

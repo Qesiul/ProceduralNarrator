@@ -7,6 +7,7 @@ using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
 using ProceduralNarrator.Integration.Defs;
+using ProceduralNarrator.Integration.Incidents;
 using ProceduralNarrator.Integration.Persistence;
 using RimWorld;
 using Verse;
@@ -112,7 +113,22 @@ namespace ProceduralNarrator.Integration.Storyteller
             return h;
         }
 
+        /// <summary>
+        /// Przebieg tury. Zyje w Core/, wiec walidator offline WYKONUJE ta petle, zamiast ja
+        /// odwzorowywac - patrz uzasadnienie w TurnRunner. Nie zalezy od profilu (polityka,
+        /// parametry PASS i budzet rund sa wspolne), wiec powstaje razem z reszta stalego runtime.
+        /// </summary>
+        private TurnRunner turnRunner;
+
         private bool runtimeReady;
+
+        /// <summary>
+        /// Narrator zostal wylaczony po nieudanej inicjalizacji. Osobna flaga od runtimeReady,
+        /// bo to osobna sprawa: runtimeReady znaczy "czesc niezalezna od profilu jest zbudowana",
+        /// a ta znaczy "nie probuj wiecej i nie spamuj logu". Zlozenie obu w jedna zmienna bylo
+        /// zrodlem bledu, ktory ta zmiana naprawia.
+        /// </summary>
+        private bool runtimeBroken;
 
         /// <summary>
         /// Krzywa dramaturgiczna i profil, z ktorego powstala. Budowane leniwie i przebudowywane
@@ -156,8 +172,15 @@ namespace ProceduralNarrator.Integration.Storyteller
                 yield break;
             }
 
-            EnsureRuntime();
-            EnsureProfileRuntime();
+            // STRAZNIK SCIEZKI DECYZYJNEJ - cala inicjalizacja siedzi WEWNATRZ TryEnsureRuntime,
+            // zeby wyjatek z konstruktorow nie mial jak wyleciec z MakeIntervalIncidents.
+            // Powod, dla ktorego to osobna metoda, a nie try/catch tutaj: C# nie pozwala na
+            // yield return w bloku try z klauzula catch, wiec opakowanie inicjalizacji na
+            // miejscu wymusiloby przebudowe calej metody-iteratora.
+            if (!TryEnsureRuntime())
+            {
+                yield break;
+            }
 
             int tick = CurrentTick();
             float gameDay = tick / TicksPerDay;
@@ -192,24 +215,143 @@ namespace ProceduralNarrator.Integration.Storyteller
                            + "jest dolnym ograniczeniem, a pokrycie gornym. " + kandydaci.Trace);
             }
 
+            // DOKLADNE SITO PRZED SCORINGIEM: usuwamy kandydatow, ktorych gra i tak odrzuci
+            // przez prog punktow zagrozenia. Cond_MinThreatPoints jest tylko sitem ZGRUBNYM,
+            // bo warunek twardy dziala na poziomie klocka i nie zna koncowej intensywnosci
+            // kompozycji - a to ona decyduje o mnozniku punktow. Szczegoly w IncidentParmsBuilder.
+            //
+            // Robimy to PRZED ocenianiem, bo kandydat nieosiagalny w puli moze wygrac runde,
+            // zostac odrzucony przez CanFireNow i - nie trafiwszy do historii - wrocic na czolo
+            // rankingu z maksymalna swiezoscia. To jest petla, ktora zjadala 64% rund.
+            // NOWA LISTA, a nie filtrowanie w miejscu: kandydaci.Candidates jest zrodlem
+            // kolumny "wygenerowanych", wiec skrocenie jej tutaj zabieraloby logowi jedyny
+            // slad po dzialaniu sita.
+            int odfiltrowanych;
+            List<ComposedEvent> doOceny = IncidentParmsBuilder.OdfiltrujNieosiagalne(
+                kandydaci.Candidates, snapshot.ThreatPoints, out odfiltrowanych);
+            if (odfiltrowanych > 0)
+            {
+                PNLog.Decision("Sito punktow zagrozenia: usunieto "
+                               + odfiltrowanych.ToString(CultureInfo.InvariantCulture)
+                               + " kandydatow nieosiagalnych przy "
+                               + snapshot.ThreatPoints.ToString("0", CultureInfo.InvariantCulture)
+                               + " punktach bazowych.");
+            }
+
             // WYMOG: ScoreAll i ScorePass wolane DOKLADNIE RAZ na decyzje. Kolejne rundy petli
             // powtarzaja wylacznie SelectionPolicy.Select na juz ocenionej liscie. Powtorne
             // ocenianie (a) przeliczyloby czynniki tyle razy, ile rund, (b) nadpisaloby Factors,
             // gubiac slad tej rundy, ktora faktycznie zakonczyla decyzje. PASS tez nie jest
             // przeliczany miedzy rundami - gestosc zdarzen nie zmienia sie w obrebie jednej tury.
-            List<ScoredCandidate> ocenieni = scorer.ScoreAll(kandydaci.Candidates, context);
+            List<ScoredCandidate> ocenieni = scorer.ScoreAll(doOceny, context);
             ScoredCandidate pass = scorer.ScorePass(context);
 
-            // Kopia robocza: petla usuwa z niej kandydatow odrzuconych przez silnik gry, a lista
-            // zwrocona przez ScoreAll ma pozostac nietknieta na potrzeby logu.
+            // Kopia robocza: TurnRunner usuwa z niej kandydatow odrzuconych przez silnik gry,
+            // a lista zwrocona przez ScoreAll ma pozostac nietknieta na potrzeby logu.
             var pula = new List<ScoredCandidate>(ocenieni);
 
-            IncidentDef incydent;
-            IncidentParms parms;
-            List<string> odmowy;
-            int rundy;
-            NarratorDecision decyzja = RunSelectionLoop(target, context, pula, pass, rngSel,
-                                                       out incydent, out parms, out odmowy, out rundy);
+            // AKCEPTOR - jedyne miejsce, w ktorym przebieg tury dotyka API gry.
+            //
+            // Rdzen pyta "czy ten kandydat moze teraz wypalic?", a odpowiedz wymaga trzech
+            // rzeczy, ktorych Core nie zna: rozwiazania IncidentDef, sprawdzenia tagu celu
+            // i CanFireNow. Gotowy incydent z parametrami zostaje TUTAJ, w zmiennych lokalnych -
+            // rdzen go nie transportuje, bo nie mialby jak opisac tych typow bez wciagania
+            // API gry do Core.
+            IncidentDef incydent = null;
+            IncidentParms parms = null;
+
+            CandidateAcceptor akceptor = delegate(ScoredCandidate kandydat, out string powod)
+            {
+                powod = null;
+                ComposedEvent zdarzenie = kandydat.Event;
+
+                IncidentDef kandydacki = DefDatabase<IncidentDef>.GetNamedSilentFail(zdarzenie.ActionPayload);
+                if (kandydacki == null)
+                {
+                    // Audyt startowy (AuditActionPayloads) lapie to juz w menu glownym, wiec
+                    // tutaj jest to druga siec bezpieczenstwa - na wypadek Defa dolozonego
+                    // przez inny mod po naszym audycie.
+                    PNLog.Error("Klocek akcji wskazuje na nieistniejacy IncidentDef: "
+                                + zdarzenie.ActionPayload);
+                    powod = zdarzenie.ActionPayload + ": brak IncidentDef";
+                    return false;
+                }
+
+                if (!kandydacki.TargetAllowed(target))
+                {
+                    powod = kandydacki.defName + ": cel niedozwolony";
+                    return false;
+                }
+
+                // IncidentParms budowane LENIWIE, wylacznie dla zwyciezcy DANEJ RUNDY.
+                // StorytellerUtility.DefaultParmsNow (pod spodem GenerateParms) liczy punkty
+                // zagrozenia z bogactwa, kolonistow i krzywych adaptacji - zbudowanie parms dla
+                // calego rankingu oznaczaloby dzis 84 takie wywolania na ture zamiast jednego.
+                // Scoring nie dotyka IncidentParms w ogole: intensywnosc jest cecha kompozycji,
+                // a punkty sa jej TLUMACZENIEM na mechanike, potrzebnym dopiero przy odpaleniu.
+                // Tlumaczenie kompozycji na mechanike ma JEDEN dom - IncidentParmsBuilder.
+                // Tam tez zapisane jest, ktore pola IncidentParms nasz katalog realnie honoruje,
+                // a ktore sa dla niego bezczynne (zmierzone dekompilacja, nie zalozone).
+                IncidentParms kandydackieParms = IncidentParmsBuilder.Apply(
+                    GenerateParms(kandydacki.category, target), zdarzenie, Props.useComposedLetter);
+
+                if (!kandydacki.Worker.CanFireNow(kandydackieParms))
+                {
+                    powod = kandydacki.defName + ": CanFireNow=false";
+                    return false;
+                }
+
+                incydent = kandydacki;
+                parms = kandydackieParms;
+                return true;
+            };
+
+            TurnResult tura = turnRunner.Run(context, pula, pass, rngSel,
+                                             scorer.LastPassDensity, akceptor);
+
+            // Rdzen nie zna Verse.Log, wiec zbiera stany "to nie powinno sie zdarzyc" do listy.
+            // Wypisujemy je jako BLEDY, bo kazdy oznacza usterke okablowania albo padniete
+            // zamrozenie bramy - nie sa to informacje diagnostyczne.
+            for (int i = 0; i < tura.Warnings.Count; i++)
+            {
+                PNLog.Error(tura.Warnings[i]);
+            }
+
+            NarratorDecision decyzja = tura.Decision;
+            List<string> odmowy = tura.Refusals;
+            int rundy = tura.Rounds;
+
+            // KANAREK NA RELACJI, KTORA JEST JEDYNYM SLADEM SITA W DANYCH.
+            //
+            // Dokumentacja IncidentParmsBuilder obiecuje, ze w linii [PN-DATA] zachodzi
+            //     wygenerowanych - kandydatow == liczba odfiltrowanych
+            // i to jest powod, dla ktorego sito NIE dostalo wlasnej kolumny ani podbicia wersji
+            // formatu. Obietnica bez straznika juz raz sie zestarzala po cichu: filtr mutowal
+            // liste, z ktorej logger czyta pierwszy skladnik, wiec roznica wychodzila zawsze zero.
+            //
+            // Straznik porownuje to, co NAPRAWDE trafi do pliku (CountScored ze statystyk tury),
+            // a nie lokalna dlugosc listy - lokalne porownanie bylo by tautologia i przespaloby
+            // dokladnie ten blad, ktory tu wystapil.
+            TurnStats statystykiTury = decyzja.TurnStats;
+            if (statystykiTury != null)
+            {
+                int zalogowanaRoznica = (kandydaci.Candidates == null ? 0 : kandydaci.Candidates.Count)
+                                        - statystykiTury.CountScored;
+                if (zalogowanaRoznica != odfiltrowanych)
+                {
+                    PNLog.Error("Niezmiennik sita zlamany: wygenerowanych - kandydatow = "
+                                + zalogowanaRoznica.ToString(CultureInfo.InvariantCulture)
+                                + ", a sito usunelo "
+                                + odfiltrowanych.ToString(CultureInfo.InvariantCulture)
+                                + ". Mozliwe przyczyny sa DWIE i nalezy je rozroznic: albo miedzy "
+                                + "generowaniem a scoringiem doszedl kolejny mechanizm usuwajacy "
+                                + "kandydatow (wtedy roznica jest za duza i sito przestalo byc "
+                                + "jedynym wyjasnieniem), albo generator wypuscil pustego kandydata "
+                                + "- UtilityScorer.ScoreAll takie pomija. W obu przypadkach kolumna "
+                                + "'kandydatow' przestala opisywac to, co glosi, wiec pochodne "
+                                + "metryki (udzial weta, progu i pasma) maja zly mianownik.");
+                }
+            }
 
             // Log PRZED zapisem do historii: kontekst wypisany w logu ma opisywac stan, NA KTORYM
             // decyzja zapadla, a nie stan juz o nia powiekszony.
@@ -241,217 +383,6 @@ namespace ProceduralNarrator.Integration.Storyteller
             yield return new FiringIncident(incydent, this, parms);
         }
 
-        /// <summary>
-        /// Petla rund wyboru. Zwraca decyzje, a przez parametry wyjsciowe - gotowy incydent
-        /// (albo null przy PASS), jego parametry, liste odmow silnika i liczbe zuzytych rund.
-        ///
-        /// Wydzielona z MakeIntervalIncidents, bo iterator nie moze miec parametrow out, a caly
-        /// sens tej metody to zwrocenie kilku wielkosci naraz.
-        ///
-        /// DOWOD ZAKONCZENIA: kazda runda albo konczy petle (trafienie lub PASS), albo USUWA
-        /// dokladnie jednego kandydata z puli. Pula jest skonczona, a Select na pustej puli zwraca
-        /// PASS, wiec petla zatrzymalaby sie i bez licznika. maxSelectionRounds jest budzetem
-        /// KOSZTU (CanFireNow bywa drogie), nie zabezpieczeniem poprawnosci.
-        /// </summary>
-        private NarratorDecision RunSelectionLoop(IIncidentTarget target, DecisionContext context,
-                                                  List<ScoredCandidate> pula, ScoredCandidate pass,
-                                                  IRandomSource rng,
-                                                  out IncidentDef wybrany, out IncidentParms parms,
-                                                  out List<string> odmowy, out int rundy)
-        {
-            wybrany = null;
-            parms = null;
-            odmowy = new List<string>();
-            rundy = 0;
-
-            // Straznik serii liczony RAZ na ture: polityka wyboru celowo nie widzi kontekstu
-            // decyzji, bo ma byc funkcja czysta od puli.
-            bool straznikSerii = SelectionPolicy.IsPassSuppressedByStreak(context, Props.pass);
-
-            int maxRund = Props.maxSelectionRounds > 0
-                ? Props.maxSelectionRounds
-                : StorytellerCompProperties_Generative.DefaultMaxSelectionRounds;
-
-            NarratorDecision decyzja = null;
-
-            // STAN TURY, ustalany w rundzie pierwszej i niezmienny do konca tury.
-            //
-            // brama            - rozstrzygniecie "czy w ogole dzialac". Petla rund jest mechanizmem
-            //                    NAPRAWCZYM po odmowie silnika, a nie ciagiem kolejnych decyzji
-            //                    narracyjnych, wiec nie wolno jej losowac bramy raz za razem.
-            // statystykiTury   - liczniki i ranking z PELNEJ puli. Odrzuc() kurczy pule robocza,
-            //                    wiec bez zamrozenia mianownik metryk malalby z kazda odmowa,
-            //                    a to obciazenie skorelowane z kontekstem.
-            // losowaniaTury    - faktyczne zuzycie rng, sumowane po rundach. NIE liczymy go wzorem:
-            //                    zrodlem prawdy jest to, co zaraportowal Select.
-            GateOutcome brama = null;
-            TurnStats statystykiTury = null;
-            int losowaniaTury = 0;
-
-            while (rundy < maxRund)
-            {
-                rundy++;
-
-                // Pasmo near-best przelicza sie w KAZDEJ rundzie od nowa. To jest cala roznica
-                // miedzy "powtorz wybor" a "zejdz po rankingu": po usunieciu lidera BestUtility
-                // spada do wyniku drugiego, wiec BandThreshold opada razem z nim i wpuszcza
-                // kandydatow, ktorzy wczesniej byli poza pasmem. Zamrozone pasmo losowaloby
-                // z przedzialu zaczepionego o opcje, ktorej gra wlasnie odmowila.
-                // Prog BEZWZGLEDNY (qualityCutoff) nie przelicza sie nigdy i to on, a nie pasmo,
-                // jest gwarancja jakosci w kolejnych rundach.
-                decyzja = policy.Select(pula, pass, rng, straznikSerii, brama, statystykiTury);
-                decyzja.AttachTurnContext(scorer.LastPassDensity, context.History.ConsecutivePassCount);
-                losowaniaTury += decyzja.RandomDraws;
-
-                if (brama == null)
-                {
-                    // Runda pierwsza jest jedyna, ktora rozstrzyga brame i widzi pelna pule.
-                    brama = decyzja.Gate;
-                    statystykiTury = decyzja.TurnStats;
-                }
-
-                if (decyzja.IsPass)
-                {
-                    // Pula opustoszala przez ODMOWY SILNIKA, a nie dlatego, ze nigdy nic nie
-                    // zawierala. To porazka silnika, nie decyzja narracyjna, i musi byc od niej
-                    // odrozniona - inaczej metryka swiadomego milczenia liczy tez tury,
-                    // w ktorych narrator chcial cos zrobic i nie mogl.
-                    if (odmowy.Count > 0)
-                    {
-                        // Kazdy PASS zapadly PO odmowie silnika jest odrozniany od czystego.
-                        // NoCandidates -> pula opustoszala WYLACZNIE przez odmowy.
-                        // Competitive  -> PASS wygral, ale z pula okrojona przez silnik; to NIE
-                        //                 jest swiadome milczenie, bo narrator chcial dzialac.
-                        // Pozostale powody (AllVetoed, BelowCutoff) opisuja stan sprzed odmow
-                        // i zostaja bez zmian - tam pula nie skurczyla sie przez silnik.
-                        if (decyzja.PassReason == PassReason.NoCandidates)
-                        {
-                            decyzja.PassReason = PassReason.AllRefusedByGame;
-                        }
-                        else if (decyzja.PassReason == PassReason.Competitive)
-                        {
-                            // NIEOSIAGALNE od czasu przeniesienia bramy na poziom TURY, i to jest
-                            // wlasnie zysk z tamtej zmiany: brama zapada w rundzie pierwszej, PRZED
-                            // jakakolwiek odmowa silnika. Jesli powiedziala "dzialaj", to kazda
-                            // pozniejsza cisza bierze sie z opustoszalej puli, czyli ma powod
-                            // NoCandidates (mapowany wyzej na AllRefusedByGame), a nie Competitive.
-                            // Galaz zostaje jako WYZWALACZ ALARMOWY: jej wykonanie oznacza, ze
-                            // zamrozenie bramy przestalo dzialac i metryka swiadomego milczenia
-                            // znowu jest zawyzana tam, gdzie gra duzo odmawia.
-                            decyzja.PassReason = PassReason.CompetitiveAfterRefusal;
-                            PNLog.Error("PassReason.CompetitiveAfterRefusal wystapil mimo bramy "
-                                        + "rozstrzyganej raz na ture - zamrozenie bramy nie dziala. "
-                                        + "Metryka swiadomego milczenia jest od tej tury obciazona.");
-                        }
-                    }
-                    break;
-                }
-
-                ScoredCandidate zwyciezca = decyzja.Winner;
-                ComposedEvent zdarzenie = zwyciezca == null ? null : zwyciezca.Event;
-
-                if (zdarzenie == null)
-                {
-                    PNLog.Error("Zwyciezca rundy nie ma zlozonego zdarzenia - blad okablowania "
-                                + "warstwy decyzyjnej. Kandydat wypada z puli.");
-                    if (zwyciezca != null)
-                    {
-                        Odrzuc(pula, zwyciezca, odmowy, "?: kandydat bez zlozonego zdarzenia");
-                    }
-                    continue;
-                }
-
-                IncidentDef incydent = DefDatabase<IncidentDef>.GetNamedSilentFail(zdarzenie.ActionPayload);
-                if (incydent == null)
-                {
-                    PNLog.Error("Klocek akcji wskazuje na nieistniejacy IncidentDef: " + zdarzenie.ActionPayload);
-                    Odrzuc(pula, zwyciezca, odmowy, zdarzenie.ActionPayload + ": brak IncidentDef");
-                    continue;
-                }
-
-                if (!incydent.TargetAllowed(target))
-                {
-                    Odrzuc(pula, zwyciezca, odmowy, incydent.defName + ": cel niedozwolony");
-                    continue;
-                }
-
-                // IncidentParms budowane LENIWIE, wylacznie dla zwyciezcy DANEJ RUNDY.
-                // StorytellerUtility.DefaultParmsNow (pod spodem GenerateParms) liczy punkty
-                // zagrozenia z bogactwa, kolonistow i krzywych adaptacji - zbudowanie parms dla
-                // calego rankingu oznaczaloby dzis 84 takie wywolania na ture zamiast jednego.
-                // Scoring nie dotyka IncidentParms w ogole: intensywnosc jest cecha kompozycji,
-                // a punkty sa jej TLUMACZENIEM na mechanike, potrzebnym dopiero przy odpaleniu.
-                IncidentParms kandydackieParms = GenerateParms(incydent.category, target);
-                kandydackieParms.points *= IntensityTable.PointsFactor(zdarzenie.Intensity);
-
-                if (!incydent.Worker.CanFireNow(kandydackieParms))
-                {
-                    Odrzuc(pula, zwyciezca, odmowy, incydent.defName + ": CanFireNow=false");
-                    continue;
-                }
-
-                wybrany = incydent;
-                parms = kandydackieParms;
-                break;
-            }
-
-            if (decyzja == null)
-            {
-                // Nieosiagalne po Sanitize (maxSelectionRounds >= 1), ale pusta decyzja wywrocilaby
-                // log i linie danych, wiec budujemy zastepcza zamiast zwracac null.
-                decyzja = AwaryjnaDecyzjaPass(pass, "budzet rund <= 0 - polityka nie zostala uruchomiona ani razu");
-            }
-            else if (wybrany == null && !decyzja.IsPass)
-            {
-                // Budzet rund wyczerpany, choc pula WCIAZ miala kandydatow. Trzeci rodzaj ciszy,
-                // rozny i od decyzji o milczeniu, i od wyczerpania puli odmowami - diagnozuje
-                // za ciasny budzet rund, a nie za luzne warunki twarde.
-                decyzja.Winner = decyzja.PassCandidate ?? pass;
-                decyzja.PassReason = PassReason.RoundBudgetExhausted;
-                decyzja.PolicyTrace = (decyzja.PolicyTrace ?? string.Empty)
-                                      + " | wyczerpano budzet rund wyboru ("
-                                      + maxRund.ToString(CultureInfo.InvariantCulture) + ")";
-            }
-
-            // Laczne zuzycie losowosci w CALEJ turze, zsumowane z tego, co zaraportowaly kolejne
-            // wywolania Select - a nie policzone wzorem. Po przeniesieniu bramy na poziom tury
-            // rozklad jest taki: runda pierwsza 2 pobrania (brama + wybor), kazda kolejna 1
-            // (sam wybor), czyli lacznie 1 + liczba rund. Wzor trzymamy w komentarzu, bo zrodlem
-            // prawdy ma byc pomiar: gdyby ktos zmienil liczbe etapow, suma nadal bedzie zgodna,
-            // a zaszyty wzor po cichu falszowalby kolumne badawcza - dokladnie tak, jak robilo to
-            // poprzednie `= rundy`, ktore zanizalo zuzycie dwukrotnie.
-            decyzja.RandomDraws = losowaniaTury;
-            return decyzja;
-        }
-
-        /// <summary>
-        /// Odrzucenie kandydata przez silnik gry. USUWA go z puli, a nie tylko oznacza flaga:
-        /// Select jest funkcja czysta od puli, wiec przy samym oznaczeniu zwracalby w kazdej
-        /// rundzie tego samego zwyciezce az do wyczerpania budzetu - a bez budzetu w nieskonczonosc.
-        /// </summary>
-        private static void Odrzuc(List<ScoredCandidate> pula, ScoredCandidate kandydat,
-                                   List<string> odmowy, string powod)
-        {
-            kandydat.Rejected = RejectionStage.EngineRefused;
-            pula.Remove(kandydat);
-            odmowy.Add(powod);
-        }
-
-        private static NarratorDecision AwaryjnaDecyzjaPass(ScoredCandidate pass, string slad)
-        {
-            var decyzja = new NarratorDecision();
-            decyzja.Winner = pass;
-            decyzja.PassCandidate = pass;
-            decyzja.Ranking = new List<ScoredCandidate>();
-            if (pass != null)
-            {
-                decyzja.Ranking.Add(pass);
-                decyzja.PassUtility = pass.Utility;
-            }
-            decyzja.PassReason = PassReason.RoundBudgetExhausted;
-            decyzja.PolicyTrace = slad;
-            return decyzja;
-        }
 
         /// <summary>
         /// Slad decyzji: czesc czytelna ([PN]) plus jeden wiersz danych ([PN-DATA]).
@@ -548,7 +479,17 @@ namespace ProceduralNarrator.Integration.Storyteller
                 : Current.Game.GetComponent<NarratorMemoryComponent>();
 
             string chcianyId = pamiec == null ? string.Empty : pamiec.ProfileId;
-            if (tensionModel != null && string.Equals(activeProfileId, chcianyId, StringComparison.Ordinal))
+
+            // SZYBKIE WYJSCIE SPRAWDZA WSZYSTKIE POLA, ZA KTORE TA METODA ODPOWIADA.
+            //
+            // Wczesniej patrzylo wylacznie na tensionModel i identyfikator profilu - a to jest
+            // dokladnie ten wzorzec, ktory zamienia awarie jednorazowa w TRWALA. Wystarczylo,
+            // zeby konstruktor UtilityScorer rzucil po udanym zbudowaniu krzywej: pole
+            // activeProfileId bylo juz ustawione, tensionModel juz niepusty, wiec przy kazdej
+            // nastepnej turze metoda wracala tutaj natychmiast i scorer zostawal null
+            // na zawsze. Straznik na pelnym zestawie pol usuwa cala te klase bledow.
+            if (scorer != null && tensionModel != null
+                && string.Equals(activeProfileId, chcianyId, StringComparison.Ordinal))
             {
                 return;
             }
@@ -557,16 +498,31 @@ namespace ProceduralNarrator.Integration.Storyteller
                 ? NarratorProfile.Fallback()
                 : pamiec.ActiveProfile();
 
-            activeProfileId = chcianyId;
-            tensionModel = new TensionModel(profil.Tension, Props.contrast);
-
+            // PUBLIKACJA ATOMOWA: budujemy do zmiennych lokalnych i przypisujemy do pol dopiero
+            // wtedy, gdy OBA obiekty powstaly. Gdyby drugi konstruktor rzucil, pola zostaja
+            // nietkniete - czyli albo na poprzednim, spojnym profilu, albo na null, ktore
+            // wychwyci straznik w TryEnsureRuntime. Zaden z tych stanow nie jest mieszanka
+            // dwoch osobowosci.
+            //
             // Wagi czynnikow zdarzeniowych pochodza z PROFILU, a nie z bloku <weights>
             // StorytellerDefa. Ten ostatni zostaje jako wartosc awaryjna i jako czesc kanarka
             // konfiguracji w logu startowym.
-            scorer = new UtilityScorer(BuildEventFactors(), profil.Weights,
-                                       UtilityScorer.BuildPassFactors(Props.pass), Props.pass,
-                                       Props.vetoContextFitBelow);
+            var nowyModel = new TensionModel(profil.Tension, Props.contrast);
+            var nowyScorer = new UtilityScorer(BuildEventFactors(), profil.Weights,
+                                               UtilityScorer.BuildPassFactors(Props.pass), Props.pass,
+                                               Props.vetoContextFitBelow);
 
+            tensionModel = nowyModel;
+            scorer = nowyScorer;
+            activeProfileId = chcianyId;
+
+            // Walidacja i opis sa TUTAJ, bezposrednio po konstrukcji, i to nie jest kwestia
+            // stylu. Kazde inne miejsce zaklada kolejnosc wywolan, ktora da sie po cichu
+            // odwrocic przy nastepnej refaktoryzacji - dokladnie tak, jak stalo sie w kroku 4.
+            //
+            // Druga, niezalezna siec bezpieczenstwa obok PNStartup: gdyby ten comp zostal uzyty
+            // w innym StorytellerDefie niz audytowany na starcie, cicha literowka w nazwie
+            // czynnika (waga 0, martwy czynnik, zero komunikatow) nadal zostanie zgloszona.
             string problem;
             if (!scorer.Validate(out problem))
             {
@@ -574,6 +530,7 @@ namespace ProceduralNarrator.Integration.Storyteller
             }
 
             PNLog.Decision("Profil narratora aktywny: " + profil);
+            PNLog.Decision("Scoring: " + scorer.DescribeConfiguration());
         }
 
         /// <summary>
@@ -615,27 +572,113 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// decyzji - a nie w konstruktorze, bo w chwili tworzenia komponentu DefDatabase moze
         /// jeszcze nie byc gotowa.
         /// </summary>
+        /// <summary>
+        /// JEDYNE wejscie do inicjalizacji ze sciezki decyzyjnej. Zwraca false, gdy narrator
+        /// nie jest gotowy podjac decyzji - wolajacy ma wtedy po prostu pominac ture.
+        ///
+        /// Trzy rzeczy, ktore ta metoda gwarantuje, a ktorych sam straznik na polach NIE dawal:
+        ///   1. WYJATEK Z KONSTRUKTOROW NIE WYCHODZI NA ZEWNATRZ. Straznik sprawdzajacy pola
+        ///      po wywolaniu obu metod Ensure lapal wylacznie pole zostawione na null; gdyby
+        ///      BlockCatalogLoader albo ktorykolwiek konstruktor rzucil, wykonanie nigdy by
+        ///      do niego nie doszlo i wyjatek zabilby ture tak samo jak przedtem.
+        ///   2. AWARIA JEST ZGLASZANA RAZ. Verse.Log ma twardy limit 1000 wiadomosci na sesje
+        ///      (patrz komentarz w PNLog), a narrator dziala co 1000 tickow - blad powtarzany
+        ///      co ture wyczerpalby ten limit w kilkadziesiat minut gry i wygasil CALY log
+        ///      czytelny, takze komunikaty innych modow.
+        ///   3. PO AWARII NARRATOR JEST WYLACZONY, A NIE PROBUJE W KOLKO. Nasze awarie
+        ///      inicjalizacji maja ksztalt konfiguracyjny (zly XML, nierozwiazany Class=),
+        ///      czyli sa TRWALE - ponawianie nie ma jak pomoc, a kosztuje wyjatek na ture.
+        ///      Naprawa wymaga poprawienia plikow i ponownego uruchomienia gry, bo RimWorld
+        ///      czyta Defy i DLL wylacznie przy starcie procesu.
+        /// </summary>
+        private bool TryEnsureRuntime()
+        {
+            if (runtimeBroken)
+            {
+                return false;
+            }
+
+            try
+            {
+                // Dwie fazy, rozdzielone wedlug JEDNEGO kryterium: czy rzecz zalezy od profilu.
+                //   EnsureRuntime        - raz na sesje: katalog klockow, kompozytor, generator,
+                //                          polityka wyboru. Niezalezne od osobowosci.
+                //   EnsureProfileRuntime - co ture, ale przebudowuje TYLKO przy zmianie profilu:
+                //                          scorer (wagi z profilu) i krzywa napiecia.
+                // Miedzy tymi metodami nie ma zaleznosci - EnsureProfileRuntime czyta wylacznie
+                // Props i komponent pamieci - wiec kolejnosc wywolan jest obojetna.
+                EnsureRuntime();
+                EnsureProfileRuntime();
+            }
+            catch (Exception e)
+            {
+                runtimeBroken = true;
+                PNLog.Error("INICJALIZACJA NARRATORA RZUCILA WYJATEK. Narrator jest wylaczony "
+                            + "do konca tej sesji i nie wyprodukuje zadnego wydarzenia; waniliowe "
+                            + "compy dzialaja dalej. Napraw konfiguracje i uruchom gre ponownie "
+                            + "(RimWorld czyta Defy i DLL tylko przy starcie procesu).\n" + e);
+                return false;
+            }
+
+            if (composer == null || generator == null || policy == null
+                || turnRunner == null || scorer == null || tensionModel == null)
+            {
+                // Inicjalizacja nie rzucila, ale zostawila dziure. To znaczy, ze ktoras metoda
+                // Ensure ma sciezke wyjscia pomijajaca przypisanie pola - blad w kodzie, nie
+                // w konfiguracji. Zglaszamy z lista brakujacych skladnikow i wylaczamy sie,
+                // zamiast czekac na NullReferenceException kilka linii dalej.
+                runtimeBroken = true;
+                PNLog.Error("Narrator nie jest kompletnie zainicjalizowany - wylaczony do konca "
+                            + "sesji. Brakuje: "
+                            + (composer == null ? "composer " : string.Empty)
+                            + (generator == null ? "generator " : string.Empty)
+                            + (policy == null ? "policy " : string.Empty)
+                            + (turnRunner == null ? "turnRunner " : string.Empty)
+                            + (scorer == null ? "scorer " : string.Empty)
+                            + (tensionModel == null ? "tensionModel " : string.Empty)
+                            + "- patrz bledy wyzej w logu.");
+                return false;
+            }
+
+            return true;
+        }
+
         private void EnsureRuntime()
         {
             if (runtimeReady)
             {
                 return;
             }
-            // Ustawiamy flage PRZED budowa, zeby ewentualny problem konfiguracji zostal zgloszony
-            // raz, a nie przy kazdym interwale narratora przez cala rozgrywke.
-            runtimeReady = true;
 
             List<Block> blocks;
             CompatibilityGraph graph;
             BlockCatalogLoader.Load(out blocks, out graph);
 
-            composer = new EventComposer(blocks, graph);
-            generator = new CandidateGenerator(composer);
+            // BUDUJEMY DO ZMIENNYCH LOKALNYCH, POLA PRZYPISUJEMY NA KONCU.
+            // Publikacja czesciowa zostawialaby comp w stanie "polowa pol ustawiona", ktory
+            // jest trudniejszy do zdiagnozowania niz brak inicjalizacji w ogole.
+            var nowyComposer = new EventComposer(blocks, graph);
+            var nowyGenerator = new CandidateGenerator(nowyComposer);
 
             // Scorer NIE powstaje tutaj, tylko w EnsureProfileRuntime: jego wagi naleza
             // do profilu narratora, a profil jest znany dopiero po wczytaniu gry.
             // Tutaj zostaje wylacznie to, co jest wspolne dla wszystkich osobowosci.
-            policy = new SelectionPolicy(Props.ToSelectionParameters());
+            var nowaPolityka = new SelectionPolicy(Props.ToSelectionParameters());
+            var nowyRunner = new TurnRunner(nowaPolityka, Props.pass, Props.maxSelectionRounds);
+
+            composer = nowyComposer;
+            generator = nowyGenerator;
+            policy = nowaPolityka;
+            turnRunner = nowyRunner;
+
+            // FLAGA NA SAMYM KONCU, PO UDANEJ BUDOWIE.
+            // Wczesniej stala na poczatku metody, z uzasadnieniem "zeby problem konfiguracji
+            // zostal zgloszony raz, a nie przy kazdym interwale". Cel byl sluszny, srodek zly:
+            // przy wyjatku w srodku budowy flaga zostawala podniesiona, wiec kolejne tury
+            // omijaly inicjalizacje i comp zostawal TRWALE z polami na null. Za jednorazowosc
+            // zgloszenia odpowiada teraz runtimeBroken, czyli osobny mechanizm dla osobnej
+            // sprawy - a ta flaga znaczy dokladnie to, co glosi jej nazwa.
+            runtimeReady = true;
 
             if (blocks.Count == 0)
             {
@@ -648,15 +691,24 @@ namespace ProceduralNarrator.Integration.Storyteller
                                + graph.ForbiddenEdgeCount + " zabronionych krawedzi.");
             }
 
-            // Druga, niezalezna siec bezpieczenstwa obok PNStartup: gdyby ten comp zostal uzyty
-            // w innym StorytellerDefie niz audytowany na starcie, cicha literowka w nazwie czynnika
-            // (waga 0, martwy czynnik, zero komunikatow) nadal zostanie zgloszona.
-            string problem;
-            if (!scorer.Validate(out problem))
-            {
-                PNLog.Error("Konfiguracja scoringu: " + problem);
-            }
-            PNLog.Decision("Scoring: " + scorer.DescribeConfiguration());
+            // UWAGA HISTORYCZNA - w tym miejscu stala walidacja scorera i rzucala
+            // NullReferenceException przy pierwszej decyzji kazdej rozgrywki.
+            //
+            // Do kroku 3 scorer powstawal kilka linii wyzej, wiec walidacja obok niego byla
+            // poprawna. Krok 4 przeniosl jego budowe do EnsureProfileRuntime (wagi naleza do
+            // PROFILU, znanego dopiero po wczytaniu gry), ale walidacje tu zostawil - na polu,
+            // ktore w tym momencie bylo jeszcze null.
+            //
+            // Objaw byl mylacy: flaga runtimeReady stala WTEDY na poczatku metody, wiec przy
+            // nastepnym interwale EnsureRuntime wracalo od razu, scorer powstawal
+            // w EnsureProfileRuntime i narrator dzialal dalej. Kosztem byla jedna przepadnieta
+            // decyzja i TRWALE brakujace linie diagnostyki startowej - czyli mod, ktory wyglada
+            // na sprawny, tylko po cichu zgubil pierwsza ture i wlasny audyt konfiguracji.
+            //
+            // Naprawa jest w trzech miejscach naraz, bo blad mial trzy niezalezne przyczyny:
+            // walidacja przeniesiona TAM, GDZIE POWSTAJE OBIEKT (EnsureProfileRuntime); flaga
+            // przesunieta na koniec udanej budowy (wyzej); cala inicjalizacja opakowana
+            // w TryEnsureRuntime, zeby wyjatek nie wychodzil na sciezke decyzyjna.
             PNLog.Decision("Polityka wyboru: " + policy.Parameters.Describe()
                            + " maxSelectionRounds=" + Props.maxSelectionRounds.ToString(CultureInfo.InvariantCulture)
                            + " candidateBudget=" + Props.candidateBudget.ToString(CultureInfo.InvariantCulture));

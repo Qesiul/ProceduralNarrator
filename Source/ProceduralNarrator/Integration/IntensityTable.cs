@@ -15,6 +15,19 @@ namespace ProceduralNarrator.Integration
     /// </summary>
     public static class IntensityTable
     {
+        /// <summary>
+        /// Najwiekszy mnoznik, jaki ta tablica moze zwrocic.
+        ///
+        /// Wielkosc NAZWANA, bo od niej zalezy poprawnosc progu punktow w warunkach twardych:
+        /// warunek na poziomie KLOCKA nie zna koncowej intensywnosci kompozycji (ta sumuje
+        /// wklady wszystkich piecu slotow), wiec zeby nigdy nie odrzucil kandydata, ktorego gra
+        /// by przepuscila, musi dzielic prog gry przez wlasnie te wartosc.
+        ///
+        /// Zaszycie tu liczby 1.35 w drugim miejscu rozjechaloby sie przy pierwszym strojeniu
+        /// tablicy - i to po cichu, bo objawem bylby brak zdarzen, a nie blad.
+        /// </summary>
+        public const float MaxPointsFactor = 1.35f;
+
         public static float PointsFactor(IntensityLevel level)
         {
             switch (level)

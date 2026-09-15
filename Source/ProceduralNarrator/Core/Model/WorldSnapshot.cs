@@ -123,6 +123,32 @@ namespace ProceduralNarrator.Core.Model
         /// </summary>
         public DangerLevel Danger;
 
+        /// <summary>
+        /// Punkty zagrozenia, ktore gra przyznalaby zdarzeniu W TEJ CHWILI
+        /// (odwzorowanie StorytellerUtility.DefaultThreatPointsNow).
+        ///
+        /// PO CO TO TU JEST. Bazowy IncidentWorker.CanFireNow zawiera bramke
+        ///     if (parms.points >= 0f &amp;&amp; parms.points &lt; def.minThreatPoints) return false;
+        /// a dwa nasze incydenty maja minThreatPoints = 400: PsychicEmanatorShipPartCrash
+        /// i Infestation. Swieza kolonia ma okolo 35-70 punktow, wiec te dwa klocki byly
+        /// STRUKTURALNIE niemozliwe do odpalenia, a mimo to wygrywaly rundy wyboru.
+        ///
+        /// Zmierzone w grze na czystym przebiegu: 44 z 56 odmow silnika pochodzilo z samego
+        /// emanatora, czyli jedna akcja zjadala polowe calej pracy petli wyboru. Mechanizm
+        /// byl samonapedzajacy: akcja odrzucona nie trafia do historii, wiec jej swiezosc
+        /// zostaje na maksimum, wiec wraca na czolo rankingu, wiec znowu jest odrzucana.
+        ///
+        /// To jest ten sam wzorzec co Cond_MountainRoof: warunek twardy ma odwzorowywac to,
+        /// czego NAPRAWDE wymaga IncidentWorker, inaczej kompozycja produkuje kandydatow
+        /// skazanych na odrzucenie.
+        ///
+        /// Wartosc jest porownywalna co do liczby z ta, ktorej uzyje CanFireNow w tej samej
+        /// turze: Map.IncidentPointsRandomFactorRange to FloatRange.One (czynnik losowy = 1),
+        /// a podloga GlobalPointsMin jest zaseedowana tickiem/2500, wiec w obrebie jednego
+        /// interwalu narratora (1000 tickow) nie zmienia sie.
+        /// </summary>
+        public float ThreatPoints;
+
         public override string ToString()
         {
             return "dzien=" + DaysPassed
@@ -138,7 +164,8 @@ namespace ProceduralNarrator.Core.Model
                    + " porwanych=" + KidnappedColonistCount
                    + " konsola=" + HasPoweredCommsConsole
                    + " powalonych=" + DownedColonistCount
-                   + " zagrozenie=" + Danger;
+                   + " zagrozenie=" + Danger
+                   + " punkty=" + ThreatPoints.ToString("0", CultureInfo.InvariantCulture);
         }
     }
 }

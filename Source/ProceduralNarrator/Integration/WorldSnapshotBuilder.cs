@@ -60,6 +60,11 @@ namespace ProceduralNarrator.Integration
                 WildAnimalCount = CountWildAnimals(map),
                 DownedColonistCount = CountDownedColonists(map),
                 Danger = MapDanger(map),
+                // Ta sama wielkosc, ktora bazowy IncidentWorker.CanFireNow porownuje
+                // z def.minThreatPoints. Liczona RAZ na ture (snapshot jest zamrazany),
+                // a nie raz na kandydata - DefaultThreatPointsNow obchodzi wszystkie pionki
+                // gracza, wiec 84 wywolania na ture bylyby marnotrawstwem.
+                ThreatPoints = StorytellerUtility.DefaultThreatPointsNow(map),
                 KidnappedColonistCount = CountKidnappedColonists(),
                 HasPoweredCommsConsole = CommsConsoleUtility.PlayerHasPoweredCommsConsole(map)
             };

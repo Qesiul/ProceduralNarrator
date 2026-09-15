@@ -144,7 +144,14 @@ namespace ProceduralNarrator.Integration
                 if (dataWriter == null)
                 {
                     string sciezka = DataFilePath;
-                    dataWriter = new StreamWriter(sciezka, true, Encoding.UTF8);
+                    // UTF8Encoding(false), a NIE Encoding.UTF8 - ten drugi dopisuje BOM przy
+                    // TWORZENIU pliku. Znacznik ladowal wtedy przed pierwsza linia [PN-SESSION]
+                    // i naiwne open(..., encoding='utf-8') w Pythonie zwracalo pierwsza linie
+                    // z doklejonym ﻿, wiec startswith('[PN-SESSION]') nie trafialo.
+                    // Awaria dotyczy WYLACZNIE pierwszego uruchomienia po skasowaniu pliku -
+                    // czyli dokladnie tego przypadku, od ktorego zaczyna sie kazda czysta seria
+                    // pomiarowa. Zlapane przy pierwszym uruchomieniu skryptu analizujacego.
+                    dataWriter = new StreamWriter(sciezka, true, new UTF8Encoding(false));
                     dataWriter.AutoFlush = true;
                     dataWriter.WriteLine("[PN-SESSION] start; wersjaLogu="
                                          + DataFormatVersion.ToString(CultureInfo.InvariantCulture)

@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
+using ProceduralNarrator.Core.Conditions;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Integration.Defs;
@@ -124,6 +126,7 @@ namespace ProceduralNarrator.Integration
                 ? "Narrator zarejestrowany w menu jako \"" + narrator.label + "\"."
                 : "UWAGA: StorytellerDef PN_GenerativeNarrator NIE zaladowal sie.");
 
+            AuditActionPayloads();
             AuditDecisionConfig();
             AuditProfiles();
 
@@ -242,6 +245,180 @@ namespace ProceduralNarrator.Integration
                 }
                 PNLog.Decision("  " + def.ToProfile());
             }
+        }
+
+
+        /// <summary>
+        /// Audyt POWIAZAN klockow akcji z incydentami gry (payload -> IncidentDef).
+        ///
+        /// DLACZEGO NA STARCIE, SKORO KOD DECYZYJNY I TAK TO SPRAWDZA. Sprawdza, ale dopiero
+        /// przy uzyciu - a "uzycie" znaczy tutaj "klocek wygral runde softmaksu". Zle podlaczony
+        /// klocek nie jest wiec wykrywany POZNO, tylko PROBABILISTYCZNIE: przy dwunastu akcjach
+        /// i losowym wyborze moze przejsc niezauwazony przez dziesiatki decyzji, a przy kazdej
+        /// wygranej rundzie po cichu zjada jedna runde petli wyboru. To ta sama rodzina strat
+        /// co zmierzone juz marnowanie rund na akcje, ktorych silnik nigdy nie przepuszcza.
+        /// Audyt startowy zamienia awarie losowa w deterministyczna i widoczna, zanim zacznie
+        /// sie rozgrywka.
+        ///
+        /// Trzy kontrole, kazda wykrywa inna klase bledu w danych:
+        ///
+        ///   1. ISTNIENIE - literowka w defName incydentu. Klocek jest wtedy calkowicie martwy.
+        ///
+        ///   2. KATEGORIA - czy incydent nalezy do jednego z TRZECH torow, ktore podmieniamy
+        ///      (ThreatBig, ThreatSmall, Misc). To NIE jest czystosc dla czystosci: nasz
+        ///      StorytellerDef przejmuje 17 waniliowych compow bez zmian, wiec klocek
+        ///      wskazujacy na chorobe albo questa strzelalby w tor, ktory obsluguje ROWNIEZ
+        ///      wanilia - i po cichu psul argument o eksperymencie kontrolowanym, na ktorym
+        ///      stoi caly rozdzial o ewaluacji porownawczej. Bladu tej klasy nie widac
+        ///      w zachowaniu gry, tylko w interpretacji danych.
+        ///
+        ///   3. TAG CELU - czy incydent w ogole dopuszcza mape kolonii. Sprawdzamy pole
+        ///      targetTags bezposrednio, bo IncidentDef.TargetAllowed wymaga zywego
+        ///      IIncidentTarget, ktorego na starcie nie ma. Bez tego tagu CanFireNow odrzuci
+        ///      kandydata przy KAZDEJ probie, czyli klocek jest martwy mimo poprawnego defName.
+        /// </summary>
+        private static void AuditActionPayloads()
+        {
+            List<NarrativeBlockDef> akcje = DefDatabase<NarrativeBlockDef>.AllDefsListForReading
+                .Where(b => b.blockType == BlockType.Action)
+                .ToList();
+
+            if (akcje.Count == 0)
+            {
+                // Brak akcji jest juz zglaszany przy pustym katalogu; tutaj tylko nie udajemy,
+                // ze audyt cokolwiek sprawdzil.
+                return;
+            }
+
+            // Trzy tory, ktore nasz StorytellerDef podmienia u Cassandry. Poza nimi zaczyna sie
+            // teren waniliowy, ktory przejmujemy bez zmian.
+            var naszeKategorie = new List<IncidentCategoryDef>
+            {
+                IncidentCategoryDefOf.ThreatBig,
+                IncidentCategoryDefOf.ThreatSmall,
+                IncidentCategoryDefOf.Misc
+            };
+
+            int sprawnych = 0;
+
+            foreach (NarrativeBlockDef b in akcje)
+            {
+                if (string.IsNullOrEmpty(b.payload))
+                {
+                    PNLog.Error("Klocek akcji " + b.defName + " nie ma pola <payload> - nie wskazuje "
+                                + "na zaden incydent gry i nigdy nie wyprodukuje wydarzenia.");
+                    continue;
+                }
+
+                IncidentDef inc = DefDatabase<IncidentDef>.GetNamedSilentFail(b.payload);
+                if (inc == null)
+                {
+                    PNLog.Error("Klocek akcji " + b.defName + " wskazuje na NIEISTNIEJACY IncidentDef \""
+                                + b.payload + "\". Klocek jest martwy: przejdzie kompozycje i scoring, "
+                                + "a odpadnie dopiero przy probie odpalenia, marnujac runde petli wyboru. "
+                                + "Sprawdz pisownie defName w Defs/Blocks/.");
+                    continue;
+                }
+
+                bool ok = true;
+
+                if (inc.category == null || !naszeKategorie.Contains(inc.category))
+                {
+                    ok = false;
+                    PNLog.Warn("Klocek akcji " + b.defName + " -> " + inc.defName + " ma kategorie "
+                               + (inc.category == null ? "BRAK" : inc.category.defName)
+                               + ", spoza naszych trzech torow (ThreatBig, ThreatSmall, Misc). "
+                               + "Nasz narrator przejmuje 17 waniliowych compow bez zmian, wiec ten "
+                               + "incydent moze byc odpalany ROWNIEZ przez wanilie - co psuje "
+                               + "kontrole eksperymentu w ewaluacji porownawczej z Cassandra.");
+                }
+
+                if (inc.targetTags == null || !inc.targetTags.Contains(IncidentTargetTagDefOf.Map_PlayerHome))
+                {
+                    ok = false;
+                    PNLog.Error("Klocek akcji " + b.defName + " -> " + inc.defName + " NIE dopuszcza "
+                                + "mapy kolonii (brak tagu Map_PlayerHome w targetTags). CanFireNow "
+                                + "odrzuci go przy kazdej probie, wiec klocek jest martwy mimo "
+                                + "poprawnego defName.");
+                }
+
+                // CZWARTA KONTROLA, dopisana po pomiarze w grze: prog punktow zagrozenia.
+                //
+                // Bazowy IncidentWorker.CanFireNow odrzuca kandydata przy
+                // parms.points < def.minThreatPoints. Klocek bez odpowiadajacego warunku
+                // twardego jest wtedy odrzucany W KOLKO: akcja odrzucona nie trafia do historii,
+                // wiec jej swiezosc zostaje na maksimum, wiec wraca na czolo rankingu.
+                // Zmierzone: 44 z 56 odmow silnika w przebiegu 100-dniowym pochodzilo z jednego
+                // takiego klocka. Ta kontrola zamienia te strate w komunikat przy starcie.
+                //
+                // Porownujemy rowniez WARTOSC progu, nie tylko jego obecnosc - warunek ma byc
+                // odwzorowaniem liczby z waniliowego Defa, a nie osobna kalibracja, ktora
+                // z czasem rozjedzie sie z gra przy jej aktualizacji.
+                if (inc.minThreatPoints > 0f)
+                {
+                    Cond_MinThreatPoints prog = b.conditions == null
+                        ? null
+                        : b.conditions.OfType<Cond_MinThreatPoints>().FirstOrDefault();
+
+                    if (prog == null)
+                    {
+                        ok = false;
+                        PNLog.Warn("Klocek akcji " + b.defName + " -> " + inc.defName + " wymaga "
+                                   + inc.minThreatPoints.ToString("0", CultureInfo.InvariantCulture)
+                                   + " punktow zagrozenia (minThreatPoints), ale NIE MA warunku "
+                                   + "Cond_MinThreatPoints. Kompozycja bedzie produkowac kandydatow, "
+                                   + "ktorych silnik odrzuci, a czynnik swiezosci bedzie je premiowal "
+                                   + "w nieskonczonosc - bo akcja odrzucona nie trafia do historii.");
+                    }
+                    else
+                    {
+                        // RELACJA, NIE ROWNOSC - i to jest sedno poprawki.
+                        //
+                        // Gra porownuje z minThreatPoints punkty JUZ PRZEMNOZONE przez
+                        // intensywnosc gotowej kompozycji. Warunek twardy dziala na poziomie
+                        // klocka i tej intensywnosci nie zna, wiec zeby nie odrzucal kandydatow,
+                        // ktorych gra by przepuscila, jego prog musi byc podzielony przez
+                        // MAKSYMALNY mnoznik. Poprzednia wersja tego audytu wymagala ROWNOSCI
+                        // i tym samym utrwalalaby blad, ktory mial wykrywac.
+                        float oczekiwany = inc.minThreatPoints / IntensityTable.MaxPointsFactor;
+
+                        if (prog.min > oczekiwany + 0.5f)
+                        {
+                            ok = false;
+                            PNLog.Warn("Klocek akcji " + b.defName + " -> " + inc.defName
+                                       + ": Cond_MinThreatPoints ma prog "
+                                       + prog.min.ToString("0", CultureInfo.InvariantCulture)
+                                       + ", a najwyzszy BEZPIECZNY to "
+                                       + oczekiwany.ToString("0", CultureInfo.InvariantCulture)
+                                       + " (= " + inc.minThreatPoints.ToString("0", CultureInfo.InvariantCulture)
+                                       + " / " + IntensityTable.MaxPointsFactor.ToString("0.00", CultureInfo.InvariantCulture)
+                                       + "). Zbyt wysoki prog blokuje kandydatow, ktorych gra by "
+                                       + "przepuscila przy wysokiej intensywnosci - a tej straty "
+                                       + "NIE WIDAC W ZADNYM LOGU, bo kandydat nie powstaje.");
+                        }
+                        else if (prog.min < oczekiwany - 5f)
+                        {
+                            PNLog.Warn("Klocek akcji " + b.defName + " -> " + inc.defName
+                                       + ": Cond_MinThreatPoints ma prog "
+                                       + prog.min.ToString("0", CultureInfo.InvariantCulture)
+                                       + ", czyli wyraznie nizszy niz bezpieczne maksimum "
+                                       + oczekiwany.ToString("0", CultureInfo.InvariantCulture)
+                                       + ". Sito jest luzniejsze, niz moglo by byc - wiecej kandydatow "
+                                       + "dojdzie do dokladnego filtra przed scoringiem. Nie jest to "
+                                       + "blad poprawnosci, tylko zmarnowana praca kompozycji.");
+                        }
+                    }
+                }
+
+                if (ok)
+                {
+                    sprawnych++;
+                }
+            }
+
+            PNLog.Decision("Powiazania klockow akcji: " + sprawnych.ToString(CultureInfo.InvariantCulture)
+                           + " z " + akcje.Count.ToString(CultureInfo.InvariantCulture)
+                           + " sprawnych (payload istnieje, kategoria w naszym torze, cel dopuszcza mape kolonii).");
         }
 
     }

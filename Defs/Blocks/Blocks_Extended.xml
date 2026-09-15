@@ -248,6 +248,28 @@
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
         <min>20</min>
       </li>
+      <!-- SITO ZGRUBNE progu punktow zagrozenia (nie nasza kalibracja trudnosci).
+           Waniliowy PsychicEmanatorShipPartCrash wymaga 400 punktow, a bazowy
+           IncidentWorker.CanFireNow odrzuca kandydata przy parms.points < minThreatPoints.
+           Swieza kolonia ma okolo 35-70 punktow, wiec bez tego warunku klocek jest
+           STRUKTURALNIE niemozliwy do odpalenia - a mimo to wygrywa rundy wyboru.
+           Zmierzone na czystym przebiegu 100 dni: 44 z 56 odmow silnika pochodzilo z samego
+           emanatora - jedna akcja zjadala polowe pracy petli wyboru. Mechanizm byl
+           samonapedzajacy: akcja odrzucona nie trafia do historii, wiec jej swiezosc zostaje
+           na maksimum, wiec wraca na czolo rankingu, wiec znowu jest odrzucana.
+
+           PROG PODZIELONY PRZEZ MAKSYMALNY MNOZNIK INTENSYWNOSCI: 400 / 1.35 = 296.
+           Gra porownuje z minThreatPoints punkty JUZ PRZEMNOZONE przez intensywnosc GOTOWEJ
+           kompozycji, a ten warunek dziala na poziomie KLOCKA i tej intensywnosci nie zna -
+           sumuje sie ona z wszystkich piecu slotow. Prog rowny 400 produkowal falszywe
+           negatywy: przy bazie 350 i kompozycji VeryHigh gra widzi 472 i przepuszcza,
+           a warunek blokowal. Taka strata jest NIEWIDOCZNA W ZADNYM LOGU, bo kandydat
+           w ogole nie powstaje.
+           Sprawdzenie DOKLADNE robi IncidentParmsBuilder.OdfiltrujNieosiagalne na gotowych
+           kandydatach, przed scoringiem. Tu jest tylko tanie sito zgrubne. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>296</min>
+      </li>
     </conditions>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>

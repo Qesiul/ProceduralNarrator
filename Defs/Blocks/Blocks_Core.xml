@@ -176,7 +176,11 @@
     <intensity>Normal</intensity>
     <tags><li>militarny</li></tags>
     <payload>RaidEnemy</payload>
-    <textFragment>uderza na kolonie zbrojnie.</textFragment>
+    <!-- BEZ slowa "zbrojnie": jedyny dozwolony aktor to PN_Aktor_Piraci, ktory po audycie
+         etapu 3 mowi "Wroga grupa zbrojna" - zlozone zdanie brzmialo "Wroga grupa zbrojna
+         uderza na kolonie zbrojnie". Zapamietac: przepisanie tekstu JEDNEGO klocka moze
+         zepsuc zdanie skladane z INNYM klockiem, a widac to dopiero w zlozonym opisie. -->
+    <textFragment>uderza na kolonie.</textFragment>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
       <!-- 11, nie 5: odwzorowuje OnOffCycle(ThreatBig) u Cassandry. Comp ma prog 5 (tor Misc,
@@ -262,6 +266,27 @@
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
         <min>11</min>
       </li>
+      <!-- SITO ZGRUBNE progu punktow zagrozenia (nie nasza kalibracja trudnosci).
+           Waniliowy Infestation wymaga 400 punktow, a bazowy IncidentWorker.CanFireNow
+           odrzuca kandydata ponizej tego progu. Swieza kolonia ma okolo 35-70 punktow,
+           wiec bez tego warunku klocek jest praktycznie niemozliwy do odpalenia -
+           a mimo to wygrywa rundy wyboru.
+           Tutaj luka byla ZAMASKOWANA: Cond_MountainRoof odrzucal rojenie wczesniej, wiec
+           nie marnowalo rund w swiezej kolonii. W kolonii gorskiej, ale ubogiej, ujawnilaby sie
+           dokladnie tak jak przy emanatorze.
+
+           PROG PODZIELONY PRZEZ MAKSYMALNY MNOZNIK INTENSYWNOSCI: 400 / 1.35 = 296.
+           Gra porownuje z minThreatPoints punkty JUZ PRZEMNOZONE przez intensywnosc GOTOWEJ
+           kompozycji, a ten warunek dziala na poziomie KLOCKA i tej intensywnosci nie zna -
+           sumuje sie ona z wszystkich piecu slotow. Prog rowny 400 produkowal falszywe
+           negatywy: przy bazie 350 i kompozycji VeryHigh gra widzi 472 i przepuszcza,
+           a warunek blokowal. Taka strata jest NIEWIDOCZNA W ZADNYM LOGU, bo kandydat
+           w ogole nie powstaje.
+           Sprawdzenie DOKLADNE robi IncidentParmsBuilder.OdfiltrujNieosiagalne na gotowych
+           kandydatach, przed scoringiem. Tu jest tylko tanie sito zgrubne. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>296</min>
+      </li>
     </conditions>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
@@ -326,6 +351,11 @@
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Dzikie</li>
       <li>PN_Aktor_Nieznane</li>
+      <!-- Natura nie zostawia po sobie kapsul z zaopatrzeniem. Bez tej krawedzi powstawalo
+           zdanie "Natura zostawia po sobie rozbita kapsule z zaopatrzeniem" - 8 z 84
+           kandydatow. Meteoryt zostaje przy Naturze CELOWO: kruszec faktycznie spada z nieba
+           sam z siebie, wiec tam atrybucja jest prawdziwa. -->
+      <li>PN_Aktor_Natura</li>
     </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 

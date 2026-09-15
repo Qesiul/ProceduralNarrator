@@ -60,6 +60,54 @@ namespace ProceduralNarrator.Core.Conditions
     }
 
     /// <summary>
+    /// Wymaga, zeby gra przyznawala zdarzeniom co najmniej tyle punktow zagrozenia.
+    ///
+    /// SITO ZGRUBNE, NIE ODWZOROWANIE DOKLADNE - i ta roznica jest istotna.
+    ///
+    /// Bazowy IncidentWorker.CanFireNow odrzuca kandydata przy parms.points &lt; def.minThreatPoints,
+    /// ale porownuje punkty JUZ PRZEMNOZONE przez intensywnosc gotowej kompozycji
+    /// (IncidentParmsBuilder mnozy je przez IntensityTable.PointsFactor). Ten warunek dziala
+    /// natomiast na poziomie KLOCKA, czyli przy doborze slotow - a koncowa intensywnosc sumuje
+    /// wklady wszystkich piecu slotow i jest znana dopiero po zlozeniu kandydata. Warunek
+    /// z definicji jej nie zna.
+    ///
+    /// DLATEGO PROG JEST PODZIELONY PRZEZ MAKSYMALNY MNOZNIK:
+    ///     prog_klocka = minThreatPoints / IntensityTable.MaxPointsFactor
+    ///
+    /// Dzieki temu sito odrzuca WYLACZNIE te przypadki, w ktorych zaden wariant nie mialby
+    /// szans - czyli nie produkuje falszywych negatywow. Wersja z progiem rownym wartosci
+    /// z Defa je produkowala: przy bazie 350 i kompozycji VeryHigh gra widzi 472 i przepuszcza,
+    /// a warunek blokowal, bo 350 &lt; 400. Taka strata jest NIEWIDOCZNA W ZADNYM LOGU, bo
+    /// kandydat w ogole nie powstaje.
+    ///
+    /// Sprawdzenie DOKLADNE - z koncowa intensywnoscia - robi warstwa integracji na gotowych
+    /// kandydatach, przed scoringiem (IncidentParmsBuilder.OdfiltrujNieosiagalne). Podzial jest
+    /// celowy: tanie sito odcina hurtem przy kompozycji, drogie sprawdzenie dotyka tylko tego,
+    /// co juz powstalo.
+    ///
+    /// Relacji miedzy progiem w XML a wartoscia z Defa pilnuje audyt startowy.
+    ///
+    /// UWAGA: to NIE jest to samo co Pref_WealthRelative. Ten warunek mowi "gra pozwala na
+    /// zdarzenie tej klasy", a preferencja mowi "takie zdarzenie tu pasuje". Punkty zagrozenia
+    /// rosna z bogactwem same z siebie, wiec uzycie tego warunku do strojenia trudnosci
+    /// liczyloby bogactwo dwa razy - patrz regula w sekcji o bogactwie w CLAUDE.md.
+    /// </summary>
+    public class Cond_MinThreatPoints : NarrativeCondition
+    {
+        public float min = 0f;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.ThreatPoints >= min;
+        }
+
+        public override string Describe()
+        {
+            return "punkty zagrozenia >= " + min.ToString("0", CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <summary>
     /// Ogranicza klocek do przedzialu bogactwa WZGLEDNEGO (krotnosc normy na dany dzien).
     /// min = 2.0 znaczy "kolonia dwa razy bogatsza, niz gra sie spodziewa".
     /// </summary>

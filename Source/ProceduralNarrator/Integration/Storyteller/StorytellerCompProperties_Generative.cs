@@ -140,6 +140,26 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// </summary>
         public ContrastTuning contrast = ContrastTuning.Default();
 
+        /// <summary>
+        /// Czy zlozony opis narracyjny ma zastapic waniliowy list w grze.
+        ///
+        /// DOMYSLNIE WYLACZONE I TO JEST DECYZJA, NIE ZANIECHANIE. Powod jest zmierzony:
+        /// customLetterText honoruje tylko bazowy IncidentWorker.SendIncidentLetter, a przez
+        /// niego przechodzi 7 z naszych 12 incydentow. Pozostale piec (MeteoriteImpact,
+        /// RefugeePodCrash, ManhunterPack, RaidEnemy, RansomDemand) buduje list samodzielnie
+        /// i to pole ignoruje. Wlaczenie przelacznika daje wiec rozgrywke, w ktorej CZESC
+        /// zdarzen ma opis zlozony z klockow, a czesc waniliowy - niespojnosc widoczna dla
+        /// gracza i trudna do obronienia w rozdziale o ewaluacji.
+        ///
+        /// Mechanizm jest gotowy i przetestowany; brakuje decyzji, czy niespojnosc 7/12 jest
+        /// akceptowalna, czy najpierw domknac pozostala piatke wlasnymi IncidentWorkerami.
+        ///
+        /// Katalog jest po stronie TEKSTU juz bezpieczny: regula "fakt w tekscie = warunek
+        /// twardy" zostala przeprowadzona, a fragmenty, ktorych nie dalo sie zabezpieczyc
+        /// (polozenie, koncowa skala), zostaly przepisane tak, by nic nie stwierdzaly.
+        /// </summary>
+        public bool useComposedLetter = false;
+
         public StorytellerCompProperties_Generative()
         {
             compClass = typeof(StorytellerComp_Generative);
@@ -278,9 +298,21 @@ namespace ProceduralNarrator.Integration.Storyteller
               .Append(" maxSelectionRounds=").Append(Int(maxSelectionRounds))
               .Append(" | ").Append(ToSelectionParameters().Describe())
               .Append(" vetoContextFitBelow=").Append(Num(vetoContextFitBelow))
-              .Append(" | wagi: ").Append(weights == null ? "BRAK" : weights.Describe())
-              .Append(" (suma=").Append(Num(weights == null ? 0f : weights.Total())).Append(')')
-              .Append(" | ").Append(pass == null ? "BRAK BLOKU <pass>" : pass.ToString());
+              // ScoringWeights.Describe() dokleja sume SAM. Wczesniej bylo tu drugie
+              // "(suma=...)", wiec linia kanarka drukowala te liczbe dwa razy - a jest to
+              // linia, ktora idzie do pracy jako dowod zadzialania konfiguracji.
+              .Append(" | wagi awaryjne: ").Append(weights == null ? "BRAK" : weights.Describe())
+              .Append(" | ").Append(pass == null ? "BRAK BLOKU <pass>" : pass.ToString())
+              // Blok <contrast> byl jedynym parametrem decyzyjnym pominietym w tej linii.
+              // NIE jest to kanarek w sensie configStamp - literowke w nazwie wezla
+              // zagniezdzonego zglasza sam DirectXmlToObject ("doesn't correspond to any field
+              // in type"). Ma jednak znaczenie inne: od kroku 4 te dwie liczby sa PARAMETREM
+              // KALIBRACJI osobowosci (zrownanie wzmocnien przenioslo preferencje ulgi
+              // z ukrytej stalej do intencji), wiec musza byc widoczne w logu razem z reszta
+              // kalibracji, a nie tylko w kodzie.
+              .Append(" | kontrast: reliefGain=").Append(Num(contrast == null ? 0f : contrast.reliefGain))
+              .Append(" strikeGain=").Append(Num(contrast == null ? 0f : contrast.strikeGain))
+              .Append(" | zlozonyList=").Append(useComposedLetter ? "tak" : "nie");
             return sb.ToString();
         }
 
