@@ -64,6 +64,20 @@ namespace ProceduralNarrator.Core.Model
         public int WildAnimalCount;
 
         /// <summary>
+        /// Dzikie zwierzeta, ktore NAPRAWDE moga oszalec pojedynczo - czyli spelniajace pelny
+        /// predykat waniliowego IncidentWorker_AnimalInsanitySingle, a nie samo "jest dzikie".
+        ///
+        /// Osobne pole, a nie prog na WildAnimalCount, bo to INNY ZBIOR, nie inna liczebnosc.
+        /// Worker odrzuca zwierzeta mutanckie, zbyt silne (combatPower powyzej 150, a przed
+        /// siodmym dniem od zalozenia powyzej 40), stojace w mgle wojny, powalone oraz te,
+        /// ktore juz sa w agresywnym stanie psychicznym. WildAnimalCount nie zna zadnego
+        /// z tych warunkow, wiec jest NADZBIOREM - a warunek twardy zbudowany na nadzbiorze
+        /// przepuszcza kandydatow, ktorych CanFireNow i tak odrzuci. To dokladnie ten wzorzec
+        /// straty, ktory projekt zamykal juz przy Cond_MountainRoof i Cond_MinThreatPoints.
+        /// </summary>
+        public int MaddenableAnimalCount;
+
+        /// <summary>
         /// Dni gry od OSTATNIEGO WYDARZENIA narratora (decyzje PASS sie nie licza - cisza nie
         /// przerywa spokoju). Przy pustej historii: wiek kolonii, bo spokoj trwa od zalozenia.
         ///
@@ -160,6 +174,7 @@ namespace ProceduralNarrator.Core.Model
                    + " pora=" + Season
                    + " noc=" + IsNight
                    + " zwierzat=" + WildAnimalCount
+                   + " zdolnychDoAmoku=" + MaddenableAnimalCount
                    + " odOstatniego=" + DaysSinceLastEvent.ToString("0.00", CultureInfo.InvariantCulture)
                    + " porwanych=" + KidnappedColonistCount
                    + " konsola=" + HasPoweredCommsConsole

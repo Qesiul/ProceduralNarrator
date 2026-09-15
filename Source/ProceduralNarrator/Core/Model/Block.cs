@@ -13,7 +13,37 @@ namespace ProceduralNarrator.Core.Model
         public string Id;
         public BlockType Type;
 
-        // ---- osie klasyfikacji (typowane, bo czyta je scoring) ----
+        // ================================================================================
+        //  UMOWA DANYCH: CO WNOSI KTORY SLOT
+        // ================================================================================
+        //
+        //   Theme / Valence / Scale  -> WYLACZNIE klocek AKCJI. To on decyduje, CZYM zdarzenie
+        //                               jest; EventComposer kopiuje te trzy pola z akcji i nie
+        //                               oglada ich na zadnym innym slocie.
+        //   warunki, preferencje,    -> KAZDY slot. Tedy pozostale klocki wplywaja na wybor
+        //   tekst                       (przez contextFit) i na opis.
+        //   Intensity                -> AGREGOWANA z calej kompozycji (suma wkladow pieciu slotow,
+        //                               klamrowana do zakresu skali).
+        //
+        // DLACZEGO OSIE NIE SA AGREGOWANE - i dlaczego nie nalezy tego "naprawiac".
+        // Sumowanie walencji albo glosowanie tematow oznaczaloby, ze neutralny aktor i pozytywny
+        // wyzwalacz OSLABIAJA negatywny charakter napadu. Nie da sie tego sensownie wytlumaczyc
+        // ani graczowi, ani w rozdziale o ewaluacji: noc, obrzeza kolonii czy opis sprawcy sa
+        // OKOLICZNOSCIA zdarzenia, a nie jego istota. Przypadkowa zamiana napadu w zdarzenie
+        // neutralne byla by regresja, nie wzbogaceniem.
+        //
+        // KONSEKWENCJA, ktora trzeba znac: wszystkie warianty jednej akcji maja identyczna
+        // trojke osi, wiec freshness i dramaticContrast ich NIE ROZROZNIAJA. To nie jest wada.
+        // Warianty roznia sie okolicznoscia i dawka, a nie charakterem narracyjnym - i dokladnie
+        // te dwie rzeczy roznicuja je w scoringu (contextFit i intentAlignment przez intensywnosc).
+        // Mocniejsze roznicowanie mialoby sens dopiero wtedy, gdyby wariant zmienial ZNACZENIE
+        // zdarzenia, a nie jego oprawe.
+        //
+        // Pola zostaja na Block (a nie przenosza sie do osobnego typu akcji), bo katalog jest
+        // jednorodny i tak go czyta DirectXmlToObject. Pilnuje tego audyt startowy
+        // (PNStartup.AuditBlockAxes) plus asercja walidatora - deklaracja osi na klocku innym
+        // niz akcja jest od teraz zglaszana, zamiast lezec cicho i mylic autora tresci.
+        // ================================================================================
         public Theme Theme = Theme.Natural;
         public Valence Valence = Valence.Neutral;
         public EventScale Scale = EventScale.Moderate;

@@ -147,7 +147,9 @@ namespace ProceduralNarrator.Integration
                     // UTF8Encoding(false), a NIE Encoding.UTF8 - ten drugi dopisuje BOM przy
                     // TWORZENIU pliku. Znacznik ladowal wtedy przed pierwsza linia [PN-SESSION]
                     // i naiwne open(..., encoding='utf-8') w Pythonie zwracalo pierwsza linie
-                    // z doklejonym ﻿, wiec startswith('[PN-SESSION]') nie trafialo.
+                    // z doklejonym znakiem U+FEFF, wiec startswith('[PN-SESSION]') nie trafialo.
+        // (Znaku BOM celowo NIE wklejamy tu doslownie - komentarz opisujacy usterke
+        //  nie moze sam byc nosnikiem tej samej pulapki dla narzedzi czytajacych plik.)
                     // Awaria dotyczy WYLACZNIE pierwszego uruchomienia po skasowaniu pliku -
                     // czyli dokladnie tego przypadku, od ktorego zaczyna sie kazda czysta seria
                     // pomiarowa. Zlapane przy pierwszym uruchomieniu skryptu analizujacego.

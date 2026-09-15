@@ -189,6 +189,33 @@ namespace ProceduralNarrator.Core.Conditions
         }
     }
 
+    /// <summary>
+    /// Czy na mapie jest zwierze, ktore moze oszalec POJEDYNCZO.
+    ///
+    /// Osobny warunek obok Cond_WildAnimals, bo waniliowy IncidentWorker_AnimalInsanitySingle
+    /// ma znacznie wezszy predykat niz "dzikie zwierze": odrzuca mutanty, zwierzeta zbyt silne,
+    /// stojace w mgle, powalone i juz oszalale. Rdzen tych regul nie zna i znac nie moze -
+    /// liczba przychodzi gotowa w snapshocie, tak samo jak przy stropie gorskim.
+    ///
+    /// Warunek jest z zalozenia NIE LUZNIEJSZY od workera. Odwrotny kierunek bylby bezpieczny
+    /// tylko pozornie: kandydat, ktorego silnik odrzuci, marnuje runde petli wyboru, a czynnik
+    /// swiezosci premiuje go dalej, bo akcja odrzucona nie trafia do historii.
+    /// </summary>
+    public class Cond_MaddenableAnimals : NarrativeCondition
+    {
+        public int min = 1;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.MaddenableAnimalCount >= min;
+        }
+
+        public override string Describe()
+        {
+            return "zwierzat zdolnych do amoku >= " + min;
+        }
+    }
+
     public class Cond_WildAnimals : NarrativeCondition
     {
         public int min = 1;

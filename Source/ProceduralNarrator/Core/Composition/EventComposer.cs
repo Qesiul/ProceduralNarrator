@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using ProceduralNarrator.Core.Decision;
@@ -648,7 +649,8 @@ namespace ProceduralNarrator.Core.Composition
                 }
             }
 
-            IntensityLevel intensity = ContextEvaluator.AggregateIntensity(ordered);
+            int surowaIntensywnosc;
+            IntensityLevel intensity = ContextEvaluator.AggregateIntensity(ordered, out surowaIntensywnosc);
             string signature = VariantSignature(ordered);
 
             return new ComposedEvent
@@ -663,8 +665,17 @@ namespace ProceduralNarrator.Core.Composition
                 Valence = action.Valence,
                 Scale = action.Scale,
                 Intensity = intensity,
+                IntensityRawSum = surowaIntensywnosc,
                 Description = description.ToString(),
-                Trace = trace + " -> intensywnosc=" + intensity + " | sig=" + signature
+                // Slad wypisuje surowa sume TYLKO wtedy, gdy rozni sie od wyniku. Wypisywanie
+                // jej zawsze zaszumialoby log wartoscia, ktora w 86% przypadkow nic nie wnosi,
+                // a diagnostyka ma rzucac sie w oczy wtedy, gdy cos sie faktycznie stalo.
+                Trace = trace + " -> intensywnosc=" + intensity
+                        + (surowaIntensywnosc != (int)intensity
+                           ? " (suma wkladow=" + surowaIntensywnosc.ToString(CultureInfo.InvariantCulture)
+                             + " -> zastosowano ograniczenie skali)"
+                           : string.Empty)
+                        + " | sig=" + signature
             };
         }
 

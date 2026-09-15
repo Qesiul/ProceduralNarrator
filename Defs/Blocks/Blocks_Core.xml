@@ -35,9 +35,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Trig_Bogactwo</defName>
     <blockType>Trigger</blockType>
-    <theme>Economic</theme>
-    <valence>Neutral</valence>
-    <scale>Minor</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>High</intensity>
     <tags><li>rozglos</li></tags>
     <textFragment>Wiesc o zamoznosci kolonii rozeszla sie po okolicy.</textFragment>
@@ -61,9 +62,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Trig_Cisza</defName>
     <blockType>Trigger</blockType>
-    <theme>Natural</theme>
-    <valence>Neutral</valence>
-    <scale>Minor</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Normal</intensity>
     <tags><li>spokoj</li></tags>
     <textFragment>Po dniach spokoju cos w koncu zaklocilo rutyne.</textFragment>
@@ -91,9 +93,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Piraci</defName>
     <blockType>Actor</blockType>
-    <theme>Raid</theme>
-    <valence>Negative</valence>
-    <scale>Moderate</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>High</intensity>
     <tags><li>wrogi</li><li>ludzki</li></tags>
     <!-- REGULA "fakt w tekscie = warunek TWARDY". Poprzedni fragment brzmial "Banda piratow",
@@ -127,9 +130,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Dzikie</defName>
     <blockType>Actor</blockType>
-    <theme>Natural</theme>
-    <valence>Negative</valence>
-    <scale>Moderate</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Normal</intensity>
     <tags><li>zwierzeta</li></tags>
     <textFragment>Dzika zwierzyna</textFragment>
@@ -149,9 +153,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Obcy</defName>
     <blockType>Actor</blockType>
-    <theme>Social</theme>
-    <valence>Neutral</valence>
-    <scale>Minor</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Normal</intensity>
     <tags><li>neutralny</li><li>ludzki</li></tags>
     <textFragment>Ktos z zewnatrz</textFragment>
@@ -364,9 +369,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Cel_Osada</defName>
     <blockType>Target</blockType>
-    <theme>Natural</theme>
-    <valence>Neutral</valence>
-    <scale>Moderate</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Normal</intensity>
     <tags><li>kolonia</li></tags>
     <!-- FRAGMENT PRZEPISANY. Poprzednia wersja stwierdzala, GDZIE dzieje sie zdarzenie -
@@ -390,9 +396,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Cel_Obrzeza</defName>
     <blockType>Target</blockType>
-    <theme>Natural</theme>
-    <valence>Neutral</valence>
-    <scale>Minor</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Low</intensity>
     <tags><li>kolonia</li><li>peryferia</li></tags>
     <!-- FRAGMENT PRZEPISANY. Poprzednia wersja stwierdzala, GDZIE dzieje sie zdarzenie -
@@ -417,9 +424,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Mod_Noc</defName>
     <blockType>Modifier</blockType>
-    <theme>Natural</theme>
-    <valence>Neutral</valence>
-    <scale>Minor</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>High</intensity>
     <tags><li>czas</li></tags>
     <textFragment>Wszystko rozgrywa sie po zmroku.</textFragment>
@@ -447,16 +455,65 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Mod_Slabo</defName>
     <blockType>Modifier</blockType>
-    <theme>Natural</theme>
-    <valence>Neutral</valence>
-    <scale>Minor</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Low</intensity>
     <tags><li>skala</li></tags>
     <!-- FRAGMENT PRZEPISANY. "Skala OKAZUJE SIE mniejsza" stwierdzalo o WYNIKU zlozenia,
          a ten klocek wnosi tylko -1 do intensywnosci - suma z pozostalymi slotami potrafi
          wyjsc Normal albo wyzej i zdanie bylo wtedy nieprawdziwe. Nowa wersja mowi o WKLADZIE
          tego klocka, ktory jest pewny. Prawdziwe rozwiazanie to warianty tekstu zalezne od
-         KONCOWEJ intensywnosci (sekcja 5.7 koncepcji) - do zrobienia przy podmianie listu. -->
+         KONCOWEJ intensywnosci (sekcja 5.7 koncepcji) - do zrobienia przy podmianie listu.
+
+         ZAKRES, W JAKIM TEN KLOCEK DZIALA MECHANICZNIE - DWIE ROZNE MIARY, NIE JEDNA.
+         Wklad -1 do intensywnosci przeklada sie na mnoznik punktow zagrozenia, ale punkty
+         wplywaja na PRZEBIEG zdarzenia tylko u czesci katalogu.
+
+         (A) ZMIERZONE DEKOMPILACJA - worker nie czyta parms.points ANI RAZU. Siedem akcji:
+             Ambrozja/AmbrosiaSprout   Burza/Flashstorm      Dzikus/WildManWandersIn
+             Meteoryt/MeteoriteImpact  Okup/RansomDemand     Zrzut/ResourcePodCrash
+             Amok/AnimalInsanitySingle
+             Przy nich ten klocek na pewno nie zmienia przebiegu zdarzenia. To 40 z 80 kandydatow.
+
+         (B) WIDZIANE PRZEZ AUDYT STARTOWY - brak deklaracji pointsScaleable i progu punktowego.
+             DZIEWIEC akcji, bo doliczaja sie Wedrowiec/WandererJoin i Uchodzcy/RefugeePodCrash.
+             Audyt czyta DEKLARACJE z Defa, nie kod workera, wiec jego lista jest SZERSZA - i to
+             jest poprawne zachowanie kontroli, ktora ma wskazywac miejsca do sprawdzenia.
+
+         ROZJAZD MIEDZY (A) I (B) JEST REALNY I NIEROZSTRZYGNIETY: IncidentWorker_GiveQuest
+         PRZEKAZUJE parms.points do generatora zadania, mimo ze Def deklaruje pointsScaleable
+         = false. Czy zmienia to TRESC zadania - NIE ZBADANE. Do rozstrzygniecia przy kroku 8,
+         jesli metryka intensywnosci ma byc liczona na tych dwoch akcjach.
+
+         Przy akcjach z grupy (A) ten klocek nie zmienia PRZEBIEGU zdarzenia - jest ono
+         identyczne z modyfikatorem i bez niego.
+
+         ALE NIE JEST PRZEZ TO "BEZCZYNNY", i to jest sprostowanie wczesniejszego sformulowania:
+         klocek wnosi dalej preferencje do contextFit oraz wlasna intensywnosc do intentAlignment,
+         wiec realnie przesuwa ranking kandydatow. Bezczynny jest wylacznie kanal
+         "punkty zagrozenia -> przebieg zdarzenia".
+
+         STATUS TEKSTU: SPORNY, nie rozstrzygniety na korzysc. Argument za zostawieniem: zdanie
+         porownuje z POTENCJALEM ("nizszy, niz moglby byc"), a nie z obserwowalna wielkoscia,
+         wiec gracz nie ma kontrfaktu i nie ma jak go obalic - inaczej niz "Wszystko rozgrywa
+         sie po zmroku", ktore obala jedno spojrzenie na niebo. Argument przeciw (sluszny):
+         przy incydencie ignorujacym punkty sama etykieta VeryLow NICZEGO NIE GWARANTUJE, wiec
+         "mniejszy rozmach" nie ma w grze zadnego desygnatu - zdanie nie tyle klamie, co mowi
+         o niczym. Rozstrzygniecie nalezy do wariantow tekstu zaleznych od kontekstu
+         (sekcja 5.7 koncepcji): dopiero one pozwola powiedziec "mniejszy rozmach" tam, gdzie
+         to cos znaczy, i cos innego tam, gdzie nie znaczy. Do tego czasu tekst zostaje
+         NIEZMIENIONY swiadomie - zmiana bez rozstrzygniecia byla by ruchem glosu narracyjnego
+         bez zysku.
+
+         DLACZEGO TEZ NIE ZAKAZUJEMY TYCH PAR. Modyfikator wnoszacy sam opis jest uprawniony;
+         zakaz podmienilby regule "tekst ma byc prawdziwy" na znacznie ostrzejsza "kazda
+         kombinacja ma byc mechanicznie znaczaca" i kosztowal 18 kandydatow bez powodu
+         narracyjnego.
+
+         GDZIE TO WIDAC: PNStartup.AuditIntensityEffect wypisuje te liste przy kazdym starcie,
+         wiec przy dosypce katalogu nie trzeba jej odtwarzac dekompilatorem. -->
     <textFragment>Rozmach jest mniejszy, niz moglby byc.</textFragment>
     <!-- ZNALEZISKO Z ROZGRYWKI: ten klocek nie mial zadnej preferencji, wiec nigdy nie byl
          karany, podczas gdy PN_Mod_Noc w ciagu dnia dostawal 0.20. Skutek: trzy pierwsze

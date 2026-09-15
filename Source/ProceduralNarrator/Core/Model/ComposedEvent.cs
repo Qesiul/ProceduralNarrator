@@ -59,6 +59,21 @@ namespace ProceduralNarrator.Core.Model
         public IntensityLevel Intensity = IntensityLevel.Normal;
 
         /// <summary>
+        /// Suma wkladow intensywnosci ze WSZYSTKICH slotow, PRZED klamrowaniem do [-2, +2].
+        ///
+        /// Pole diagnostyczne: rozni sie od Intensity dokladnie wtedy, gdy kompozycja zadala
+        /// wiecej, niz skala potrafi zmiescic, i czesc wkladu przepadla. Bez niego nasycenie
+        /// skali bylo niemierzalne inaczej niz skryptem po katalogu XML.
+        /// </summary>
+        public int IntensityRawSum;
+
+        /// <summary>Czy suma wkladow zostala przyciete przez granice skali.</summary>
+        public bool IntensityClamped
+        {
+            get { return IntensityRawSum != (int)Intensity; }
+        }
+
+        /// <summary>
         /// Dopasowanie kontekstowe 0..1 - jak bardzo to wydarzenie pasuje tu i teraz.
         /// Liczone na GOTOWYM kandydacie (decyzja projektowa), zasila scoring w kroku 3.
         /// </summary>

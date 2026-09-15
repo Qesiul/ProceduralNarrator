@@ -405,6 +405,16 @@ namespace ProceduralNarrator.Integration.Storyteller
                     + " -> " + incydent.defName
                     + " | " + zdarzenie.Theme + "/" + zdarzenie.Valence + "/" + zdarzenie.Scale
                     + " | intensywnosc=" + zdarzenie.Intensity
+                    // NASYCENIE SKALI, wypisywane TYLKO gdy zaszlo. Bez tego cala zmiana C3
+                    // (surowa suma przed klamrowaniem) byla widoczna wylacznie dla walidatora
+                    // offline, bo ComposedEvent.Trace nie ma w projekcie ANI JEDNEGO czytelnika -
+                    // warstwa integracji loguje CandidateSet.Trace i FitTrace, nie ten slad.
+                    // Znalezione przegladem adwersarialnym: deklarowanym celem C3 bylo, zeby
+                    // przyciecie wkladu przestalo byc niewidoczne W GRZE, a nie tylko w tescie.
+                    + (zdarzenie.IntensityClamped
+                       ? " (suma wkladow=" + zdarzenie.IntensityRawSum.ToString(CultureInfo.InvariantCulture)
+                         + " -> ograniczona przez skale)"
+                       : string.Empty)
                     + " punkty=" + parms.points.ToString("0", CultureInfo.InvariantCulture)
                     + " | wynik=" + Fmt(decyzja.Winner.Utility)
                     + " p=" + Fmt(decyzja.Winner.SelectionProbability)

@@ -48,15 +48,36 @@ namespace ProceduralNarrator.Integration.Incidents
     ///                                    WandererJoin i RefugeePodCrash - oba IncidentWorker_GiveQuest,
     ///                                    gdzie list tworzy zadanie, nie incydent.
     ///
-    ///   spawnCenter          CZESC  - NIE jest bezczynne, wbrew pierwszej wersji tej tabeli.
-    ///                                  Czytaja je bezposrednio IncidentWorker_AggressiveAnimals
-    ///                                  (ManhunterPack) i IncidentWorker_RaidEnemy. Napady korzystaja
-    ///                                  z niego dodatkowo POSREDNIO, przez wykonawcow sposobu
-    ///                                  przybycia: PawnsArrivalModeWorker_EdgeWalkIn, _EdgeDrop
-    ///                                  i _CenterDrop. Infestation ma wlasne pole polozenia -
-    ///                                  infestationLocOverride.
-    ///                                  Sterowanie polozeniem jest wiec OTWARTYM kierunkiem
-    ///                                  rozwoju dla czesci katalogu, a nie granica API.
+    ///   spawnCenter         1/12 wprost
+    ///                              - NIE jest bezczynne, ale tez NIE czyta go zaden worker napadu.
+    ///                                DRUGIE SPROSTOWANIE, tym razem poprzedniej wersji TEGO komentarza:
+    ///                                pisala ona, ze spawnCenter czyta bezposrednio
+    ///                                IncidentWorker_RaidEnemy. Nieprawda. Zliczone w calym lancuchu
+    ///                                (RaidEnemy -> Raid -> PawnsArrive -> IncidentWorker, wszystkie
+    ///                                cztery typy rozwiazane): pole pada DOKLADNIE RAZ i jest to linia
+    ///                                logu debugowego pod if (DebugSettings.logRaidInfo). To ta sama
+    ///                                pomylka co przy points: "pole wystepuje w typie" wzieto za
+    ///                                "typ czyta to pole".
+    ///
+    ///                                Wprost czyta je tylko IncidentWorker_AggressiveAnimals
+    ///                                (ManhunterPack). Napady honoruja je WYLACZNIE POSREDNIO, przez
+    ///                                wykonawce sposobu przybycia - i tylko przez trzy z nich
+    ///                                (EdgeWalkIn, EdgeDrop, CenterDrop oslaniaja wlasne wyliczenie
+    ///                                straznikiem if (!parms.spawnCenter.IsValid)). Pozostale ignoruja
+    ///                                albo NADPISUJA; przy strategii ImmediateAttack pula ma siedem
+    ///                                trybow i szansa na uszanowanie naszej komorki wynosi 40-52%
+    ///                                zaleznie od punktow. Infestation ma wlasne pole:
+    ///                                infestationLocOverride.
+    ///
+    ///                                MAPOWANIA SLOTU Target NA TO POLE NIE ROBIMY - i jest to decyzja
+    ///                                po rozpoznaniu, nie zaniechanie. Przypiecie raidArrivalMode
+    ///                                (jedyna droga do determinizmu) zmienia SILE napadu przez
+    ///                                pointsFactorCurve, omija bramke technologiczna i odblokowuje
+    ///                                strategie, ktorych wanilia nie wybierze. Do tego EdgeWalkIn
+    ///                                spawnuje pionki dokladnie w podanej komorce BEZ sprawdzenia,
+    ///                                ze jest brzegowa - "serce osady" wstawiloby napastnikow do
+    ///                                srodka bazy. Pelne wyprowadzenie w CLAUDE.md, sekcja o slocie
+    ///                                Target.
     ///
     ///   ilosc zasobow            --  - TAKIEGO POLA NIE MA. IncidentWorker_ResourcePodCrash
     ///                                  dobiera zawartosc sam (ThingSetMakerDefOf.ResourcePod).

@@ -58,6 +58,7 @@ namespace ProceduralNarrator.Integration
                 Season = SeasonIndex(GenLocalDate.Season(map)),
                 IsNight = hour < 6 || hour >= 18,
                 WildAnimalCount = CountWildAnimals(map),
+                MaddenableAnimalCount = CountMaddenableAnimals(map),
                 DownedColonistCount = CountDownedColonists(map),
                 Danger = MapDanger(map),
                 // Ta sama wielkosc, ktora bazowy IncidentWorker.CanFireNow porownuje
@@ -199,6 +200,46 @@ namespace ProceduralNarrator.Integration
                        .GetFactions(allowHidden: false, allowDefeated: false,
                                     allowNonHumanlike: false, allowTemporary: false)
                        .Any(f => f.HostileTo(player));
+        }
+
+        /// <summary>
+        /// Odwzorowuje predykat waniliowego IncidentWorker_AnimalInsanitySingle.TryFindRandomAnimal.
+        ///
+        /// CZESC PREDYKATU WOLAMY, A NIE KOPIUJEMY. IncidentWorker_AnimalInsanityMass.AnimalUsable
+        /// jest publiczna i statyczna, wiec zamiast przepisywac jej piec warunkow (spawned,
+        /// poza mgla, nie powalone, nie juz oszalale, bez frakcji) wolamy ja wprost. Kopia
+        /// zgnilaby po cichu przy pierwszej aktualizacji gry, a objawem bylby brak zdarzen -
+        /// czyli nic, co widac w logu. Odtwarzamy wylacznie te czesc, ktora siedzi w prywatnej
+        /// lambdzie workera i nie da sie jej wywolac: gatunek niemutancki plus prog combatPower.
+        ///
+        /// Prog przelacza sie na SIODMYM dniu od zalozenia (40 przed, 150 po) i czytamy go
+        /// z tego samego zrodla co worker - GenDate.DaysPassedSinceSettle. Klocek, ktory
+        /// z tego korzysta, ma i tak prog 11 dnia (kontrola eksperymentu wobec Cassandry),
+        /// wiec nizsza galaz jest dla niego martwa - ale pole snapshotu ma opisywac STAN
+        /// SWIATA, a nie zalozenia jednego klocka.
+        /// </summary>
+        private static int CountMaddenableAnimals(Map map)
+        {
+            int maxPoints = GenDate.DaysPassedSinceSettle < 7 ? 40 : 150;
+
+            int n = 0;
+            foreach (Pawn p in map.mapPawns.AllPawnsSpawned)
+            {
+                if (!p.IsNonMutantAnimal)
+                {
+                    continue;
+                }
+                if (p.kindDef == null || p.kindDef.combatPower > maxPoints)
+                {
+                    continue;
+                }
+                if (!IncidentWorker_AnimalInsanityMass.AnimalUsable(p))
+                {
+                    continue;
+                }
+                n++;
+            }
+            return n;
         }
 
         private static int CountWildAnimals(Map map)

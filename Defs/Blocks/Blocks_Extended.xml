@@ -9,9 +9,13 @@
     narrator moze wtedy tylko przeskakiwac miedzy tematami, zamiast wybierac
     inny sposob realizacji tego samego tematu.
 
-    Po tej dosypce rozklad akcji na tematy:
-        Raid 1 | Military 1 | Economic 3 | Social 3 | Natural 3 | Supernatural 1
+    Rozklad akcji na tematy (13 akcji, stan po dodaniu PN_Akcja_Amok):
+        Raid 1 | Military 1 | Economic 3 | Social 3 | Natural 4 | Supernatural 1
         Trade 0, Disease 0  <- tory oddane vanilli, celowo puste
+    UWAGA: tej liczby NIE PILNUJE zadna asercja - walidator sprawdza liczbe akcji (13)
+    i przestrzen kombinacji (80), ale nie rozklad na tematy. Zestarzala sie juz raz
+    (mowila "Natural 3" przy czterech) i zestarzeje sie znowu, jesli ktos dosypie
+    akcje i nie poprawi tej linijki.
 
     Raid zostaje przy jednej akcji, bo w Core nie ma drugiego incydentu bedacego
     bezposrednim szturmem na kolonie. Warianty oblezenia to RaidStrategyDef
@@ -30,9 +34,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Natura</defName>
     <blockType>Actor</blockType>
-    <theme>Natural</theme>
-    <valence>Neutral</valence>
-    <scale>Moderate</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>Normal</intensity>
     <tags><li>zywioly</li><li>bezosobowy</li></tags>
     <textFragment>Natura</textFragment>
@@ -50,9 +55,10 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Aktor_Nieznane</defName>
     <blockType>Actor</blockType>
-    <theme>Supernatural</theme>
-    <valence>Negative</valence>
-    <scale>Moderate</scale>
+    <!-- BEZ <theme>/<valence>/<scale>: umowa danych mowi, ze charakter wydarzenia okresla
+         WYLACZNIE klocek akcji. Te trzy pola byly tu deklarowane i nieczytane przez nikogo,
+         co jest mylace dla autora tresci - ustawialby valence i oczekiwal efektu.
+         Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>High</intensity>
     <tags><li>nadprzyrodzony</li><li>bezosobowy</li></tags>
     <textFragment>Cos nieznanego</textFragment>
@@ -284,6 +290,102 @@
       <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
         <from>20</from>
         <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ===================================================================================
+       PN_Akcja_Amok - JEDYNA akcja o profilu Negative/Minor i JEDYNA w kategorii ThreatSmall.
+
+       DLACZEGO TEN KLOCEK ISTNIEJE - dwa powody, oba zmierzone, nie estetyczne.
+
+       1. LUKA W SIATCE WALENCJA x SKALA. Przed nim katalog zajmowal 4 z 9 komorek, i to
+          w ksztalcie litery L: kazde zdarzenie negatywne bylo co najmniej Moderate, a kazde
+          neutralne i pozytywne bylo Minor. Walencja i skala byly przez to prawie WSPOLLINIOWE -
+          znajac jedna, znalo sie druga - wiec dwuwymiarowa klasyfikacja degenerowala sie do
+          jednej osi o czterech poziomach, a Factor_DramaticContrast mogl zwrocic najwyzej
+          cztery rozne wartosci na cala przestrzen kandydatow. Ten klocek jest pierwszym
+          "drobnym zlem" i rozbija te wspolliniowosc: glosnosc Minor niesie odtad TRZY rozne
+          ladunki (-0.25, 0.00, +0.25) zamiast dwoch.
+
+       2. INTENCJA Hold NIE MIALA CZEGO WYBRAC. Factor_IntentAlignment.DesiredCharge celuje
+          przy Hold w -0.30, a osiagalne ladunki to byly -1.00, -0.60, 0.00 i +0.25. Najlepsze
+          dopasowanie wynosilo 0.850 i bylo REMISEM miedzy -0.60 a 0.00, czyli dwa zupelnie
+          rozne zdarzenia punktowaly dla tej intencji identycznie. Hold jest intencja DOMYSLNA -
+          ta, ktora narrator ma przez wiekszosc rozgrywki. Ladunek tego klocka to
+          -1 * 0.25 = -0.25, czyli dopasowanie 0.975 i koniec remisu.
+
+       3. Przy okazji zamyka luke w kontroli eksperymentu: podmieniamy u Cassandry TRZY compy,
+          w tym OnOffCycle(ThreatSmall), a nie mielismy w tej kategorii ANI JEDNEJ akcji.
+          Odbieralismy grze caly tor i nie wypuszczalismy przez niego niczego.
+       =================================================================================== -->
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Amok</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Minor</scale>
+    <!-- Intensywnosc jest tu CZYSTO OPISOWA i jest to sprawdzone, nie zalozone:
+         AnimalInsanitySingle nie ma pointsScaleable ani progu punktowego, a jego worker nie
+         czyta parms.points ani razu (zadeklarowana stala FixedPoints = 30 jest martwa).
+         Mnoznik intensywnosci nie zmieni wiec ani sily zdarzenia, ani tego, czy wypali.
+         Zostawiamy Low, bo tak klocek MA byc wazony narracyjnie przez intentAlignment;
+         PNStartup.AuditIntensityEffect wypisze go przy starcie jako bezczynny mechanicznie
+         i to jest poprawne zachowanie, a nie ostrzezenie do naprawienia. -->
+    <intensity>Low</intensity>
+    <tags><li>zwierzeta</li></tags>
+    <payload>AnimalInsanitySingle</payload>
+    <!-- Tekst nie mowi ILU zwierzat dotyczy ani GDZIE sie to dzieje. Oba przemilczenia sa
+         celowe. Liczba: waniliowy worker wybiera DOKLADNIE JEDNO zwierze, wiec liczba mnoga
+         bylaby falszem - ale podmiotem zdania jest klocek aktora ("Dzika zwierzyna"), wiec
+         zdanie zostaje w liczbie pojedynczej samo z siebie. Miejsce: worker losuje zwierze
+         z CALEJ mapy i to ono jest celem kamery w liscie, wiec obiecanie polozenia byloby
+         niesprawdzalne - ta sama regula co przy slocie Target. -->
+    <textFragment>traci rozum i rzuca sie na kazdego, kogo napotka.</textFragment>
+    <conditions>
+      <!-- ODWZOROWANIE WORKERA, nie luzniejsze "sa jakies zwierzeta".
+           IncidentWorker_AnimalInsanitySingle wymaga zwierzecia niemutanckiego, o combatPower
+           najwyzej 150 (przed siodmym dniem od zalozenia najwyzej 40), bez frakcji, stojacego
+           poza mgla, nie powalonego i nie bedacego juz w agresywnym stanie psychicznym.
+           Cond_WildAnimals nie zna zadnego z tych warunkow i bylby NADZBIOREM - przepuszczalby
+           kandydatow, ktorych CanFireNow odrzuci, a czynnik swiezosci premiowalby ich dalej.
+           Precedens: Cond_MountainRoof i Cond_MinThreatPoints. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MaddenableAnimals">
+        <min>1</min>
+      </li>
+      <!-- Prog 11 dnia odwzorowuje minDaysPassed podmienianego compa OnOffCycle(ThreatSmall)
+           u Cassandry (11.0). Nasz comp ma prog 5, bo jest dostosowany do wiekszosciowego toru
+           Misc, wiec wyzszy prog dla zagrozen musi siedziec na poziomie akcji - inaczej
+           narrator wypuszczalby je wczesniej niz narrator, z ktorym sie porownujemy.
+           Efekt uboczny i pozadany: prog 11 POCHLANIA waniliowa bramke combatPower <= 40
+           z pierwszych siedmiu dni, wiec osobnego warunku na to nie trzeba. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <!-- Oszalec moze tylko zwierze, wiec aktor jest przesadzony. Bogactwo kolonii nie ma
+         z tym nic wspolnego - ta sama logika co przy PN_Akcja_Szal. -->
+    <incompatibleWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <!-- DWIE preferencje, dobrane tak, zeby klocek nie byl wolny od kary - regula z etapu 3
+         ("klocek bez zdania wygrywa slot samym brakiem kary"). Pierwsza ciagnie w gore wraz
+         z liczba zwierzat, druga w dol wraz z wiekiem kolonii: pojedyncze oszalale zwierze
+         jest realnym klopotem dla mlodej osady i anegdota dla dojrzalej.
+         Pref_Season NIE jest tu powtorzone za PN_Akcja_Szal celowo - dwa klocki zwierzece
+         o identycznym profilu preferencji nie dawalyby scoringowi czym ich rozroznic. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WildAnimals">
+        <from>0</from>
+        <to>12</to>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>60</from>
+        <to>10</to>
       </li>
     </preferences>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
