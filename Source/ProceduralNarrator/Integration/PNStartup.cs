@@ -136,7 +136,20 @@ namespace ProceduralNarrator.Integration
             // Dzieki temu skrypt agregujacy z kroku 8 czyta kolejnosc kolumn z tego samego pliku,
             // z ktorego czyta dane, zamiast miec ja zaszyta u siebie.
             PNLog.DataHeader();
+
+            // Konfiguracja do pliku danych PO naglowku kolumn - zebrana przez audyty wyzej.
+            for (int i = 0; i < konfiguracjaDoDanych.Count; i++)
+            {
+                PNLog.Config(konfiguracjaDoDanych[i]);
+            }
         }
+
+        /// <summary>
+        /// Linie efektywnej konfiguracji zbierane przez audyty i wypisywane do pliku danych jako
+        /// [PN-CONFIG] zaraz po [PN-DATA-COLS]. Lista, a nie zapis na miejscu, bo naglowek kolumn
+        /// ma byc pierwszy po [PN-SESSION] - parser czyta z niego kolejnosc kolumn.
+        /// </summary>
+        private static readonly List<string> konfiguracjaDoDanych = new List<string>();
 
         /// <summary>
         /// Audyt konfiguracji warstwy decyzyjnej we WSZYSTKICH storytellerach, ktore uzywaja
@@ -195,6 +208,7 @@ namespace ProceduralNarrator.Integration
                     }
 
                     PNLog.Decision("Parametry decyzyjne (" + st.defName + "): " + nasz.DescribeEffective());
+                    konfiguracjaDoDanych.Add("storyteller=" + st.defName + "; " + nasz.DescribeEffective());
                 }
             }
 
@@ -240,12 +254,20 @@ namespace ProceduralNarrator.Integration
 
             foreach (NarratorProfileDef def in profile)
             {
-                string poprawki = (def.tension ?? TensionParams.Default()).Sanitize();
+                // SANITYZACJA KOPII, a nie Defa. Wczesniej Sanitize dzialal na def.tension, czyli
+                // MUTOWAL DefDatabase - wbrew kontraktowi ToProfile ("Sanitize dziala na kopii") -
+                // i przez to Warn w NarratorProfileCatalog.Resolve byl martwy (Def byl juz
+                // poprawiony). Logujemy TEN SAM obiekt, ktory przeszedl sanityzacje: gdyby log
+                // i [PN-CONFIG] braly swiezy ToProfile, pokazywalyby wartosci surowe, a runtime
+                // (Resolve) liczylby na poprawionych - rozjazd konfiguracji z danymi.
+                NarratorProfile prof = def.ToProfile();
+                string poprawki = prof.Tension.Sanitize();
                 if (!string.IsNullOrEmpty(poprawki))
                 {
                     PNLog.Warn("Profil " + def.defName + " - poprawiono parametry krzywej: " + poprawki);
                 }
-                PNLog.Decision("  " + def.ToProfile());
+                PNLog.Decision("  " + prof);
+                konfiguracjaDoDanych.Add("profil=" + def.defName + "; " + prof);
             }
         }
 

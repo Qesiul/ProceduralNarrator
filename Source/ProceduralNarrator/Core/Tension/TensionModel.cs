@@ -15,17 +15,37 @@ namespace ProceduralNarrator.Core.Tension
         /// <summary>Napiecie wypadkowe, [0,1].</summary>
         public float Tension;
 
-        /// <summary>Czlon narracyjny po zaniku czasowym, [0,1].</summary>
+        /// <summary>
+        /// Czlon narracyjny, [0,1]: clamp01(NegativeLoad - PositiveRelief). Kazdy wpis historii
+        /// starzeje sie tu WLASNYM wiekiem - patrz Factor_DramaticContrast.ComputeAgedLoad.
+        /// </summary>
         public float Narrative;
 
         /// <summary>Czlon sytuacyjny, [0,1].</summary>
         public float Situational;
 
-        /// <summary>Surowy ladunek rytmu Rc z Factor_DramaticContrast, [-1,1]. Do diagnostyki.</summary>
-        public float RhythmCharge;
+        /// <summary>Ciezar zdarzen negatywnych po zaniku czasowym kazdego wpisu, [0,1].</summary>
+        public float NegativeLoad;
 
-        /// <summary>Mnoznik zaniku w ciszy, [0,1]. 1.0 = zdarzenie wlasnie bylo.</summary>
-        public float SilenceDecay;
+        /// <summary>Ulga ze zdarzen pozytywnych po zaniku czasowym kazdego wpisu, [0,1].</summary>
+        public float PositiveRelief;
+
+        /// <summary>Srednia wazona zanikow wpisow, [0,1]. 1.0 = cala historia z tej chwili.</summary>
+        public float MeanDecay;
+
+        /// <summary>Ile wpisow weszlo do czlonu narracyjnego.</summary>
+        public int Entries;
+
+        /// <summary>Dni gry od najnowszego wpisu. Wylacznie do sladu - NIE jest juz mnoznikiem.</summary>
+        public float NewestAgeDays;
+
+        /// <summary>
+        /// Rytm Rc z Factor_DramaticContrast, [-1,1] - czyli historia BEZ zaniku czasowego,
+        /// dokladnie taka, jaka widzi czynnik kontrastu. WYLACZNIE DIAGNOSTYKA, nie jest wejsciem
+        /// czlonu narracyjnego. Trzymamy go w sladzie, bo roznica miedzy Rc a obciazeniem
+        /// z zanikiem jest jedynym miejscem, w ktorym widac, ile napiecia "wystyglo" z czasem.
+        /// </summary>
+        public float RhythmCharge;
 
         /// <summary>Czy sumy wag byly zdegenerowane (obie zerowe) - wtedy Tension = 0.</summary>
         public bool WeightsDegenerate;
@@ -37,17 +57,38 @@ namespace ProceduralNarrator.Core.Tension
     /// KRZYWA DRAMATURGICZNA - miara napiecia rozgrywki (sekcja 5.5 koncepcji).
     ///
     /// Napiecie jest POZIOMEM, a nie odlegloscia - i to jest cala roznica wobec czynnika
-    /// Factor_DramaticContrast, ktory z tego samego rytmu korzysta RELACYJNIE (liczy
+    /// Factor_DramaticContrast, ktory z tej samej historii korzysta RELACYJNIE (liczy
     /// |ladunek_kandydata - Rc|, wiec rytm -0.9 i +0.9 daja ten sam kontrast dla kandydata
     /// odleglego o tyle samo). Kontrast pyta "czy to bedzie odmiana", napiecie pyta
     /// "jak zle jest teraz". Te dwa pytania sa ortogonalne i dlatego oba czynniki moga
     /// istniec obok siebie bez liczenia tego samego dwa razy.
     ///
-    /// RYTM LICZYMY WOLAJAC ComputeRhythm, A NIE PISZAC DRUGIEJ SREDNIEJ WYKLADNICZEJ.
-    /// Kanoniczne mapowanie walencji i skali na liczby (ValenceValue / ScaleValue / Charge)
-    /// zyje w Factor_DramaticContrast i jest tam jedyne. Druga kopia rozjechalaby sie przy
-    /// pierwszej zmianie osi i nikt by tego nie zauwazyl, bo oba wyniki nadal wygladalyby
-    /// sensownie.
+    /// MAPOWANIE OSI I WAGI KOLEJNOSCI BIERZEMY Z Factor_DramaticContrast, A NIE PISZEMY DRUGICH.
+    /// Kanoniczne mapowanie walencji i skali na liczby (ValenceValue / ScaleValue / Charge),
+    /// okno i lambda zyja tam i sa jedyne. Druga kopia rozjechalaby sie przy pierwszej zmianie
+    /// osi i nikt by tego nie zauwazyl, bo oba wyniki nadal wygladalyby sensownie.
+    ///
+    /// CZLON NARRACYJNY (od polerowania etapu 4):
+    ///     N = clamp01( - suma_i w_i * c_i * 2^(-wiek_i / polokres) / suma_i w_i )
+    /// gdzie w_i = lambda^i po oknie historii (najnowszy wpis na indeksie 0), c_i = ladunek
+    /// wpisu, a wiek_i liczony z JEGO WLASNEJ daty. Pusta historia daje N = 0.
+    ///
+    /// Poprzednio: N = clamp01(-Rc) * 2^(-wiek NAJNOWSZEGO wpisu / polokres). Mnoznik wspolny
+    /// dla calej sumy mial wade wykryta przegladem: po dlugiej ciszy dopisanie zdarzenia
+    /// POZYTYWNEGO zerowalo wiek najnowszego wpisu, wiec mnoznik wracal do 1 i "ozywial" ciezar
+    /// napadow sprzed kilkudziesieciu dni. Skutek dla intencji zalezal od profilu: powsciagliwy
+    /// przechodzil z Escalate na Hold na kilka dni, domyslny tylko w ok. 0.6 dnia po prezencie,
+    /// napastliwy nigdy (TEST 10g(c) sprawdza to na profilu powsciagliwym).
+    ///
+    /// ZASIEG ZMIANY. Przy wspolnym wieku wszystkich wpisow obie formuly sa TOZSAME, ale w grze
+    /// wieki wpisow roznia sie praktycznie zawsze, wiec zmiana dotyczy niemal kazdej tury.
+    /// Zmierzone Monte Carlo w przegladzie (tempo 2.5 dnia, czlon sytuacyjny 0): srednie napiecie
+    /// spada o ok. 30-40%, udzial Hold u powsciagliwego z ok. 24% do ok. 12%. Progi profili NIE
+    /// zostaly przestrojone - swiadomie; patrz CLAUDE.md i naglowek Profiles_Core.xml.
+    ///
+    /// Precedens w kodzie: Factor_PassRestraint.Density od poczatku stosuje TEN SAM WZOR zaniku
+    /// per wpis. Stala jest jednak rowna tylko dla profilu zrownowazonego: gestosc bierze
+    /// halfLifeDays z bloku &lt;pass&gt; (5 dni), napiecie - z profilu (8 / 5 / 3).
     ///
     /// TRZY MECHANIZMY, KTORYCH TA KLASA CELOWO NIE DUBLUJE:
     ///   Factor_PassRestraint.Density - mierzy LICZBE zdarzen w oknie czasowym; napiecie
@@ -64,10 +105,18 @@ namespace ProceduralNarrator.Core.Tension
         {
             this.parameters = parameters ?? TensionParams.Default();
 
-            // Wlasna instancja czynnika kontrastu SLUZY WYLACZNIE do policzenia rytmu.
-            // Dostaje to samo strojenie co czynnik uzywany w scoringu, zeby oba widzialy
-            // identyczny rytm - inaczej "napiecie" i "kontrast" opisywalyby dwie rozne
-            // historie tej samej kolonii.
+            // Wlasna instancja czynnika kontrastu SLUZY WYLACZNIE do liczenia obciazenia historii
+            // (ComputeAgedLoad) i - do sladu - rytmu Rc. Dostaje to samo strojenie co czynnik
+            // uzywany w scoringu, zeby OKNO, WAGI KOLEJNOSCI i MAPOWANIE OSI byly wspolne.
+            //
+            // ROZJAZD SWIADOMY, NIE PRZEOCZENIE. Do polerowania etapu 4 stalo tu, ze napiecie
+            // i kontrast "widza identyczny rytm". Juz tak nie jest: napiecie widzi historie
+            // z zanikiem KAZDEGO wpisu, a kontrast - rytm BEZ zaniku, z bramka aktualnosci
+            // liczona z wieku NAJNOWSZEGO wpisu (ComputeTrust). Rozjazd jest decyzja zakresu:
+            // przeglad etapu 4 ograniczyl poprawke do czlonu historycznego napiecia i zabronil
+            // ruszac czynnik kontrastu. Zostaje przez to otwarty dlug tej samej klasy
+            // w ComputeTrust (prezent po dlugiej ciszy przywraca zaufanie do rytmu sprzed
+            // tygodni) - opisany w CLAUDE.md, do rozstrzygniecia przez autora.
             rhythmSource = new Factor_DramaticContrast(contrastTuning);
         }
 
@@ -84,18 +133,25 @@ namespace ProceduralNarrator.Core.Tension
         {
             var reading = new TensionReading();
 
-            // ---- czlon narracyjny: jak ciezkie bylo to, co narrator ostatnio wysylal ----
-            RhythmPoint rytm = rhythmSource.ComputeRhythm(history);
-            reading.RhythmCharge = rytm.Charge;
+            // ---- czlon narracyjny: jak ciezkie bylo to, co narrator wysylal - z uwzglednieniem,
+            //      JAK DAWNO wyslal kazda z tych rzeczy ----
+            AgedLoad obciazenie = rhythmSource.ComputeAgedLoad(history, gameDay, parameters.halfLifeDays);
+            reading.NegativeLoad = obciazenie.Negative;
+            reading.PositiveRelief = obciazenie.Positive;
+            reading.MeanDecay = obciazenie.MeanDecay;
+            reading.Entries = obciazenie.Entries;
 
-            // clamp01(-Rc): rytm dodatni (same dobre rzeczy) daje napiecie ZERO, a nie ujemne.
-            // Ujemne napiecie nie ma sensu - "lepiej niz dobrze" to nadal brak napiecia.
-            float surowaNarracja = Curves.Clamp01(-rytm.Charge);
+            // clamp01: przewaga ulgi daje napiecie ZERO, a nie ujemne. "Lepiej niz dobrze" to nadal
+            // brak napiecia. Pusta historia daje 0 - brak informacji nie jest napieciem.
+            //
+            // Petla sprzezenia zwrotnego Breathe (narrator milczy -> napiecie musi opadac) jest
+            // domykana przez zanik KAZDEGO wpisu: bez nowych wpisow cala suma polowi sie dokladnie
+            // co polokres. Asercja w TEST 10b walidatora.
+            reading.Narrative = Curves.Clamp01(reading.NegativeLoad - reading.PositiveRelief);
 
-            // Zanik w ciszy. Bez niego Breathe zatrzasnalby sie na stale - patrz TensionParams.
-            float dniOdZdarzenia = DaysSinceNewest(history, gameDay);
-            reading.SilenceDecay = Curves.HalfLifeDecay(dniOdZdarzenia, parameters.halfLifeDays);
-            reading.Narrative = Curves.Clamp01(surowaNarracja * reading.SilenceDecay);
+            // Diagnostyka: rytm bez zaniku (widziany przez kontrast) i wiek najnowszego wpisu.
+            reading.RhythmCharge = rhythmSource.ComputeRhythm(history).Charge;
+            reading.NewestAgeDays = DaysSinceNewest(history, gameDay);
 
             // ---- czlon sytuacyjny: czy zle dzieje sie TERAZ ----
             reading.Situational = Situational(snapshot, parameters);
@@ -118,13 +174,17 @@ namespace ProceduralNarrator.Core.Tension
                 reading.Tension = Curves.Clamp01((wN * reading.Narrative + wS * reading.Situational) / suma);
             }
 
-            reading.Trace = "napiecie=" + reading.Tension.ToString("0.000", CultureInfo.InvariantCulture)
-                            + " [narr=" + reading.Narrative.ToString("0.000", CultureInfo.InvariantCulture)
+            reading.Trace = "napiecie=" + F3(reading.Tension)
+                            + " [narr=" + F3(reading.Narrative)
+                            + " = obciazenie " + F3(reading.NegativeLoad)
+                            + " - ulga " + F3(reading.PositiveRelief)
+                            + " (sr.zanik " + reading.MeanDecay.ToString("0.00", CultureInfo.InvariantCulture)
+                            + ", n=" + reading.Entries.ToString(CultureInfo.InvariantCulture)
+                            + ", najnowszy " + reading.NewestAgeDays.ToString("0.0", CultureInfo.InvariantCulture) + "d)"
                             + " Rc=" + reading.RhythmCharge.ToString("0.00", CultureInfo.InvariantCulture)
-                            + " cisza=" + reading.SilenceDecay.ToString("0.00", CultureInfo.InvariantCulture)
-                            + " (" + dniOdZdarzenia.ToString("0.0", CultureInfo.InvariantCulture) + "d)"
-                            + " | syt=" + reading.Situational.ToString("0.000", CultureInfo.InvariantCulture)
-                            + " powalonych=" + (snapshot == null ? 0 : snapshot.DownedColonistCount)
+                            + " | syt=" + F3(reading.Situational)
+                            + " powalonych=" + (snapshot == null ? 0 : snapshot.AcuteDownedCount)
+                            + "/" + (snapshot == null ? 0 : snapshot.ColonistsOnMap)
                             + " zagrozenie=" + (snapshot == null ? DangerLevel.None : snapshot.Danger)
                             + "]" + (reading.WeightsDegenerate ? " WAGI ZDEGENEROWANE" : string.Empty);
 
@@ -138,6 +198,13 @@ namespace ProceduralNarrator.Core.Tension
         /// napad jednoczesnie powala kolonistow I podnosi DangerRating. Maksimum mowi
         /// "jest tak zle, jak najgorszy z sygnalow" i jest wobec tego odporne na korelacje
         /// miedzy nimi, ktorej i tak nie znamy.
+        ///
+        /// LICZNIK I MIANOWNIK Z TEJ SAMEJ LISTY: WorldSnapshot.AcuteDownedCount i ColonistsOnMap
+        /// licza tych samych pionkow (kolonisci obecni na mapie, bez niemowlat). Wczesniej mianownik
+        /// bral ColonistCount - z pionkami w kriokomorach, noszonymi i w transporterach - a licznik
+        /// tylko obecnych, wiec ulamek byl zanizony dokladnie wtedy, gdy czesc kolonii byla poza
+        /// gra. Ten sam mianownik czyta CrisisDetector, wiec przy rownych ulamkach kryzys skrajny
+        /// zachodzi dokladnie wtedy, gdy ten czlon osiaga nasycenie po stronie powalonych.
         /// </summary>
         public static float Situational(WorldSnapshot snapshot, TensionParams p)
         {
@@ -151,8 +218,8 @@ namespace ProceduralNarrator.Core.Tension
             // Mianownik: ilu kolonistow musi lezec, zeby uznac sytuacje za skrajna.
             // Podloga 1 chroni przed dzieleniem przez zero w kolonii jednoosobowej
             // (i przed sytuacja, w ktorej snapshot nie zdazyl policzyc kolonistow).
-            float progPowalonych = Math.Max(1f, par.downedFractionForMax * Math.Max(1, snapshot.ColonistCount));
-            float powaleni = Curves.Ramp(snapshot.DownedColonistCount, 0f, progPowalonych);
+            float progPowalonych = Math.Max(1f, par.downedFractionForMax * Math.Max(1, snapshot.ColonistsOnMap));
+            float powaleni = Curves.Ramp(snapshot.AcuteDownedCount, 0f, progPowalonych);
 
             // DangerLevel None/Low/High -> 0 / 0.5 / 1.0
             float zagrozenie = Curves.Clamp01((int)snapshot.Danger / 2f);
@@ -161,14 +228,9 @@ namespace ProceduralNarrator.Core.Tension
         }
 
         /// <summary>
-        /// Dni gry od ostatniej EMISJI. Liczone z historii, a nie ze snapshotu, mimo ze
-        /// WorldSnapshot.DaysSinceLastEvent podaje to samo: rdzen ma byc testowalny bez
-        /// adaptera, a adapter jest jedyna warstwa, ktorej walidator offline nie widzi.
-        ///
-        /// Pusta historia -> zwracamy 0, czyli BRAK zaniku. Uzasadnienie: przy pustej historii
-        /// rytm i tak jest zerowy, wiec czlon narracyjny wychodzi 0 niezaleznie od mnoznika.
-        /// Zwrocenie duzej liczby dawaloby ten sam wynik dluzsza droga, ale slad pokazywalby
-        /// mylacy "zanik po 300 dniach" w dniu trzecim rozgrywki.
+        /// Dni gry od najnowszego wpisu - WYLACZNIE do sladu. Do polerowania etapu 4 byl to
+        /// mnoznik calego czlonu narracyjnego; dzis kazdy wpis starzeje sie wlasnym wiekiem.
+        /// Pusta historia -> 0, zeby slad nie pokazywal mylacego "300 dni" w trzecim dniu gry.
         /// </summary>
         private static float DaysSinceNewest(EventHistory history, float gameDay)
         {
@@ -186,6 +248,11 @@ namespace ProceduralNarrator.Core.Tension
                 return 0f;
             }
             return v;
+        }
+
+        private static string F3(float v)
+        {
+            return v.ToString("0.000", CultureInfo.InvariantCulture);
         }
     }
 }

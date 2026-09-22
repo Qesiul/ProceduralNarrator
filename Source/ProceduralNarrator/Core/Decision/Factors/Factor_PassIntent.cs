@@ -7,13 +7,15 @@ namespace ProceduralNarrator.Core.Decision
     /// Czynnik zgodnosci PASS-a z intencja narratora: intencja "oddech" (Breathe) premiuje cisze,
     /// intencja "eskaluj" (Escalate) ja wyklucza, "utrzymaj" (Hold) jest neutralna.
     ///
-    /// W KROKU 3 WAGA TEGO CZYNNIKA WYNOSI 0, A CZYNNIK MIMO TO JEST LICZONY I TRAFIA DO SLADU.
-    /// Powod jest formatowy, nie merytoryczny: linia badawcza [PN-DATA] ma miec IDENTYCZNY zestaw
-    /// i identyczna kolejnosc kolumn w kroku 3 i w kroku 4, zeby skrypty agregujace w Pythonie
-    /// nie wymagaly przepisania po wpieciu krzywej dramaturgicznej. Waga 0 jest w normalizacji
-    /// dokladnie neutralna (wnosi 0 do licznika i 0 do mianownika), wiec nie rozciencza wyniku -
-    /// czynnik mozna wpiac juz dzis bez zadnego wplywu na decyzje. Dokladnie tak samo traktowany
-    /// jest Factor_IntentAlignment po stronie zdarzen.
+    /// STAN OD KROKU 4: waga 0.25 w &lt;pass&gt; (suma wag PASS = 1.0), wartosci FitFor: Escalate 0.0,
+    /// Hold 0.5, Breathe 1.0 - a Breathe wymuszone regula kryzysu skrajnego daje tu takze 1.0.
+    /// To jest KANAL, ktorym krzywa dramaturgiczna steruje tempem: intencja podnosi albo obniza
+    /// uzytecznosc ciszy, a brama porownuje ja z najlepszym zdarzeniem. Pelny wzor:
+    ///     U_pass = (wR * r + wB * 1 + wI * FitFor(intencja)) / (wR + wB + wI)
+    ///
+    /// HISTORIA (krok 3): waga wynosila 0, a czynnik mimo to byl liczony i trafial do sladu, zeby
+    /// linia [PN-DATA] miala ten sam zestaw kolumn w kroku 3 i 4. Waga 0 jest w normalizacji
+    /// dokladnie neutralna (0 do licznika i 0 do mianownika), wiec wpiecie nie zmienialo decyzji.
     ///
     /// UWAGA O PRZESTRZENIACH NAZW WAG: nazwa "intentAlignment" wystepuje ZAROWNO w ScoringWeights
     /// (czynniki zdarzeniowe), JAK I w PassScoringParams (czynniki PASS). To jest celowe i poprawne,

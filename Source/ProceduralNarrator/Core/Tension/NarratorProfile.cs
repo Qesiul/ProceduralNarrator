@@ -47,20 +47,40 @@ namespace ProceduralNarrator.Core.Tension
         public TensionParams Tension = new TensionParams();
 
         /// <summary>
+        /// Identyfikator profilu awaryjnego. Ta sama wartosc trafia do kolumny "profil" danych
+        /// badawczych, gdy narrator liczy na profilu awaryjnym - dane maja nazywac profil
+        /// FAKTYCZNIE uzyty, a nie ten, ktory zapis gry wskazuje, ale ktorego juz nie ma.
+        /// </summary>
+        public const string FallbackId = "PN_Profil_Awaryjny";
+
+        /// <summary>
         /// Profil awaryjny: uzywany, gdy katalog profili jest pusty albo gdy zapis wskazuje
         /// profil, ktorego juz nie ma (np. po usunieciu go z XML miedzy sesjami).
-        /// Odpowiada domyslnym wartosciom z kodu, wiec narrator dziala dalej sensownie.
+        ///
+        /// Wagi pochodza z podanego zestawu (w grze: blok &lt;weights&gt; StorytellerDefa), a przy
+        /// null - z inicjalizatorow ScoringWeights. Krzywa zawsze z TensionParams.Default().
+        /// Kopia, nie referencja: zestaw wag zyje w Defie wspoldzielonym przez caly proces.
+        /// Przed ta zmiana blok &lt;weights&gt; byl deklarowany jako "wagi awaryjne", ale sciezka
+        /// awaryjna go nie czytala - konfiguracja widoczna w logu, bez zadnego wplywu.
         /// </summary>
-        public static NarratorProfile Fallback()
+        public static NarratorProfile Fallback(ScoringWeights weights)
         {
             return new NarratorProfile
             {
-                Id = "PN_Profil_Awaryjny",
-                Label = "awaryjny (domyslne wartosci z kodu)",
+                Id = FallbackId,
+                Label = weights == null
+                    ? "awaryjny (wagi i krzywa domyslne z kodu)"
+                    : "awaryjny (wagi z bloku <weights>, krzywa domyslna z kodu)",
                 SelectionWeight = 0f,
-                Weights = new ScoringWeights(),
+                Weights = weights == null ? new ScoringWeights() : weights.Clone(),
                 Tension = TensionParams.Default()
             };
+        }
+
+        /// <summary>Profil awaryjny bez zestawu wag - wszystko z wartosci domyslnych kodu.</summary>
+        public static NarratorProfile Fallback()
+        {
+            return Fallback(null);
         }
 
         public override string ToString()

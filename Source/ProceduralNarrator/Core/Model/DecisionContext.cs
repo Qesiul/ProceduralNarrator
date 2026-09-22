@@ -21,10 +21,9 @@ namespace ProceduralNarrator.Core.Model
         public WorldSnapshot Snapshot;
 
         /// <summary>
-        /// Intencja wyznaczona przez krzywa dramaturgiczna. W kroku 3 zawsze Hold -
-        /// ustawia ja jedno miejsce (BuildRecipe w warstwie integracji), a krok 4 podmieni
-        /// stala na wyjscie krzywej. Czynniki zgodnosci z intencja sa juz wpiete z waga 0,
-        /// zeby format logu badawczego nie zmienil sie miedzy krokiem 3 a 4.
+        /// Intencja wyznaczona przez krzywa dramaturgiczna (IntentSelector), ewentualnie
+        /// nadpisana regula kryzysu skrajnego (IntentSelector.ApplyCrisis). Domyslne Hold
+        /// dotyczy wylacznie kontekstow budowanych bez warstwy planowania (testy kompozycji).
         /// </summary>
         public Intent Intent = Intent.Hold;
 
@@ -75,6 +74,17 @@ namespace ProceduralNarrator.Core.Model
         public float Tension;
 
         /// <summary>
+        /// Czy w tej turze zachodzi KRYZYS SKRAJNY (CrisisDetector). Czyta go straznik serii
+        /// ciszy: w kryzysie narrator nie jest zmuszany do dzialania po serii PASS-ow, a cisza
+        /// wybrana w kryzysie nie zuzywa limitu swiadomego milczenia (patrz TurnResult).
+        ///
+        /// Pole w kontekscie, a nie parametr polityki, bo SelectionPolicy celowo nie widzi stanu
+        /// swiata ani profilu - predykat liczy sie RAZ, wyzej, a tu trafia jego wynik.
+        /// Domyslne false: kontekst zbudowany bez warstwy planowania zachowuje sie jak przedtem.
+        /// </summary>
+        public bool ExtremeCrisis;
+
+        /// <summary>
         /// Jedyny poprawny sposob zbudowania kontekstu: numer decyzji bierze sie WYLACZNIE
         /// z licznika historii, wiec dwa zrodla tej liczby nie moga sie rozjechac.
         ///
@@ -92,6 +102,13 @@ namespace ProceduralNarrator.Core.Model
         public static DecisionContext Create(WorldSnapshot snapshot, EventHistory history, float gameDay,
                                              Intent intent, float targetIntensity, float tension)
         {
+            return Create(snapshot, history, gameDay, intent, targetIntensity, tension, false);
+        }
+
+        public static DecisionContext Create(WorldSnapshot snapshot, EventHistory history, float gameDay,
+                                             Intent intent, float targetIntensity, float tension,
+                                             bool extremeCrisis)
+        {
             var context = new DecisionContext();
             context.Snapshot = snapshot;
             // Historia pusta zamiast null: Core nie rzuca wyjatkami w sciezce decyzyjnej,
@@ -101,6 +118,7 @@ namespace ProceduralNarrator.Core.Model
             context.Intent = intent;
             context.TargetIntensity = targetIntensity;
             context.Tension = tension;
+            context.ExtremeCrisis = extremeCrisis;
             context.DecisionIndex = context.History.DecisionCount;
             return context;
         }
@@ -113,6 +131,10 @@ namespace ProceduralNarrator.Core.Model
               .Append(" intencja=").Append(Intent)
               .Append(" napiecie=").Append(Tension.ToString("0.000", CultureInfo.InvariantCulture))
               .Append(" docelowaMoc=").Append(TargetIntensity.ToString("0.00", CultureInfo.InvariantCulture));
+            if (ExtremeCrisis)
+            {
+                sb.Append(" KRYZYS_SKRAJNY");
+            }
 
             // Historia idzie do logu przy KAZDEJ decyzji (pole "wpisow" w Summary). To jedyny
             // sposob, zeby zauwazyc utrate pamieci narratora - np. przy przejsciu miedzy mapami

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
@@ -72,7 +73,8 @@ namespace ProceduralNarrator.Integration.Persistence
         /// Po co: linia [PN-SESSION] w pliku danych oznacza URUCHOMIENIE PROCESU, a nie rozgrywke.
         /// Jedna rozgrywka grana na raty rozpada sie wiec w danych na N nieodroznialnych sesji
         /// i nie da sie jej zszyc w Pythonie. runId jest kolumna w kazdym wierszu [PN-DATA],
-        /// wiec grupowanie po rozgrywce staje sie trywialne.
+        /// wiec grupowanie po rozgrywce jest proste - z jednym zastrzezeniem: wczytanie zapisu
+        /// ROZWIDLA rozgrywke pod tym samym runId (regula parsera przy PNLog.Load).
         ///
         /// NIE WCHODZI DO ZADNEGO ZIARNA ANI WZORU SCORINGU - jest wylacznie etykieta danych.
         /// Wymaganie odtwarzalnosci z sekcji 11 zostaje przez to nietkniete. Z tego samego powodu
@@ -128,10 +130,27 @@ namespace ProceduralNarrator.Integration.Persistence
             get { return histories == null ? 0 : histories.Count; }
         }
 
-        /// <summary>defName przydzielonego profilu. Pusty tylko zanim padnie FinalizeInit.</summary>
+        /// <summary>
+        /// defName profilu ZAPISANY w pamieci rozgrywki. Pusty zanim padnie StartedNewGame/LoadedGame
+        /// albo gdy katalog profili byl pusty przy przydziale. To NIE musi byc profil, na ktorym
+        /// narrator liczy - patrz EffectiveProfileId.
+        /// </summary>
         public string ProfileId
         {
             get { return profileId; }
+        }
+
+        /// <summary>
+        /// Profil FAKTYCZNIE uzyty: zapisany, jesli Def istnieje, inaczej profil awaryjny.
+        /// Do danych badawczych idzie ta wartosc - zapisana nazwa przy nieistniejacym Defie
+        /// opisywalaby narratora, ktory tej rozgrywki nie prowadzi.
+        /// </summary>
+        public string EffectiveProfileId
+        {
+            get
+            {
+                return NarratorProfileCatalog.ById(profileId) != null ? profileId : NarratorProfile.FallbackId;
+            }
         }
 
         /// <summary>
@@ -142,6 +161,15 @@ namespace ProceduralNarrator.Integration.Persistence
         public NarratorProfile ActiveProfile()
         {
             return NarratorProfileCatalog.Resolve(profileId);
+        }
+
+        /// <summary>
+        /// Jak wyzej, z jawnie podanymi wagami profilu awaryjnego - comp podaje blok &lt;weights&gt;
+        /// wlasnego StorytellerDefa, zeby sciezka awaryjna liczyla dokladnie na tym, co deklaruje.
+        /// </summary>
+        public NarratorProfile ActiveProfile(ScoringWeights fallbackWeights)
+        {
+            return NarratorProfileCatalog.Resolve(profileId, fallbackWeights);
         }
 
         /// <summary>
@@ -159,7 +187,12 @@ namespace ProceduralNarrator.Integration.Persistence
             PNLog.Decision("PROFIL NARRATORA WYMUSZONY recznie (akcja debugowa): "
                            + (string.IsNullOrEmpty(poprzedni) ? "(brak)" : poprzedni)
                            + " -> " + (string.IsNullOrEmpty(profileId) ? "(brak)" : profileId)
-                           + ". Pamiec zdarzen NIE zostala skasowana, wiec oba profile widza te sama historie.");
+                           + ". Pamiec zdarzen NIE zostala skasowana, wiec oba profile widza te sama historie. "
+                           + "UWAGA: zapis gry po tej akcji UTRWALA wymuszony profil w tej rozgrywce.");
+            PNLog.Reset("wymusProfil",
+                        "profilPoprzedni=" + (string.IsNullOrEmpty(poprzedni) ? "?" : poprzedni)
+                        + "; profilNowy=" + (string.IsNullOrEmpty(profileId) ? "?" : profileId)
+                        + "; mapy=" + OpisMap());
         }
 
         /// <summary>Widok do akcji debugowych i diagnostyki. Nie mutowac przez niego pamieci.</summary>
@@ -197,19 +230,118 @@ namespace ProceduralNarrator.Integration.Persistence
         /// <summary>
         /// Kasuje CALA pamiec narratora. Uzywane przez akcje debugowa.
         ///
-        /// Po co to w ogole istnieje: waniliowy symulator DebugLogTestFutureIncidents przechodzi
-        /// przez pelny nasz kod decyzyjny, wiec MUTUJE te pamiec - 100 dni symulacji zostawia
-        /// kilkadziesiat fikcyjnych decyzji. Zanim pamiec byla trwala, zanieczyszczenie ginelo
-        /// razem z procesem. Teraz zapisanie gry po eksperymencie utrwaliloby je na stale,
-        /// wiec musi istniec sposob cofniecia tego inny niz "pamietaj, zeby nie zapisac".
+        /// Powstalo, bo waniliowy symulator DebugLogTestFutureIncidents przechodzil przez pelny
+        /// nasz kod decyzyjny i MUTOWAL te pamiec - 100 dni symulacji zostawialo kilkadziesiat
+        /// fikcyjnych decyzji, ktore zapis gry utrwalal na stale. Od polerowania etapu 4 comp
+        /// odrzuca wywolania spoza zegara gry (straznik zakotwiczony w ZegarGry ponizej), a do
+        /// testow sluzy "PN: test przyszlych incydentow" ze zrzutem stanu. Akcja zostaje dla
+        /// zapisow skazonych przed ta zmiana.
         /// </summary>
         public void ClearAll()
         {
             int map = histories == null ? 0 : histories.Count;
+            // Znacznik PRZED kasowaniem, zeby niosl stan, ktory przepada (uid:decyzji).
+            PNLog.Reset("skasujPamiec", "map=" + map.ToString(CultureInfo.InvariantCulture) + "; mapy=" + OpisMap());
             histories = new Dictionary<int, EventHistory>();
             PNLog.Decision("PAMIEC NARRATORA SKASOWANA recznie (akcja debugowa). Zwolniono map: "
                            + map.ToString(CultureInfo.InvariantCulture)
                            + ". Swiezosc, kontrast i gestosc PASS licza sie od zera.");
+        }
+
+        // =====================================================================================
+        //  EKSPERYMENT SYMULACYJNY - podmiana pamieci na czas akcji "PN: test przyszlych incydentow"
+        // =====================================================================================
+
+        /// <summary>
+        /// Zrzut pamieci na czas eksperymentu. Oryginalny slownik jest ODKLADANY (nie kopiowany),
+        /// a kazde ramie dostaje GLEBOKA kopie odbudowana ta sama sciezka co zapis i wczytanie
+        /// gry (ToPersistableLines -> RestoreFromLines). Ramie nie ma wiec jak dotknac prawdziwej
+        /// pamieci (inny slownik, inne obiekty), a kazdy eksperyment WYKONUJE sciezke kodeka na
+        /// zywych danych i wykrywa linie odrzucone przy odbudowie. NIE weryfikuje natomiast
+        /// wiernosci kodeka: ramiona i odcisk pamieci przechodza przez Encode, wiec strata po
+        /// stronie zapisu (np. zle kodowana walencja) bylaby w nich identyczna i niewidoczna.
+        /// Wiernosc pole po polu sprawdza walidator offline (TEST 12, kodek pamieci).
+        /// </summary>
+        internal sealed class MemoryCheckpoint
+        {
+            internal Dictionary<int, EventHistory> Original;
+            internal string ProfileId;
+            internal Dictionary<int, MapMemoryRecord> Frozen;
+        }
+
+        private MemoryCheckpoint eksperyment;
+
+        internal bool InExperiment
+        {
+            get { return eksperyment != null; }
+        }
+
+        internal MemoryCheckpoint BeginExperiment()
+        {
+            if (eksperyment != null)
+            {
+                throw new InvalidOperationException("Eksperyment na pamieci narratora juz trwa.");
+            }
+
+            var c = new MemoryCheckpoint
+            {
+                Original = histories ?? new Dictionary<int, EventHistory>(),
+                ProfileId = profileId,
+                Frozen = new Dictionary<int, MapMemoryRecord>()
+            };
+
+            foreach (KeyValuePair<int, EventHistory> para in c.Original)
+            {
+                if (para.Value == null)
+                {
+                    continue;
+                }
+                c.Frozen[para.Key] = new MapMemoryRecord
+                {
+                    decisionCount = para.Value.DecisionCount,
+                    deliberateSilenceStreak = para.Value.DeliberateSilenceStreak,
+                    lines = para.Value.ToPersistableLines()
+                };
+            }
+
+            eksperyment = c;
+            return c;
+        }
+
+        /// <summary>
+        /// Instaluje swieza kopie zamrozonej pamieci i profil ramienia. Zwraca liczbe linii
+        /// odrzuconych przy odbudowie - rozna od zera znaczy, ze ramie NIE startuje z tej samej
+        /// pamieci co gra, i wolajacy ma to zglosic jako blad izolacji.
+        /// </summary>
+        internal int InstallExperimentArm(MemoryCheckpoint c, string armProfileId)
+        {
+            var kopia = new Dictionary<int, EventHistory>();
+            int odrzuconych = 0;
+            foreach (KeyValuePair<int, MapMemoryRecord> para in c.Frozen)
+            {
+                var h = new EventHistory();
+                odrzuconych += h.RestoreFromLines(para.Value.decisionCount, para.Value.deliberateSilenceStreak,
+                                                  para.Value.lines);
+                kopia[para.Key] = h;
+            }
+            histories = kopia;
+            profileId = string.IsNullOrEmpty(armProfileId) ? c.ProfileId : armProfileId;
+            return odrzuconych;
+        }
+
+        /// <summary>
+        /// Przywraca oryginalna pamiec i profil. Samo przypisanie referencji - nie ma jak zawiesc
+        /// w polowie. Idempotentne.
+        /// </summary>
+        internal void EndExperiment(MemoryCheckpoint c)
+        {
+            if (c == null || !ReferenceEquals(c, eksperyment))
+            {
+                return;
+            }
+            histories = c.Original;
+            profileId = c.ProfileId;
+            eksperyment = null;
         }
 
         public override void ExposeData()
@@ -223,7 +355,19 @@ namespace ProceduralNarrator.Integration.Persistence
 
             Scribe_Values.Look(ref memoryVersion, "wersjaPamieci", 0, true);
             Scribe_Values.Look(ref runId, "runId", string.Empty, true);
-            Scribe_Values.Look(ref profileId, "profil", string.Empty, true);
+
+            // PAS BEZPIECZENSTWA: zapis w trakcie eksperymentu (nie powinien sie zdarzyc - akcja jest
+            // synchroniczna, autozapis nie wpadnie w jej srodek) utrwala ORYGINALNY profil i pamiec,
+            // nigdy stan ramienia.
+            if (Scribe.mode == LoadSaveMode.Saving && eksperyment != null)
+            {
+                string profilOryginalny = eksperyment.ProfileId;
+                Scribe_Values.Look(ref profilOryginalny, "profil", string.Empty, true);
+            }
+            else
+            {
+                Scribe_Values.Look(ref profileId, "profil", string.Empty, true);
+            }
 
             // LISTY ROBOCZE SA TU NIEPOTRZEBNE i to nie jest niedopatrzenie.
             // Scribe_Collections.Look przesuwa budowanie slownika na faze ResolvingCrossRefs
@@ -264,6 +408,14 @@ namespace ProceduralNarrator.Integration.Persistence
                 return;
             }
 
+            // W trakcie eksperymentu zapisujemy ORYGINAL, nie kopie ramienia.
+            Dictionary<int, EventHistory> zrodlo = eksperyment != null ? eksperyment.Original : histories;
+            if (eksperyment != null)
+            {
+                PNLog.Error("Zapis gry W TRAKCIE eksperymentu symulacyjnego - utrwalono oryginalna pamiec, "
+                            + "nie stan ramienia. To nie powinno sie zdarzyc (akcja jest synchroniczna).");
+            }
+
             List<Map> mapy = Current.Game != null ? Current.Game.Maps : null;
 
             // Sprzatamy WYLACZNIE wtedy, gdy naprawde widzimy jakies mapy. Pusta lista map
@@ -273,7 +425,7 @@ namespace ProceduralNarrator.Integration.Persistence
             bool moznaSprzatac = mapy != null && mapy.Count > 0;
             int sierot = 0;
 
-            foreach (KeyValuePair<int, EventHistory> para in histories)
+            foreach (KeyValuePair<int, EventHistory> para in zrodlo)
             {
                 if (para.Value == null)
                 {
@@ -288,7 +440,7 @@ namespace ProceduralNarrator.Integration.Persistence
 
                 MapMemoryRecord rekord = new MapMemoryRecord();
                 rekord.decisionCount = para.Value.DecisionCount;
-                rekord.consecutivePassCount = para.Value.ConsecutivePassCount;
+                rekord.deliberateSilenceStreak = para.Value.DeliberateSilenceStreak;
                 rekord.lines = para.Value.ToPersistableLines();
                 zapis[para.Key] = rekord;
             }
@@ -321,7 +473,7 @@ namespace ProceduralNarrator.Integration.Persistence
 
                 EventHistory h = new EventHistory();
                 odrzuconychLinii += h.RestoreFromLines(para.Value.decisionCount,
-                                                       para.Value.consecutivePassCount,
+                                                       para.Value.deliberateSilenceStreak,
                                                        para.Value.lines);
                 histories[para.Key] = h;
             }
@@ -343,12 +495,46 @@ namespace ProceduralNarrator.Integration.Persistence
             return false;
         }
 
+        // =====================================================================================
+        //  ZEGAR GRY - kotwica straznika wywolan spoza zegara (StorytellerComp_Generative)
+        // =====================================================================================
+
         /// <summary>
-        /// Wolane w OBU sciezkach - i przy nowej grze, i przy wczytaniu - wiec to jedyne miejsce,
-        /// w ktorym straznik null i kanarek nie musza byc duplikowane.
+        /// Tick ostatniego PRAWDZIWEGO przebiegu TickManager.DoSingleTick, znany dopiero po
+        /// pierwszym ticku albo po FinalizeInit. int.MinValue = nieznany. NIE jest utrwalany.
+        ///
+        /// Zdekompilowane DoSingleTick: ticksGameInt++ -&gt; ... -&gt; Find.Storyteller.StorytellerTick()
+        /// -&gt; ... -&gt; GameComponentUtility.GameComponentTick(). Prawdziwe wywolanie narratora
+        /// w ticku T widzi wiec zegar rowny T-1 (a przy DebugSettings.fastEcology, gdzie tick
+        /// skacze o 2000, rowny T-2000). Petle debugowe (waniliowe "future incidents" i pokrewne)
+        /// przestawiaja zegar przez DebugSetTicksGame BEZ DoSingleTick, wiec ten warunek nigdy
+        /// u nich nie zachodzi - takze przed minDaysPassed i przy pauzie na ticku siatki, gdzie
+        /// poprzednia, czysto heurystyczna wersja straznika zawodzila.
+        /// </summary>
+        private int zegarGry = int.MinValue;
+
+        internal int ZegarGry
+        {
+            get { return zegarGry; }
+        }
+
+        public override void GameComponentTick()
+        {
+            zegarGry = Find.TickManager.TicksGame;
+        }
+
+        /// <summary>
+        /// Wolane w OBU sciezkach - przy nowej grze i przy wczytaniu - PRZED StartedNewGame
+        /// i LoadedGame (dekompilacja Verse.Game: InitNewGame i LoadGame). Robi to, co ma byc
+        /// wspolne: zegar gry, straznik null kolekcji, runId i ostrzezenie o wersji formatu.
+        /// Kanarek [PN-LOAD] CELOWO nie idzie stad, tylko z tamtych hookow - tu nie da sie odroznic
+        /// nowej gry od wczytania.
         /// </summary>
         public override void FinalizeInit()
         {
+            // Po wczytaniu gra stoi na ticku zapisu; pierwszy prawdziwy DoSingleTick to tick+1.
+            zegarGry = Find.TickManager != null ? Find.TickManager.TicksGame : int.MinValue;
+
             if (histories == null)
             {
                 histories = new Dictionary<int, EventHistory>();
@@ -374,7 +560,10 @@ namespace ProceduralNarrator.Integration.Persistence
                            + ". Wpisy nie do odczytania zostaly pominiete pojedynczo.");
             }
 
-            memoryVersion = MemoryFormatVersion;
+            // memoryVersion ZOSTAJE wartoscia Z ZAPISU (0 przy nowej grze i przy zapisie bez
+            // pamieci) - czyta ja kanarek [PN-LOAD]. Wczesniej nadpisywano ja tutaj biezaca wersja,
+            // wiec kanarek pokazywal zawsze 1 i pole nie nioslo zadnej informacji. Przed zapisem
+            // wersje ustawia BuildSaveBuffer.
         }
 
         /// <summary>
@@ -419,12 +608,18 @@ namespace ProceduralNarrator.Integration.Persistence
         /// ZIARNO Z runId, A NIE Z Verse.Rand. Waniliowy generator jest wspoldzielony z cala
         /// gra, wiec pobranie z niego jednej liczby przesunelo by KAZDY pozniejszy losowy wynik
         /// w tej sesji - od generacji mapy po zachowania pionkow. Wyprowadzenie ziarna z runId
-        /// daje przy okazji to, czego wymaga sekcja 11: ta sama rozgrywka zawsze dostaje ten
-        /// sam profil, takze po wczytaniu zapisu sprzed przydzialu.
+        /// daje przy okazji to, czego wymaga sekcja 11: rozgrywka z NADANYM runId (zapis z kroku 6
+        /// albo pozniejszy) zawsze dostaje ten sam profil, takze po wczytaniu zapisu sprzed
+        /// przydzialu. Zapis BEZ bloku pamieci dostaje przy kazdym wczytaniu nowy runId (FinalizeInit),
+        /// wiec i nowy profil - dopoki nie zostanie zapisany; w danych jest to wtedy za kazdym razem
+        /// osobna rozgrywka, wiec profil zostaje spojny ze swoim runId.
+        ///
+        /// Hash przez GenText.StableStringHash, a nie string.GetHashCode: ten sam co w eksperymencie
+        /// symulacyjnym i stabilny niezaleznie od implementacji srodowiska uruchomieniowego.
         /// </summary>
         private void PrzydzielProfil(string powod)
         {
-            int ziarno = SeededRandom.Avalanche(runId == null ? 0 : runId.GetHashCode());
+            int ziarno = SeededRandom.Avalanche(runId == null ? 0 : GenText.StableStringHash(runId));
             NarratorProfileDef wybrany = NarratorProfileCatalog.PickWeighted(ziarno);
 
             if (wybrany == null)
@@ -469,8 +664,8 @@ namespace ProceduralNarrator.Integration.Persistence
                 decyzji += para.Value.DecisionCount;
             }
 
-            PNLog.Load(runId, zrodlo, profileId, histories.Count, wpisow, decyzji,
-                       odrzuconychLinii, memoryVersion);
+            PNLog.Load(runId, zrodlo, EffectiveProfileId, profileId, histories.Count, wpisow, decyzji,
+                       odrzuconychLinii, memoryVersion, OpisMap());
 
             if (odrzuconychLinii > 0)
             {
@@ -478,6 +673,29 @@ namespace ProceduralNarrator.Integration.Persistence
                            + odrzuconychLinii.ToString(CultureInfo.InvariantCulture)
                            + " linii nie do sparsowania. Reszta pamieci zostala zachowana.");
             }
+        }
+
+        /// <summary>
+        /// Stan pamieci per mapa w formacie "uid:decyzji,uid:decyzji" (rosnaco po uid) - pole
+        /// "mapy" linii [PN-LOAD] i [PN-RESET]. Suma decyzji po mapach nie wystarcza: regula
+        /// uniewazniania porzuconej galezi dziala per mapa.
+        /// </summary>
+        private string OpisMap()
+        {
+            if (histories == null || histories.Count == 0)
+            {
+                return string.Empty;
+            }
+            var klucze = new List<int>(histories.Keys);
+            klucze.Sort();
+            var czesci = new List<string>(klucze.Count);
+            for (int i = 0; i < klucze.Count; i++)
+            {
+                EventHistory h = histories[klucze[i]];
+                czesci.Add(klucze[i].ToString(CultureInfo.InvariantCulture) + ":"
+                           + (h == null ? 0 : h.DecisionCount).ToString(CultureInfo.InvariantCulture));
+            }
+            return string.Join(",", czesci.ToArray());
         }
     }
 }

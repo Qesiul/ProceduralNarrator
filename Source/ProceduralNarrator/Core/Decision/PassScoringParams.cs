@@ -31,8 +31,12 @@ namespace ProceduralNarrator.Core.Decision
     ///   E[D] w stanie ustalonym = halfLifeDays / (mtbDays * ln 2) = 5 / (2.5 * 0.6931) = 2.886
     ///   densityFloor       = 0.52 * E[D] = 1.5  - ponizej sredniej cisza nie ma czego rownowazyc
     ///   densitySaturation  = 1.56 * E[D] = 4.5  - wyraznie powyzej sredniej, okolo 10-12% tur
-    ///   weightRestraint / weightBaseline = 0.75 / 0.25, suma wag = 1.0, wiec waga bazowa
-    ///   czyta sie WPROST jako podloga uzytecznosci ciszy (0.25).
+    ///   weightRestraint / weightBaseline / weightIntentAlignment = 0.55 / 0.20 / 0.25 (od kroku 4;
+    ///   w kroku 3 bylo 0.75 / 0.25 / 0), suma wag = 1.0, wiec waga bazowa czyta sie WPROST
+    ///   jako podloga uzytecznosci ciszy (0.20). Renormalizacja do sumy 1.0 byla wymuszona:
+    ///   dolozenie wagi intencji bez niej po cichu obnizyloby podloge.
+    ///   Pelny wzor: U_pass = (wR * r + wB * 1 + wI * FitFor(intencja)) / suma wag, gdzie
+    ///   FitFor: Escalate 0.0, Hold 0.5, Breathe (takze wymuszone kryzysem) 1.0.
     /// </summary>
     public class PassScoringParams
     {
@@ -114,7 +118,7 @@ namespace ProceduralNarrator.Core.Decision
         }
 
         /// <summary>
-        /// PODLOGA uzytecznosci PASS: w_baseline / suma wag (0.25 przy domyslnych wartosciach).
+        /// PODLOGA uzytecznosci PASS: w_baseline / suma wag (0.20 przy domyslnych wartosciach).
         /// Bierze sie stad, ze czynnik bazowy ma stala wartosc 1.0, a pozostale dwa moga spasc
         /// do zera (gestosc ponizej progu, intencja Escalate). Ponizej tej wartosci cisza
         /// nie zejdzie nigdy.

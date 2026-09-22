@@ -5,6 +5,7 @@ using System.Text;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Integration.Persistence;
 using RimWorld;
 using Verse;
@@ -33,6 +34,10 @@ namespace ProceduralNarrator.Integration
         private const string DataPrefix = "[PN-DATA] ";
         private const string ColumnsPrefix = "[PN-DATA-COLS] ";
         private const string LoadPrefix = "[PN-LOAD] ";
+        private const string ConfigPrefix = "[PN-CONFIG] ";
+        private const string ResetPrefix = "[PN-RESET] ";
+        private const string WarnDataPrefix = "[PN-WARN] ";
+        private const string ErrorDataPrefix = "[PN-ERR] ";
 
         /// <summary>
         /// Wersja formatu linii maszynowej. PODBIC przy KAZDEJ zmianie zawartosci DataColumns -
@@ -59,7 +64,100 @@ namespace ProceduralNarrator.Integration
         /// tego rozwarstwic - losowy przydzial stalby sie niekontrolowana zmienna w ewaluacji.
         /// "napiecie" jest surowym wejsciem krzywej; bez niego z danych nie da sie odtworzyc,
         /// dlaczego narrator wybral akurat te intencje.
-        public const int DataFormatVersion = 4;
+        ///
+        /// WERSJA 5 (polerowanie warstwy decyzyjnej - piec zarzutow). Trzy nowe kolumny, jedna
+        /// przemianowana, jedna o zmienionym znaczeniu. Wszystko w JEDNYM podbiciu, celowo:
+        /// seria v4 jest zamykana, a nie laczona z v5, wiec skrypty agregujace przepisuje sie raz.
+        ///
+        ///   + "pRunda"        - prawdopodobienstwo zwyciezcy w LOSOWANIU WYBORU, ktore go
+        ///                       wskazalo, WARUNKOWE (przy juz rozstrzygnietej bramie). PUSTE,
+        ///                       gdy wyniku nie wyprodukowalo losowanie wyboru - czyli przy
+        ///                       kazdej ciszy. Wklad bramy ma wlasna kolumne pBrama i nie jest
+        ///                       tu niesiony drugi raz.
+        ///   ~ "p"             - ZNACZENIE DOPRECYZOWANE, nie zmienione: jest to udzial kandydata
+        ///                       w rozkladzie RUNDY PIERWSZEJ (po prewerifikacji, przed odmowami
+        ///                       w petli), a suma po calym rankingu wynosi dokladnie 1 (przedtem
+        ///                       1.15 przy jednej odmowie i 2.73, gdy silnik odrzucil wszystko).
+        ///                       NIE jest to prawdopodobienstwo, ze tura skonczy sie tym wynikiem -
+        ///                       takiej liczby w wierszu nie ma, bo zalezy od tego, czemu silnik
+        ///                       odmowi, a to wiadomo dopiero po fakcie.
+        ///   + "wspoldzielona" - czy potwierdzenie od silnika wspoldzielono z wariantem
+        ///                       o IDENTYCZNYCH parametrach wykonania (rozniacym sie samym opisem).
+        ///                       To oszczedzone pytanie, nie niepewnosc: warianty o INNYCH
+        ///                       parametrach sa odkladane do nastepnej tury, bo cache
+        ///                       CanFireNowSub (jeden wynik na IncidentDef i tick) nie pozwala
+        ///                       ich sprawdzic. Kolumna jest kanarkiem na rozjazd miedzy
+        ///                       IncidentParmsBuilder.Apply a ExecutionKey.
+        ///   + "odlozonych"    - ile wariantow odlozono do nastepnej tury (inne parametry
+        ///                       wykonania albo niedostepny werdykt).
+        ///   + "niedostepnych" - ile razy silnik NIE MOGL dac swiezego werdyktu, bo o dany payload
+        ///                       pytano juz w tym ticku. Wartosc > 0 znaczy, ze tura dzieli tick
+        ///                       z inna tura narratora - w grze zachodzi to przy WIECEJ NIZ JEDNEJ
+        ///                       kolonii, bo Storyteller.MakeIncidentsForInterval iteruje po
+        ///                       wszystkich celach. Kolumna jest jedynym miejscem, w ktorym to
+        ///                       widac; bez niej druga kolonia wygladala by na w pelni
+        ///                       zweryfikowana.
+        ///   + "odmowCzola"    - ile odmow silnika padlo PRZED brama, w prewerifikacji czola.
+        ///   + "pytanDoGry"    - ile razy w turze zapytano silnik o wykonalnosc. Budzet jest
+        ///                       WSPOLNY dla calej tury, wiec obowiazuje niezmiennik
+        ///                       pytanDoGry <= maxSelectionRounds.
+        ///   ~ "seriaPass" -> "ciszaSwiadoma" - licznik liczy WYLACZNIE cisze wybrana przez brame
+        ///                       (PassReason.Competitive). Cisza z przeszkody technicznej nie
+        ///                       zuzywa juz limitu swiadomego milczenia. NAZWA zmieniona razem
+        ///                       ze znaczeniem: stara nazwa przy nowej semantyce dawalaby kolumne
+        ///                       parsujaca sie w obu seriach i znaczaca w nich co innego.
+        ///   ~ "wSoftmaksie"   - liczy zdarzenia WYKONALNE, ktore stanely do wyboru. Kandydaci
+        ///                       odrzuceni przez silnik odpadaja z tej liczby, ale ZOSTAJA
+        ///                       w "kandydatow" (mianownik opisuje ture) i w rankingu ze sladem.
+        ///   ~ "losowan"       - odtad 1 + 2 * liczba rund, bo wybor zdarzenia jest dwustopniowy
+        ///                       (akcja, potem jej wariant). Przedtem 1 + liczba rund.
+        ///
+        /// WERSJA 6 (polerowanie etapu 4 - napiecie, kryzys, tryb danych). Jedno podbicie, bo
+        /// kolumna "napiecie" ZMIENILA ZNACZENIE, a v5 trafilo juz do pliku (33 wiersze
+        /// z symulatora debugowego) - zmiana w obrebie v5 zmieszalaby dwie formuly pod jedna
+        /// nazwa kolumny. Seria v5 jest zamykana, nie laczona.
+        ///
+        ///   + "tryb"          - "gra" albo "symulacja". Wiersze z wlasnej akcji debugowej
+        ///                       "PN: test przyszlych incydentow" ida do TEGO SAMEGO pliku, ale
+        ///                       odroznia je ta kolumna - analiza filtruje tryb == "gra".
+        ///   + "eksperyment"   - pusta w grze; w symulacji "idEksperymentu/ramie", zeby ramiona
+        ///                       jednego eksperymentu (profile, ramie kontrolne) dalo sie rozdzielic.
+        ///   ~ "napiecie"      - ZNACZENIE ZMIENIONE w OBU czlonach. Narracyjny liczy zanik KAZDEGO
+        ///                       wpisu osobno (wczesniej: wspolny mnoznik z wieku najnowszego wpisu).
+        ///                       Sytuacyjny liczy powalonych OSTRO (AcuteDownedCount zamiast kazdego
+        ///                       Downed) wsrod kolonistow OBECNYCH na mapie (ColonistsOnMap zamiast
+        ///                       ColonistCount). Progi profili NIE zostaly przestrojone - rozklad
+        ///                       intencji w v6 jest przesuniety ku Escalate (patrz CLAUDE.md).
+        ///   + "napiecieNarr", "napiecieSyt" - czlony napiecia. Bez nich rozkladu napiecia nie
+        ///                       dalo sie odtworzyc z pliku (wagi profilu sa w kolumnie profil).
+        ///   + "powalonych", "kolonistowNaMapie", "zagrozenie" - wejscia czlonu sytuacyjnego
+        ///                       i predykatu kryzysu. "powalonych" liczy powalonych OSTRO
+        ///                       (szok bolowy, krwawienie albo cokolwiek do opatrzenia - takze
+        ///                       choroba nigdy nieopatrzona albo na 3 h przed koncem opatrunku);
+        ///                       bez niemowlat, a stany trwale tylko wtedy, gdy pionek ma cos do
+        ///                       opatrzenia. Mianownik z tej samej listy pionkow obecnych na mapie.
+        ///   + "kryzys"        - czy zachodzil kryzys skrajny (regula wspolna dla profili: Breathe,
+        ///                       moc &lt;= 0, straznik serii zawieszony).
+        ///   + "straznikZawieszony" - seria ciszy byla na limicie W KRYZYSIE, wiec straznik nie
+        ///                       zmuszal do dzialania. Liczona NIEZALEZNIE od tego, czy pula miala
+        ///                       zdarzenia (passStlumiony wymaga niepustej puli) - obie kolumny sie
+        ///                       wykluczaja, ale nie sa swoim lustrem.
+        ///   ~ "odlozonych"    - liczy WYLACZNIE odlozenia sprzed decyzji. W v5 dochodzily do niej
+        ///                       odlozenia rodzenstwa PO przyjeciu zwyciezcy w petli rund (36 ze 115
+        ///                       w danych v5 z waniliowego symulatora), ktore niczego nie zmienialy.
+        ///   ~ "ciszaSwiadoma" - bez zmiany znaczenia kolumny (stan PRZED decyzja), ale cisza
+        ///                       wybrana w kryzysie skrajnym NIE podnosi juz licznika. Taka cisza ma
+        ///                       nadal powodPass=Competitive (brama ja wybrala) - metryki swiadomego
+        ///                       milczenia per profil trzeba wiec filtrowac po kryzys=false.
+        ///   ~ ksiegowanie ThreatBig przy wylaczonych duzych zagrozeniach (Peaceful, okno po
+        ///                       metalowym piekle): kandydaci odpadaja w sicie przed scoringiem, wiec
+        ///                       przechodza z odmowSilnika/odmowCzola/pytanDoGry do roznicy
+        ///                       wygenerowanych - kandydatow (i zmniejszaja mianownik "kandydatow").
+        ///
+        /// KONFIGURACJA W PLIKU DANYCH: od v6 po [PN-DATA-COLS] ida linie [PN-CONFIG] z efektywnymi
+        /// parametrami (configStamp, kryzys, PASS, profile). Bez nich wylaczenie reguly kryzysu albo
+        /// zmiana progu bylyby w danych niewidoczne - kolumna "kryzys" jest boolem.
+        public const int DataFormatVersion = 6;
 
         /// <summary>
         /// PELNA lista kolumn linii [PN-DATA] w ich OBOWIAZUJACEJ kolejnosci. Jedyne zrodlo
@@ -73,19 +171,22 @@ namespace ProceduralNarrator.Integration
         private static readonly string[] DataColumns =
         {
             // --- preambula: kto, kiedy, w jakim stanie pamieci (warstwa integracji) ---
-            "wersjaLogu", "runId", "profil", "tick", "dzien", "decyzjaNr", "mapa",
+            "wersjaLogu", "runId", "tryb", "eksperyment", "profil", "tick", "dzien", "decyzjaNr", "mapa",
             "histWpisow", "histDecyzji",
-            "napiecie", "intencja", "docelowaMoc", "odmowSilnika",
+            "napiecie", "napiecieNarr", "napiecieSyt", "powalonych", "kolonistowNaMapie", "zagrozenie",
+            "kryzys", "intencja", "docelowaMoc", "odmowSilnika", "odmowCzola", "pytanDoGry",
 
             // --- generowanie kandydatow (CandidateSet) ---
             "wygenerowanych", "budzet", "akcji", "limitNaAkcje", "przestrzen",
             "wyczerpano", "ucieto", "budzetPrzekroczony",
 
             // --- decyzja: scoring i polityka wyboru (NarratorDecision.ToDataFragment) ---
-            "decyzja", "wybor", "klucz", "wynik", "p", "best", "pasmo",
+            "decyzja", "wybor", "klucz", "wynik", "p", "pRunda",
+            "wspoldzielona", "odlozonych", "niedostepnych", "best", "pasmo",
             "kandydatow", "zawetowanych", "odrzuconeCutoff", "odrzuconePasmo",
             "wSoftmaksie", "losowan",
-            "powodPass", "passWynik", "pBrama", "passStlumiony", "gestosc", "seriaPass",
+            "powodPass", "passWynik", "pBrama", "passStlumiony", "straznikZawieszony",
+            "gestosc", "ciszaSwiadoma",
             "contextFit", "freshness", "dramaticContrast", "intentAlignment",
             "passRestraint", "passBaseline", "passIntent"
         };
@@ -93,21 +194,136 @@ namespace ProceduralNarrator.Integration
         private static bool formatVerified;
 
         // =====================================================================================
+        //  KONTEKST EKSPERYMENTU - wlasna akcja debugowa "PN: test przyszlych incydentow"
+        // =====================================================================================
+        //  W trakcie eksperymentu:
+        //    - wiersze [PN-DATA] ida do TEGO SAMEGO pliku co dane z gry, z tryb=symulacja
+        //      i niepusta kolumna eksperyment - jedna seria plikow, rozdzielana kolumna;
+        //    - linie CZYTELNE ([PN]) NIE ida do Verse.Log, tylko do osobnego pliku
+        //      PN_symulacje.log. Powod zmierzony: 33 decyzje symulatora daly 614 wiadomosci,
+        //      a Verse.Log wylacza sie po 1000 - trzy ramiona po 100 dni wygasilyby log calej gry
+        //      (takze innych modow) w jednym kliknieciu;
+        //    - Warn i Error nadal ida do Verse.Log, z prefiksem [PN][SYM], bo sa rzadkie i musza
+        //      byc widoczne tam, gdzie szuka sie bledow.
+        // =====================================================================================
+
+        private const string SimFileName = "PN_symulacje.log";
+        private static StreamWriter simWriter;
+        private static bool simSinkBroken;
+
+        /// <summary>Identyfikator biezacego eksperymentu albo null poza eksperymentem.</summary>
+        private static string experimentId;
+
+        /// <summary>Etykieta biezacego ramienia eksperymentu ("1-PN_Profil_...").</summary>
+        private static string experimentArm;
+
+        /// <summary>Czy trwa eksperyment wlasnej akcji symulacyjnej.</summary>
+        public static bool InExperiment
+        {
+            get { return experimentId != null; }
+        }
+
+        public static string SimFilePath
+        {
+            get { return Path.Combine(GenFilePaths.SaveDataFolderPath, SimFileName); }
+        }
+
+        /// <summary>
+        /// Otwiera kontekst eksperymentu. Linia [PN-EXP] start idzie do OBU plikow: do pliku
+        /// danych jako granica serii (parser widzi, ze nastepne wiersze sa symulacja), do pliku
+        /// czytelnego jako naglowek.
+        /// </summary>
+        public static void BeginExperiment(string id, string naglowek)
+        {
+            experimentId = string.IsNullOrEmpty(id) ? "exp" : id;
+            experimentArm = string.Empty;
+            string linia = "[PN-EXP] start; eksperyment=" + experimentId + "; " + (naglowek ?? string.Empty);
+            WriteData(linia);
+            WriteSim(linia);
+        }
+
+        public static void BeginArm(string ramie, string opis)
+        {
+            experimentArm = ramie ?? string.Empty;
+            string linia = "[PN-EXP] ramie; eksperyment=" + experimentId + "; ramie=" + experimentArm
+                           + "; " + (opis ?? string.Empty);
+            WriteData(linia);
+            WriteSim(linia);
+        }
+
+        /// <summary>
+        /// Zamyka kontekst eksperymentu. Wolane w finally - takze po wyjatku - wiec linia end
+        /// niesie stan: "kompletny" albo "przerwany", zeby parser odroznil ramie urwane.
+        /// </summary>
+        public static void EndExperiment(string podsumowanie)
+        {
+            if (experimentId == null)
+            {
+                return;
+            }
+            string linia = "[PN-EXP] end; eksperyment=" + experimentId + "; " + (podsumowanie ?? string.Empty);
+            WriteData(linia);
+            WriteSim(linia);
+            experimentId = null;
+            experimentArm = null;
+
+            // Potwierdzenie zgodnosci formatu ma pasc takze w Player.log przy pierwszym PRAWDZIWYM
+            // wierszu - jesli pierwszy wiersz sesji byl symulacja, poszlo tylko do pliku symulacji.
+            formatVerified = false;
+        }
+
+        private static void WriteSim(string line)
+        {
+            if (simSinkBroken)
+            {
+                return;
+            }
+            try
+            {
+                if (simWriter == null)
+                {
+                    simWriter = new StreamWriter(SimFilePath, true, new UTF8Encoding(false));
+                    simWriter.AutoFlush = true;
+                    simWriter.WriteLine("[PN-SESSION] start; plik czytelny symulacji; wersjaLogu="
+                                        + DataFormatVersion.ToString(CultureInfo.InvariantCulture)
+                                        + "; wersjaGry=" + VersionControl.CurrentVersionString);
+                }
+                simWriter.WriteLine(line);
+            }
+            catch (Exception e)
+            {
+                simSinkBroken = true;
+                Log.Error(Prefix + "Nie udalo sie pisac do pliku symulacji (" + SimFilePath + "): " + e.Message);
+            }
+        }
+
+        // =====================================================================================
         //  UJSCIE DANYCH BADAWCZYCH - WLASNY PLIK, NIE Player.log
         // =====================================================================================
-        //  Verse.Log ma twardy limit: Log.StopLoggingAtMessageCount = 1000 (zweryfikowane
-        //  w Assembly-CSharp 1.5.4063). Po tysiacu wiadomosci RimWorld PRZESTAJE LOGOWAC
-        //  CALKOWICIE - bez bledu, bez ostrzezenia. Player.log jest przy tym wspoldzielony ze
-        //  WSZYSTKIMI modami, a niektore (np. PickUpAndHaul) zaczynaja od wlasnego logspamu.
+        //  Verse.Log ma twardy limit 1000 KOMUNIKATOW (zweryfikowane dekompilacja 1.5.4063:
+        //  Log.Notify_MessageReceivedThreadedInternal). Przy tysiecznym gra wypisuje "Reached max
+        //  messages limit. Stopping logging to avoid spam." i WYLACZA logowanie calkowicie -
+        //  Message, Warning i Error koncza sie odtad pustym return. Licznik obejmuje CALY proces
+        //  (wanilie i wszystkie mody), a zeruje sie tylko na koncu ladowania gry, przy
+        //  przeladowaniu Defow w trybie deweloperskim i przyciskiem Clear w oknie logu -
+        //  WCZYTANIE ZAPISU GO NIE ZERUJE, wiec druga rozgrywka w tym samym procesie dziedziczy
+        //  nasycenie.
         //
-        //  Przy szesciu liniach [PN] na decyzje limit wyczerpuje sie po okolo 150 decyzjach,
-        //  czyli po niecalym roku gry. Dokladnie wtedy, gdy dane zaczynaja byc ciekawe, seria
-        //  urywa sie po cichu, a wykres w pracy pokazuje "koniec danych" tam, gdzie skonczyl
-        //  sie budzet logu, a nie rozgrywka. To jest cicha awaria w danych badawczych, czyli
-        //  najgorszy rodzaj - nie wywala gry i nie zostawia sladu.
+        //  Wczesniejsze wydanie tego komentarza liczylo "szesc linii na decyzje, limit po ok. 150
+        //  decyzjach". Zmierzone bylo gorzej: jedna decyzja dawala ok. 19 komunikatow (kazda linia
+        //  rankingu osobno; 33 decyzje symulatora = 614 komunikatow), czyli sufit ok. 50 decyzji
+        //  w jednej sesji. Od drugiego przegladu etapu 4 log czytelny calej tury idzie JEDNYM
+        //  komunikatem wieloliniowym (limit liczy komunikaty, nie linie) - sufit rosnie do rzedu
+        //  1000 decyzji minus komunikaty innych modow.
         //
-        //  Dlatego strumien MASZYNOWY idzie do wlasnego pliku obok Player.log, a Verse.Log
-        //  dostaje wylacznie linie CZYTELNE dla czlowieka, ktorych utrata po limicie nic nie psuje.
+        //  Dlatego:
+        //    - strumien MASZYNOWY idzie do wlasnego pliku obok Player.log - jego utrata byla by
+        //      cicha awaria w danych badawczych;
+        //    - Warn i Error sa LUSTRZANE w pliku danych ([PN-WARN] / [PN-ERR]), bo po nasyceniu
+        //      Verse.Log znikalyby dokladnie te komunikaty, ktorych szuka sie przy diagnozie;
+        //      parsery filtruja po prefiksie, wiec te linie niczego nie psuja;
+        //    - kryteria odbioru testu w grze opieraja sie na pliku danych, a gdy siegaja do
+        //      Player.log, to z warunkiem, ze nie padlo w nim "Reached max messages limit".
         // =====================================================================================
 
         private const string DataFileName = "PN_decyzje.log";
@@ -176,17 +392,55 @@ namespace ProceduralNarrator.Integration
 
         public static void Decision(string message)
         {
+            if (InExperiment)
+            {
+                WriteSim(Prefix + message);
+                return;
+            }
             Log.Message(Prefix + message);
         }
 
         public static void Warn(string message)
         {
-            Log.Warning(Prefix + message);
+            Log.Warning((InExperiment ? "[PN][SYM] " : Prefix) + message);
+            if (InExperiment)
+            {
+                WriteSim("[PN][SYM][WARN] " + message);
+            }
+            MirrorToData(WarnDataPrefix, message);
         }
 
         public static void Error(string message)
         {
-            Log.Error(Prefix + message);
+            Log.Error((InExperiment ? "[PN][SYM] " : Prefix) + message);
+            if (InExperiment)
+            {
+                WriteSim("[PN][SYM][ERROR] " + message);
+            }
+            MirrorToData(ErrorDataPrefix, message);
+        }
+
+        /// <summary>
+        /// Kopia ostrzezenia albo bledu w pliku danych - odporna na limit 1000 komunikatow
+        /// Verse.Log (patrz komentarz przy ujsciu danych). Jedna linia: tekst jest OSTATNIM polem
+        /// i ciagnie sie do konca linii (moze zawierac ';' i '='), znaki nowej linii (np. slad
+        /// stosu wyjatku) sa zamieniane na " | ". Poza kontraktem [PN-DATA], bez numeru wersji.
+        /// Rekurencji nie ma: blad zapisu ustawia dataSinkBroken PRZED wolaniem Error.
+        /// </summary>
+        private static void MirrorToData(string prefix, string message)
+        {
+            string tekst = (message ?? string.Empty).Replace("\r\n", " | ").Replace("\n", " | ").Replace("\r", " ");
+            WriteData(prefix + "runId=" + CurrentRunId()
+                      + "; tick=" + CurrentTickText()
+                      + "; tryb=" + (InExperiment ? "symulacja" : "gra")
+                      + "; tekst=" + tekst);
+        }
+
+        private static string CurrentTickText()
+        {
+            return Current.Game != null && Find.TickManager != null
+                ? Find.TickManager.TicksGame.ToString(CultureInfo.InvariantCulture)
+                : "-1";
         }
 
         /// <summary>
@@ -198,6 +452,16 @@ namespace ProceduralNarrator.Integration
         {
             WriteData(ColumnsPrefix + "wersja=" + DataFormatVersion.ToString(CultureInfo.InvariantCulture)
                       + "; kolumny=" + string.Join(",", DataColumns));
+        }
+
+        /// <summary>
+        /// Jedna linia efektywnej konfiguracji w pliku danych ([PN-CONFIG]). Wolane przez PNStartup
+        /// zaraz po naglowku kolumn - parser nie musi zgadywac, z jakimi parametrami powstala seria.
+        /// Poza kontraktem kolumn [PN-DATA], wiec bez wlasnego numeru wersji.
+        /// </summary>
+        public static void Config(string opis)
+        {
+            WriteData(ConfigPrefix + (opis ?? string.Empty));
         }
 
         /// <summary>
@@ -221,8 +485,13 @@ namespace ProceduralNarrator.Integration
         }
 
         /// <summary>
-        /// defName profilu przydzielonego tej rozgrywce. Czytany za kazdym razem z tego samego
-        /// powodu co runId: PNLog zyje tak dlugo jak proces, a rozgrywka moze sie zmienic.
+        /// Profil, na ktorym narrator FAKTYCZNIE liczy (NarratorMemoryComponent.EffectiveProfileId),
+        /// a nie defName zapisany w pamieci. Rozjazd zachodzi, gdy zapis wskazuje profil usuniety
+        /// albo przemianowany w XML: wagi i krzywa ida wtedy z profilu awaryjnego, a kolumna
+        /// niosla dawniej stara nazwe - czyli dokladnie te pomylke, przed ktora kolumna ma chronic
+        /// ("dwie rozgrywki prowadzili dwaj rozni narratorzy"). Szczegol podmiany (ktory profil
+        /// zastapiono) idzie linia [PN-ERR] z NarratorProfileCatalog.Resolve.
+        /// Czytany za kazdym razem z tego samego powodu co runId.
         /// </summary>
         private static string CurrentProfileId()
         {
@@ -232,7 +501,7 @@ namespace ProceduralNarrator.Integration
             }
 
             NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
-            return pamiec == null ? string.Empty : pamiec.ProfileId;
+            return pamiec == null ? NarratorProfile.FallbackId : pamiec.EffectiveProfileId;
         }
 
         /// <summary>
@@ -244,14 +513,32 @@ namespace ProceduralNarrator.Integration
         ///      wygladaja w danych identycznie, a to jest dokladnie ta awaria, przed ktora
         ///      warstwa trwalosci ma chronic.
         ///   2. STRUKTURALNA - jest GRANICA WCZYTANIA dla skryptu agregujacego. Wiersze
-        ///      [PN-DATA] po tej linii naleza do tej samej rozgrywki co przed zapisem, mimo ze
-        ///      dzieli je nowa linia [PN-SESSION].
+        ///      [PN-DATA] po tej linii naleza do tej samej rozgrywki (ten sam runId) co przed
+        ///      zapisem. Nowej linii [PN-SESSION] moze miedzy nimi NIE BYC: wczytanie zapisu
+        ///      w tym samym procesie nie otwiera pliku na nowo.
+        ///
+        /// REGULA PARSERA - WCZYTANIE ROZWIDLA ROZGRYWKE. Dwa wczytania jednego zapisu daja ten
+        /// sam runId i te same numery decyzji od chwili zapisu w gore, wiec wiersze "porzuconej
+        /// galezi" (grane po zapisie, a przed ponownym wczytaniem) sa nieodroznialne kolumnami.
+        /// Rozstrzyga kolejnosc w pliku: w obrebie runId kazda linia [PN-LOAD] UNIEWAZNIA
+        /// wczesniejsze wiersze mapy m z decyzjaNr >= decyzji tej mapy z pola "mapy"
+        /// (uid:decyzji). Ograniczenie: rozwidlenia grane NAPRZEMIENNIE (dwa zapisy z jednego
+        /// punktu, wczytywane na zmiane) sa nierozstrzygalne bez identyfikatora galezi w zapisie.
+        /// Ta sama regula dotyczy akcji "PN: wymus profil" (linia [PN-RESET]) - seria kontrolna
+        /// "ten sam zapis trzema profilami" produkuje wlasnie takie galezie.
+        ///
+        /// POLA: profil = profil FAKTYCZNIE uzyty (patrz CurrentProfileId), profilZapisany = to,
+        /// co wskazuje zapis; wersjaPamieci = wersja formatu Z ZAPISU (0 przy nowej grze i przy
+        /// zapisie bez pamieci); narrator = defName aktywnego StorytellerDefa - komponent pamieci
+        /// dziala w KAZDEJ grze, takze na Cassandrze, wiec zliczanie rozgrywek po [PN-LOAD] musi
+        /// filtrowac po tym polu.
         ///
         /// Nie rusza kontraktu kolumn [PN-DATA], wiec nie wymaga wlasnego numeru wersji -
         /// parser, ktory jej nie zna, po prostu ja pominie po prefiksie.
         /// </summary>
-        public static void Load(string runId, string zrodlo, string profil, int mapCount, int wpisow,
-                                int decyzji, int odrzuconych, int wersjaPamieci)
+        public static void Load(string runId, string zrodlo, string profil, string profilZapisany,
+                                int mapCount, int wpisow, int decyzji, int odrzuconych, int wersjaPamieci,
+                                string mapy)
         {
             string linia = LoadPrefix
                            + "runId=" + (string.IsNullOrEmpty(runId) ? "?" : runId)
@@ -261,7 +548,12 @@ namespace ProceduralNarrator.Integration
                            + "; wpisow=" + wpisow.ToString(CultureInfo.InvariantCulture)
                            + "; decyzji=" + decyzji.ToString(CultureInfo.InvariantCulture)
                            + "; odrzuconych=" + odrzuconych.ToString(CultureInfo.InvariantCulture)
-                           + "; wersjaPamieci=" + wersjaPamieci.ToString(CultureInfo.InvariantCulture);
+                           + "; wersjaPamieci=" + wersjaPamieci.ToString(CultureInfo.InvariantCulture)
+                           + "; profilZapisany=" + (string.IsNullOrEmpty(profilZapisany) ? "?" : profilZapisany)
+                           + "; narrator=" + CurrentStorytellerName()
+                           + "; tick=" + CurrentTickText()
+                           + "; dzien=" + CurrentDayText()
+                           + "; mapy=" + (mapy ?? string.Empty);
 
             WriteData(linia);
 
@@ -275,9 +567,17 @@ namespace ProceduralNarrator.Integration
             }
             else if (zrodlo == "zapisBezPamieci")
             {
+                // Dwie przyczyny daja ten sam stan i log czytelny ma je obie wymienic. Silnik przy
+                // nieudanej deserializacji komponentu (nieznana klasa, wyjatek w ExposeData) loguje
+                // Error i dostawia swiezy komponent przez FillComponents - dokladnie jak przy zapisie,
+                // w ktorym bloku nie bylo. Wykrycie tego po naszej stronie wymagaloby kruchego
+                // podgladania surowego XML w konstruktorze, wiec rozstrzyga Player.log.
                 opis = "Wczytano zapis BEZ pamieci narratora (runId=" + runId
-                       + "). To normalne dla zapisu sprzed kroku 6 albo dla moda dolozonego do "
-                       + "trwajacej rozgrywki - narracja zaczyna sie od tego momentu.";
+                       + "). Normalne dla zapisu sprzed kroku 6 albo dla moda dolozonego do trwajacej "
+                       + "rozgrywki - narracja zaczyna sie od tego momentu. JESLI zapis byl robiony z tym "
+                       + "modem, to znaczy, ze pamiec sie NIE WCZYTALA: szukaj wyzej w Player.log bledu "
+                       + "silnika o NarratorMemoryComponent (np. 'Could not find class' albo wyjatku "
+                       + "w ExposeData).";
             }
             else
             {
@@ -292,6 +592,38 @@ namespace ProceduralNarrator.Integration
         }
 
         /// <summary>
+        /// Znacznik recznej ingerencji w pamiec albo profil (akcje debugowe "PN: skasuj pamiec",
+        /// "PN: wymus profil"). Bez niego decyzjaNr, histDecyzji i histWpisow spadalyby do zera
+        /// pod tym samym runId bez zadnej linii w pliku danych, a zmiana profilu byla widoczna
+        /// tylko jako zmiana wartosci kolumny - bez momentu i przyczyny. Poza kontraktem [PN-DATA].
+        /// </summary>
+        public static void Reset(string akcja, string szczegoly)
+        {
+            WriteData(ResetPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; tick=" + CurrentTickText()
+                      + "; dzien=" + CurrentDayText()
+                      + "; akcja=" + (akcja ?? "?")
+                      + (string.IsNullOrEmpty(szczegoly) ? string.Empty : "; " + szczegoly));
+        }
+
+        private static string CurrentDayText()
+        {
+            return Current.Game != null && Find.TickManager != null
+                ? (Find.TickManager.TicksGame / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
+                : string.Empty;
+        }
+
+        private static string CurrentStorytellerName()
+        {
+            if (Current.Game == null || Current.Game.storyteller == null || Current.Game.storyteller.def == null)
+            {
+                return "?";
+            }
+            return Current.Game.storyteller.def.defName;
+        }
+
+        /// <summary>
         /// Jedna linia maszynowa na jedna decyzje narratora - takze na decyzje o ciszy.
         ///
         /// Kolumny czynnikow ZDARZENIOWYCH dla wiersza PASS zostaja PUSTE, a nie zerowe.
@@ -301,7 +633,9 @@ namespace ProceduralNarrator.Integration
         /// (Realizuje to NarratorDecision.ToDataFragment; tutaj tylko o tym nie zapominamy.)
         /// </summary>
         public static void Data(int tick, int mapId, DecisionContext context, CandidateSet candidates,
-                                NarratorDecision decision, int engineRefusals)
+                                NarratorDecision decision, int engineRefusals,
+                                int preGateRefusals, int acceptorCalls,
+                                TensionReading tension, CrisisReading crisis)
         {
             if (decision == null)
             {
@@ -317,6 +651,12 @@ namespace ProceduralNarrator.Integration
             // ---- preambula ----
             Append(sb, "wersjaLogu", DataFormatVersion.ToString(CultureInfo.InvariantCulture));
             Append(sb, "runId", CurrentRunId());
+            // TRYB I EKSPERYMENT ZARAZ PO runId: runId zostaje prawdziwym identyfikatorem
+            // rozgrywki (niesie pochodzenie danych i laczy sie z [PN-LOAD]), a o tym, czy wiersz
+            // opisuje gre, czy symulacje, mowi osobna kolumna. Prefiks w runId laczylby dwa
+            // znaczenia w jednej kolumnie - wzorzec, ktory projekt juz raz usuwal (seriaPass).
+            Append(sb, "tryb", InExperiment ? "symulacja" : "gra");
+            Append(sb, "eksperyment", InExperiment ? experimentId + "/" + experimentArm : string.Empty);
             Append(sb, "profil", CurrentProfileId());
             Append(sb, "tick", Int(tick));
             Append(sb, "dzien", Num(context == null ? 0f : context.GameDay));
@@ -329,9 +669,32 @@ namespace ProceduralNarrator.Integration
             Append(sb, "histWpisow", Int(context == null || context.History == null ? 0 : context.History.Count));
             Append(sb, "histDecyzji", Int(context == null || context.History == null ? 0 : context.History.DecisionCount));
             Append(sb, "napiecie", Num(context == null ? 0f : context.Tension));
+            // Czlony napiecia i ich wejscia. Puste (brak pomiaru), gdy odczytu nie podano.
+            Append(sb, "napiecieNarr", tension == null ? string.Empty : Num(tension.Narrative));
+            Append(sb, "napiecieSyt", tension == null ? string.Empty : Num(tension.Situational));
+            WorldSnapshot swiat = context == null ? null : context.Snapshot;
+            Append(sb, "powalonych", swiat == null ? string.Empty : Int(swiat.AcuteDownedCount));
+            Append(sb, "kolonistowNaMapie", swiat == null ? string.Empty : Int(swiat.ColonistsOnMap));
+            Append(sb, "zagrozenie", swiat == null ? string.Empty : swiat.Danger.ToString());
+            Append(sb, "kryzys", crisis != null && crisis.Extreme ? "true" : "false");
             Append(sb, "intencja", context == null ? string.Empty : context.Intent.ToString());
             Append(sb, "docelowaMoc", Num(context == null ? 0f : context.TargetIntensity));
+            // TRZY LICZBY OPISUJACE PRACE ODDANA SILNIKOWI GRY, i kazda odpowiada na inne pytanie.
+            //
+            //   odmowSilnika - ile razy gra odmowila w tej turze, LACZNIE
+            //   odmowCzola   - ile z tego padlo PRZED brama, w prewerifikacji czola rankingu
+            //   pytanDoGry   - ile razy w ogole zapytano akceptor (prewerifikacja plus rundy)
+            //
+            // Roznica odmowSilnika - odmowCzola to odmowy PO bramie, czyli te, ktore faktycznie
+            // kosztowaly runde petli wyboru. Bez tego rozdzielenia nie da sie odroznic tury,
+            // w ktorej prewerifikacja zadzialala (duzo odmow, jedna runda), od tury, w ktorej
+            // narrator brnal przez ranking - a to sa przeciwne diagnozy.
+            //
+            // pytanDoGry jest miara KOSZTU naprawy: prewerifikacja kupuje trafniejsza brame za
+            // dodatkowe wywolania CanFireNow, a ta kolumna mowi, ile ich naprawde bylo.
             Append(sb, "odmowSilnika", Int(engineRefusals));
+            Append(sb, "odmowCzola", Int(preGateRefusals));
+            Append(sb, "pytanDoGry", Int(acceptorCalls));
 
             // ---- generowanie kandydatow ----
             // Kolumny budowane tutaj, a NIE przez CandidateSet.DataLogFragment(), mimo ze tamta

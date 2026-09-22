@@ -173,7 +173,12 @@ namespace ProceduralNarrator.Core.Decision
         /// <summary>Brama wybrala cisze.</summary>
         public bool ChoseSilence;
 
-        /// <summary>P(cisza) w tej turze - kolumna pBrama.</summary>
+        /// <summary>
+        /// P(brama wybiera cisze) w tej turze - kolumna pBrama. To NIE jest zrealizowany udzial
+        /// ciszy: tura, w ktorej brama powiedziala "dzialaj", moze skonczyc sie cisza techniczna
+        /// (odmowy, budzet, niedostepne werdykty). Udzial ciszy liczy sie z decyzja=PASS
+        /// z podzialem na powodPass; srednia pBrama - po turach bez ciszy technicznej.
+        /// </summary>
         public float PassProbability;
 
         /// <summary>Straznik serii wygasil PASS (brama nie losowala).</summary>
@@ -234,10 +239,20 @@ namespace ProceduralNarrator.Core.Decision
         /// pracy (przy domyslnych parametrach nie powinien nigdy zadzialac).
         ///
         /// Liczony jest TUTAJ, a nie w Select, bo Select celowo nie widzi DecisionContext -
-        /// polityka ma byc funkcja samej puli. Warstwa integracji liczy predykat raz na ture
-        /// i podaje go do Select jako flage.
+        /// polityka ma byc funkcja samej puli. TurnRunner liczy predykat raz na ture i podaje go
+        /// do Select jako flage.
         /// </summary>
         public static bool IsPassSuppressedByStreak(DecisionContext context, PassScoringParams passParams)
+        {
+            return IsStreakAtLimit(context, passParams) && !context.ExtremeCrisis;
+        }
+
+        /// <summary>
+        /// Czy seria swiadomej ciszy doszla do limitu - NIEZALEZNIE od tego, czy straznik zadziala.
+        /// Jedno zrodlo predykatu dla obu pytan ponizej, zeby "straznik stlumil PASS" i "straznik
+        /// zostal zawieszony" nie mogly rozjechac sie w definicji limitu.
+        /// </summary>
+        public static bool IsStreakAtLimit(DecisionContext context, PassScoringParams passParams)
         {
             if (context == null || context.History == null || passParams == null)
             {
@@ -247,7 +262,23 @@ namespace ProceduralNarrator.Core.Decision
             {
                 return false;
             }
-            return context.History.ConsecutivePassCount >= passParams.maxStreak;
+            return context.History.DeliberateSilenceStreak >= passParams.maxStreak;
+        }
+
+        /// <summary>
+        /// Czy straznik serii ZOSTAL ZAWIESZONY przez kryzys skrajny - czyli limit osiagniety,
+        /// ale narrator nie jest zmuszany do dzialania (decyzja autora po przegladzie etapu 4).
+        ///
+        /// Straznik istnieje po to, zeby narrator nie milczal w nieskonczonosc Z WYBORU. W kryzysie
+        /// skrajnym cisza jest regula bezpieczenstwa, nie wyborem osobowosci, a zmuszanie narratora
+        /// do wydarzenia w chwili, gdy polowa kolonii lezy, dzialaloby dokladnie wbrew intencji
+        /// Breathe. Zawieszenie dotyczy WYLACZNIE kryzysu; poza nim straznik dziala jak przedtem.
+        /// Osobne pole w danych (straznikZawieszony), bo bez niego tura z zawieszonym straznikiem
+        /// wygladalaby identycznie jak tura ponizej limitu.
+        /// </summary>
+        public static bool IsStreakWaivedByCrisis(DecisionContext context, PassScoringParams passParams)
+        {
+            return IsStreakAtLimit(context, passParams) && context.ExtremeCrisis;
         }
 
         public NarratorDecision Select(IReadOnlyList<ScoredCandidate> candidates, ScoredCandidate pass, IRandomSource rng)
@@ -268,7 +299,7 @@ namespace ProceduralNarrator.Core.Decision
 
         /// <param name="frozenGate">
         /// Rozstrzygniecie bramy z RUNDY PIERWSZEJ tej tury, albo null w rundzie pierwszej.
-        /// Podane - brama NIE losuje ponownie (zuzycie rng spada z 2 na 1 w tej rundzie).
+        /// Podane - brama NIE losuje ponownie (zuzycie rng spada z 3 na 2 w tej rundzie).
         /// </param>
         /// <param name="frozenStats">
         /// Statystyki PELNEJ puli z rundy pierwszej, albo null w rundzie pierwszej. Podane -
@@ -297,7 +328,13 @@ namespace ProceduralNarrator.Core.Decision
                 slad.Append("PASS AWARYJNY (scorer nie podal pseudo-kandydata); ");
             }
             passKandydat.Rejected = RejectionStage.None;
-            passKandydat.SelectionProbability = 0f;
+            if (frozenStats == null)
+            {
+                // Prawdopodobienstwa naleza do TURY, nie do rundy (patrz C7). W rundach dalszych
+                // zerowanie skasowaloby zamrozona wartosc PASS-a i suma p po rankingu przestalaby
+                // wynosic 1 - dokladnie ten defekt, ktory C7 naprawia po stronie zdarzen.
+                passKandydat.SelectionProbability = 0f;
+            }
 
             // ---- C1. Kopia i sortowanie deterministyczne ----
             // Sortowanie po (Utility malejaco, SortKey rosnaco ordynalnie) sprawia, ze wynik NIE
@@ -322,9 +359,21 @@ namespace ProceduralNarrator.Core.Decision
                         continue;
                     }
 
-                    // Pola etapowe sa wlasnoscia rundy, wiec kazda runda zaczyna od czystego stanu.
-                    k.Rejected = RejectionStage.None;
-                    k.SelectionProbability = 0f;
+                    // Pola etapowe sa wlasnoscia RUNDY i kazda runda zaczyna od czystego stanu -
+                    // z DWOMA wyjatkami, ktore sa wlasnoscia TURY i musza przezyc kasowanie:
+                    //
+                    //  (1) EngineRefusedThisTurn. Odmowa silnika dotyczy calej akcji i obowiazuje
+                    //      do konca tury. Kandydat nia oznaczony zostaje w liscie (wiec liczy sie
+                    //      do mianownika i widac go w rankingu z pelnym sladem czynnikow), ale nie
+                    //      wchodzi do zadnej puli wyboru - patrz C2.
+                    //  (2) SelectionProbability w rundach dalszych - patrz C7.
+                    k.Rejected = k.EngineRefusedThisTurn
+                        ? RejectionStage.EngineRefused
+                        : (k.UnverifiableThisTurn ? RejectionStage.Unverifiable : RejectionStage.None);
+                    if (frozenStats == null)
+                    {
+                        k.SelectionProbability = 0f;
+                    }
                     lista.Add(k);
                 }
             }
@@ -338,9 +387,31 @@ namespace ProceduralNarrator.Core.Decision
             // narracyjne i zlanie ich w jeden licznik zafalszowaloby metryki z rozdzialu o ewaluacji.
             var poWecie = new List<ScoredCandidate>(lista.Count);
             int zawetowanych = 0;
+            int odrzuconychPrzezSilnik = 0;
+            int odlozonych = 0;
             for (int i = 0; i < lista.Count; i++)
             {
                 ScoredCandidate k = lista[i];
+
+                // Odmowa silnika WYPRZEDZA weto i prog jakosci. Kandydat, ktoremu gra juz w tej
+                // turze odmowila, nie jest "bez sensu tutaj" ani "za slaby" - jest NIEDOSTEPNY.
+                // Wliczenie go do ktoregokolwiek z tamtych dwoch licznikow zafalszowaloby metryki
+                // weta i progu, i to niesymetrycznie: najmocniej tam, gdzie gra duzo odmawia.
+                if (k.EngineRefusedThisTurn)
+                {
+                    odrzuconychPrzezSilnik++;
+                    continue;
+                }
+
+                // ODLOZONY TO NIE ODRZUCONY - osobny licznik, bo diagnozuje co innego.
+                // Zlanie obu w jeden kazaloby zaostrzac warunki twarde tam, gdzie problemem jest
+                // cache silnika, a nie katalog.
+                if (k.UnverifiableThisTurn)
+                {
+                    odlozonych++;
+                    continue;
+                }
+
                 if (k.Vetoed)
                 {
                     k.Rejected = RejectionStage.Veto;
@@ -408,8 +479,9 @@ namespace ProceduralNarrator.Core.Decision
             // przywrocilaby dokladnie te zaleznosc udzialu PASS od rozmiaru katalogu, ktora
             // ten etap usuwa.
             //
-            // LICZBA POBRAN Z GENERATORA JEST STALA I ROWNA DWA na runde - takze wtedy, gdy
-            // ktorys etap jest zdegenerowany i jego wynik zostaje zignorowany (patrz BurnDraw).
+            // LICZBA POBRAN Z GENERATORA JEST STALA: trzy w rundzie pierwszej (brama, akcja,
+            // wariant), dwie w kazdej kolejnej (brama zamrozona) - takze wtedy, gdy ktorys etap
+            // jest zdegenerowany i jego wynik zostaje zignorowany (patrz BurnDraw).
             // Powod jest ten sam, dla ktorego wersja jednoetapowa losowala zawsze raz: strumien
             // losowy ma zalezec WYLACZNIE od liczby rund. Gdyby zalezal od tresci puli, dwa
             // przebiegi ewaluacji rozniace sie jednym kandydatem rozjechalyby caly dalszy
@@ -481,28 +553,127 @@ namespace ProceduralNarrator.Core.Decision
             //     runda kolejna   = 0 (brama zamrozona) + 1 (wybor) = 1 pobranie
             //     cala tura       = 1 + liczba rund
             // Zuzycie zalezy WYLACZNIE od liczby rund, nigdy od tresci ani rozmiaru puli.
-            double[] pZdarzen;
+            // WYBOR JEST DWUSTOPNIOWY: najpierw AKCJA, potem jej WARIANT.
+            //
+            // Wersja jednostopniowa losowala z plaskiej listy kandydatow, przez co akcja majaca
+            // w pasmie K opraw narracyjnych dostawala K-krotnie wieksza mase niz akcja o jednej.
+            // Wyrazone w uzytecznosci: plaski softmax dawal jej ukryta premie T*ln(K), czyli 0.2079
+            // przy T = 0.1 i K = 8 - okolo PIEC RAZY wiecej niz zmierzony rozstep ocen w czole
+            // rankingu (0.036-0.039). Liczba wariantow jest cecha KATALOGU, wiec przy tamtej
+            // polityce dosypanie opraw do jednej akcji po cichu czynilo ja czestsza, bez zadnej
+            // zmiany w sytuacji kolonii ani w scoringu. To ta sama rodzina bledu co piaty dlug
+            // (udzial PASS dzielony przez licznosc puli) i naprawa jest ta sama: rozdzielic
+            // pytania dotyczace roznych przestrzeni.
+            //
+            // OBA podetapy losuja ZAWSZE, takze gdy sa zdegenerowane (BurnDraw), z tego samego
+            // powodu co brama: zuzycie losowosci ma zalezec WYLACZNIE od liczby rund, nigdy od
+            // tresci ani rozmiaru puli. Bilans na ture wynosi odtad
+            //     runda pierwsza = 1 (brama) + 1 (akcja) + 1 (wariant) = 3
+            //     runda kolejna  = 0 (brama zamrozona) + 1 + 1          = 2
+            //     cala tura      = 1 + 2 * liczba rund
+            List<ActionGroup> grupy = ActionWeighting.Group(pulaZdarzen);
+            double[] pZdarzen = new double[pulaZdarzen.Count];
             int idxZdarzenia = -1;
+            int idxAkcji = -1;
 
-            if (pulaZdarzen.Count == 0)
+            if (grupy.Count == 0)
             {
-                pZdarzen = new double[0];
+                losowan += BurnDraw(rng);
                 losowan += BurnDraw(rng);
             }
             else
             {
-                var uzytecznosci = new double[pulaZdarzen.Count];
-                for (int k = 0; k < pulaZdarzen.Count; k++)
+                // ---- B1. Wybor AKCJI po jej ocenie = MAKSIMUM wariantu w pasmie ----
+                var uAkcji = new double[grupy.Count];
+                for (int g = 0; g < grupy.Count; g++)
                 {
-                    uzytecznosci[k] = pulaZdarzen[k].Utility;
+                    uAkcji[g] = grupy[g].Score;
                 }
 
-                double[] wagi = ScoreMath.SoftmaxWeights(uzytecznosci, parameters.softmaxTemperature);
-                int[] progi = ScoreMath.CumulativeThresholds(wagi);
-                pZdarzen = ScoreMath.ProbabilitiesFromThresholds(progi);
+                double[] wagiAkcji = ScoreMath.SoftmaxWeights(uAkcji, parameters.softmaxTemperature);
+                int[] progiAkcji = ScoreMath.CumulativeThresholds(wagiAkcji);
+                double[] pAkcji = ScoreMath.ProbabilitiesFromThresholds(progiAkcji);
+                for (int g = 0; g < grupy.Count; g++)
+                {
+                    grupy[g].Probability = pAkcji[g];
+                }
 
-                idxZdarzenia = ScoreMath.PickByThresholds(progi, rng);
+                idxAkcji = ScoreMath.PickByThresholds(progiAkcji, rng);
                 losowan += rng == null ? 0 : 1;
+                if (idxAkcji < 0 || idxAkcji >= grupy.Count)
+                {
+                    idxAkcji = 0;
+                }
+
+                // ---- B2. Wybor WARIANTU wewnatrz wybranej akcji ----
+                // Ta sama temperatura co w B1 i jest to decyzja, nie przeoczenie: obie wielkosci
+                // sa uzytecznosciami z TEJ SAMEJ przestrzeni wag, wiec porownuja sie wprost.
+                // Osobna temperatura bylaby parametrem bez wyprowadzenia - a projekt odrzucil juz
+                // raz liczbe "na oko" udajaca kalibracje (patrz gateTemperature).
+                List<ScoredCandidate> warianty = grupy[idxAkcji].Variants;
+                int idxWariantu;
+                if (warianty.Count == 1)
+                {
+                    // Zdegenerowany, ale pobranie i tak sie odbywa - patrz uwaga o BurnDraw wyzej.
+                    idxWariantu = 0;
+                    losowan += BurnDraw(rng);
+                }
+                else
+                {
+                    var uWariantow = new double[warianty.Count];
+                    for (int v = 0; v < warianty.Count; v++)
+                    {
+                        uWariantow[v] = warianty[v].Utility;
+                    }
+
+                    double[] wagiW = ScoreMath.SoftmaxWeights(uWariantow, parameters.softmaxTemperature);
+                    int[] progiW = ScoreMath.CumulativeThresholds(wagiW);
+                    idxWariantu = ScoreMath.PickByThresholds(progiW, rng);
+                    losowan += rng == null ? 0 : 1;
+                    if (idxWariantu < 0 || idxWariantu >= warianty.Count)
+                    {
+                        idxWariantu = 0;
+                    }
+                }
+
+                // Rozklad LACZNY po kandydatach: p(kandydat) = p(jego akcja) * p(on | ta akcja).
+                // Liczymy go dla CALEJ puli, nie tylko dla wybranej grupy - kolumna "p" ma byc
+                // prawdopodobienstwem tego konkretnego wyniku, a niezmiennik "suma p po rankingu
+                // rowna sie 1" ma sie domykac bez wzgledu na to, co padlo.
+                for (int g = 0; g < grupy.Count; g++)
+                {
+                    ActionGroup grupa = grupy[g];
+                    double[] pW;
+                    if (grupa.Variants.Count == 1)
+                    {
+                        pW = new double[] { 1.0 };
+                    }
+                    else
+                    {
+                        var u = new double[grupa.Variants.Count];
+                        for (int v = 0; v < grupa.Variants.Count; v++)
+                        {
+                            u[v] = grupa.Variants[v].Utility;
+                        }
+                        pW = ScoreMath.ProbabilitiesFromThresholds(
+                                 ScoreMath.CumulativeThresholds(
+                                     ScoreMath.SoftmaxWeights(u, parameters.softmaxTemperature)));
+                    }
+
+                    for (int v = 0; v < grupa.Variants.Count; v++)
+                    {
+                        int poz = pulaZdarzen.IndexOf(grupa.Variants[v]);
+                        if (poz >= 0)
+                        {
+                            pZdarzen[poz] = grupa.Probability * pW[v];
+                        }
+                        if (g == idxAkcji && v == idxWariantu)
+                        {
+                            idxZdarzenia = poz;
+                        }
+                    }
+                }
+
                 if (idxZdarzenia < 0 || idxZdarzenia >= pulaZdarzen.Count)
                 {
                     idxZdarzenia = 0;
@@ -515,11 +686,29 @@ namespace ProceduralNarrator.Core.Decision
             // jest prawdopodobienstwem TEGO KONKRETNEGO wyniku - dokladnie jak w wersji
             // jednoetapowej - i skrypty agregujace z kroku 8 nie wymagaja przeliczania.
             double pBramaZdarzenie = 1.0 - pBramaPass;
-            for (int k = 0; k < pulaZdarzen.Count; k++)
+
+            // ZAPISUJEMY JE TYLKO W RUNDZIE PIERWSZEJ - i to jest naprawa czwartego zarzutu.
+            //
+            // Rozklad prawdopodobienstwa jest wlasnoscia TURY, tak samo jak liczniki, best, pasmo
+            // i ranking zamrozone przy szostym dlugu. Wczesniej byl jedynym pominietym: po odmowie
+            // silnika kandydat wypadly zachowywal p z rundy poprzedniej, a pozostali dostawali p
+            // z rundy biezacej - wiec jeden Ranking mieszal dwa rozklady i suma p rosla powyzej 1
+            // (zmierzone: 1.15 przy jednej odmowie, 1.94 przy czterech, 2.73 gdy silnik odrzucil
+            // wszystko). Caly wiersz [PN-DATA] opisywal ture, a ta jedna kolumna - ostatnia runde.
+            //
+            // Rozklad rundy biezacej NIE GINIE: zwyciezca niesie go w WinnerRoundProbability,
+            // czyli w osobnej kolumnie o jawnie innym znaczeniu. Dwie liczby, dwa pytania:
+            //     p       - jakie szanse mial ten wynik w rozkladzie TURY (sumuje sie do 1)
+            //     pRunda  - jakie szanse mial w rundzie, ktora go FAKTYCZNIE wybrala
+            // Roznia sie tylko wtedy, gdy rund bylo wiecej niz jedna, i wtedy obie sa wymowne.
+            if (frozenStats == null)
             {
-                pulaZdarzen[k].SelectionProbability = (float)(pBramaZdarzenie * pZdarzen[k]);
+                for (int k = 0; k < pulaZdarzen.Count; k++)
+                {
+                    pulaZdarzen[k].SelectionProbability = (float)(pBramaZdarzenie * pZdarzen[k]);
+                }
+                passKandydat.SelectionProbability = (float)pBramaPass;
             }
-            passKandydat.SelectionProbability = (float)pBramaPass;
 
             decyzja.RandomDraws = losowan;
 
@@ -529,6 +718,27 @@ namespace ProceduralNarrator.Core.Decision
             ScoredCandidate zwyciezca = (bramaDalaPass || idxZdarzenia < 0)
                 ? passKandydat
                 : pulaZdarzen[idxZdarzenia];
+
+            // Prawdopodobienstwo zwyciezcy w LOSOWANIU, KTORE GO WYBRALO - warunkowe, czyli
+            // BEZ czynnika bramy. To jest poprawka wczesniejszej wersji, ktora mnozyla przez
+            // (1 - pBramaPass) takze w rundach naprawczych.
+            //
+            // DLACZEGO BEZ BRAMY. Brama rozstrzyga sie RAZ NA TURE. W rundzie drugiej i dalszych
+            // jej wynik jest juz faktem ("dzialaj"), wiec mnozenie przez jego prawdopodobienstwo
+            // opisywaloby losowanie, ktore w tej rundzie w ogole sie nie odbylo. Zmierzone na
+            // przypadku testowym: zapisywano 0.274917, podczas gdy warunkowa szansa biezacego
+            // wyboru wynosila 0.549834 - czyli dokladnie dwukrotnosc, bo pBramaZdarzenie = 0.5.
+            //
+            // Wklad bramy nie ginie: ma wlasna kolumne pBrama. Niesienie go drugi raz tutaj
+            // znaczyloby, ze jedna wielkosc jest w wierszu dwa razy, w dodatku tylko czasem.
+            //
+            // PUSTE, GDY ZWYCIEZYLA CISZA. Wtedy wyniku nie wyprodukowalo losowanie WYBORU (etap B
+            // zostal spalony na pusto), tylko brama - a ta ma juz swoja kolumne. Pusta wartosc
+            // jest uczciwsza niz przepisanie tam pBramy: w Pandas wypada z agregacji sama,
+            // zamiast zasilac srednia liczba, ktora nie opisuje tego losowania.
+            decyzja.WinnerRoundProbability = (bramaDalaPass || idxZdarzenia < 0)
+                ? (float?)null
+                : (float?)pZdarzen[idxZdarzenia];
 
             // ---- C9. Ranking: WSZYSCY ocenieni + PASS ----
             // Zawetowani ZOSTAJA, z zachowanym RawUtility. Bez nich znika mianownik metryk
@@ -576,17 +786,24 @@ namespace ProceduralNarrator.Core.Decision
             // udzialu PASS; pozostale opisuja brak materialu, a nie decyzje narratora.
             // AllRefusedByGame i RoundBudgetExhausted ustawia warstwa integracji, bo tylko ona wie,
             // czy pula opustoszala przez odmowy silnika, czy nigdy nic nie zawierala.
+            // UNIWERSUM TEGO ROZSTRZYGNIECIA to kandydaci DOSTEPNI, czyli ci, ktorym silnik
+            // jeszcze nie odmowil. Bez odjecia odmow powod ciszy z opustoszalej puli wychodzilby
+            // "Competitive" (bo weto i prog nie odrzucily przeciez nikogo), czyli cisza z bezsily
+            // liczylaby sie jako swiadome milczenie - dokladnie ta klasa obciazenia, ktora
+            // PassReason ma rozdzielac.
+            int liczbaDostepnych = liczbaOcenionych - odrzuconychPrzezSilnik - odlozonych;
+
             if (zwyciezca.IsPass)
             {
-                if (liczbaOcenionych == 0)
+                if (liczbaDostepnych <= 0)
                 {
                     decyzja.PassReason = PassReason.NoCandidates;
                 }
-                else if (zawetowanych == liczbaOcenionych)
+                else if (zawetowanych == liczbaDostepnych)
                 {
                     decyzja.PassReason = PassReason.AllVetoed;
                 }
-                else if (zawetowanych + ponizejProgu == liczbaOcenionych)
+                else if (zawetowanych + ponizejProgu == liczbaDostepnych)
                 {
                     decyzja.PassReason = PassReason.BelowCutoff;
                 }
@@ -607,7 +824,11 @@ namespace ProceduralNarrator.Core.Decision
                 .Append(" wPasmieTury=").Append(tura.CountInSoftmax.ToString(CultureInfo.InvariantCulture))
                 .Append(" wPasmieRundy=").Append(pulaZdarzen.Count.ToString(CultureInfo.InvariantCulture))
                 .Append(" pBrama=").Append(pBramaPass.ToString("0.0000", CultureInfo.InvariantCulture))
-                .Append(" best=").Append(best.ToString("0.000", CultureInfo.InvariantCulture))
+                .Append(" bestRundy=").Append(best.ToString("0.000", CultureInfo.InvariantCulture))
+                .Append(" bestTury=").Append(tura.BestUtility.ToString("0.000", CultureInfo.InvariantCulture))
+                .Append(" odrzSilnik=").Append(odrzuconychPrzezSilnik.ToString(CultureInfo.InvariantCulture))
+                .Append(" odlozonych=").Append(odlozonych.ToString(CultureInfo.InvariantCulture))
+                .Append(" akcjiWPasmie=").Append(grupy.Count.ToString(CultureInfo.InvariantCulture))
                 .Append(" progPasma=").Append(progPasma.ToString("0.000", CultureInfo.InvariantCulture))
                 .Append(" T=").Append(parameters.softmaxTemperature.ToString("0.0##", CultureInfo.InvariantCulture))
                 .Append(" Tbramy=").Append(parameters.gateTemperature.ToString("0.0##", CultureInfo.InvariantCulture))
@@ -661,13 +882,58 @@ namespace ProceduralNarrator.Core.Decision
 
         /// <summary>
         /// Zuzywa jedno pobranie z generatora i NIC z nim nie robi. Istnieje wylacznie po to, zeby
-        /// liczba pobran na runde byla STALA (dwa) takze wtedy, gdy ktorys z dwoch etapow jest
-        /// zdegenerowany i nie ma czego losowac. Bez tego strumien losowy zalezalby od TRESCI puli,
+        /// liczba pobran na runde byla STALA (3 w rundzie pierwszej, 2 w kolejnych) takze wtedy,
+        /// gdy ktorys z etapow jest zdegenerowany i nie ma czego losowac. Bez tego strumien losowy zalezalby od TRESCI puli,
         /// a nie tylko od liczby rund, i dwa przebiegi ewaluacji rozniace sie jednym kandydatem
         /// rozjechalyby sie nieodwracalnie - czyli przestalyby byc porownywalne.
         ///
         /// Przy rng rownym null (tryb argmax walidatora offline) nie ma czego zuzywac.
         /// </summary>
+        /// <summary>
+        /// Najlepszy kandydat, ktory W TEJ CHWILI moglby byc referencja bramy: nie odrzucony przez
+        /// silnik, nie zawetowany i nie ponizej progu jakosci. Zwraca null, gdy takiego nie ma.
+        ///
+        /// PO CO TO ISTNIEJE. Brama porownuje uzytecznosc ciszy z najlepszym ZDARZENIEM, wiec
+        /// "najlepsze zdarzenie" musi byc zdarzeniem, ktore gra faktycznie dopuszcza. Bez tego
+        /// kandydat strukturalnie niemozliwy do odpalenia podnosil referencje bramy i po cichu
+        /// ZANIZAL sklonnosc narratora do milczenia - a potem i tak wypadal przy CanFireNow.
+        /// Cisza przegrywala z opcja, ktora nie istniala.
+        ///
+        /// METODA JEST CZYSTA - niczego nie odrzuca ani nie oznacza. Weryfikacje wykonuje
+        /// TurnRunner, bo tylko on ma akceptor, czyli jedyne wejscie do wiedzy o silniku gry.
+        ///
+        /// Deterministyczna: pierwszy element po tym samym porzadku (Utility malejaco, SortKey
+        /// ordynalnie rosnaco), ktorego uzywa Select. Petla, a nie sortowanie kopii - pula bywa
+        /// przegladana kilka razy w turze, a porzadek i tak jest jednoznaczny.
+        /// </summary>
+        public ScoredCandidate TopEligible(IReadOnlyList<ScoredCandidate> pool)
+        {
+            ScoredCandidate najlepszy = null;
+            if (pool == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < pool.Count; i++)
+            {
+                ScoredCandidate k = pool[i];
+                if (k == null || k.IsPass || k.UnavailableThisTurn || k.Vetoed)
+                {
+                    continue;
+                }
+                if (!ScoreMath.AtLeast(k.Utility, parameters.qualityCutoff))
+                {
+                    continue;
+                }
+                if (najlepszy == null || CompareCandidates(k, najlepszy) < 0)
+                {
+                    najlepszy = k;
+                }
+            }
+
+            return najlepszy;
+        }
+
         private static int BurnDraw(IRandomSource rng)
         {
             if (rng == null)

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
+using ProceduralNarrator.Core.Tension;
 using RimWorld;
 
 namespace ProceduralNarrator.Integration.Storyteller
@@ -30,10 +31,13 @@ namespace ProceduralNarrator.Integration.Storyteller
     public class StorytellerCompProperties_Generative : StorytellerCompProperties
     {
         /// <summary>
-        /// Domyslny budzet rund petli wyboru. NIE jest to zabezpieczenie poprawnosci - petla
-        /// konczy sie sama, bo kazda runda bez trafienia usuwa dokladnie jednego kandydata z puli.
-        /// Jest to budzet KOSZTU: CanFireNow bywa drogie (Infestation przeszukuje mape).
-        /// 8 to odpowiednik dawnego MaxCompositionAttempts = 6 z zapasem.
+        /// Domyslny budzet tury. NIE jest to zabezpieczenie poprawnosci - petla konczy sie sama,
+        /// bo kazda odmowa silnika oznacza CALA akcje (zakres payloadu) jako niewykonalna w tej
+        /// turze, a akcji jest skonczenie wiele. Jest to budzet KOSZTU i ogranicza DWIE rzeczy
+        /// naraz: liczbe rund wyboru ORAZ laczna liczbe pytan do gry w turze, wspolna dla fazy 0
+        /// i petli (niezmiennik pytanDoGry &lt;= maxSelectionRounds) - CanFireNow bywa drogie
+        /// (Infestation przeszukuje mape). 8 to odpowiednik dawnego MaxCompositionAttempts = 6
+        /// z zapasem.
         /// </summary>
         public const int DefaultMaxSelectionRounds = 8;
 
@@ -135,24 +139,40 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// tej preferencji byloby niewidoczne w danych. Po wystawieniu do XML asymetria jest
         /// decyzja kalibracyjna widoczna w logu startowym, a nie wlasnoscia kodu.
         ///
-        /// Ten sam obiekt dostaje TensionModel, zeby napiecie i kontrast liczyly rytm
-        /// z identycznego strojenia - inaczej opisywalyby dwie rozne historie tej samej kolonii.
+        /// Ten sam obiekt dostaje TensionModel, zeby napiecie i kontrast mialy wspolne okno,
+        /// wagi kolejnosci i mapowanie osi. Od polerowania etapu 4 napiecie doklada do tego
+        /// zanik czasowy KAZDEGO wpisu (Factor_DramaticContrast.ComputeAgedLoad), a kontrast
+        /// liczy rytm bez zaniku - rozjazd swiadomy, opisany przy konstruktorze TensionModel.
         /// </summary>
         public ContrastTuning contrast = ContrastTuning.Default();
+
+        /// <summary>
+        /// Predykat KRYZYSU SKRAJNEGO (Core/Tension/CrisisDetector) - WSPOLNA MASZYNERIA, nie profil.
+        ///
+        /// Decyzja autora po przegladzie etapu 4: gdy co najmniej polowa kolonistow obecnych na
+        /// mapie lezy powalona ostro, KAZDY profil przechodzi na Breathe z moca co najwyzej 0,
+        /// a straznik serii ciszy zostaje zawieszony. Regula bezpieczenstwa ma byc jednakowa dla
+        /// wszystkich osobowosci - inaczej porownanie profili mieszaloby osobowosc z tym,
+        /// czy regula w ogole dziala.
+        /// </summary>
+        public CrisisParams crisis = CrisisParams.Default();
 
         /// <summary>
         /// Czy zlozony opis narracyjny ma zastapic waniliowy list w grze.
         ///
         /// DOMYSLNIE WYLACZONE I TO JEST DECYZJA, NIE ZANIECHANIE. Powod jest zmierzony:
-        /// customLetterText honoruje tylko bazowy IncidentWorker.SendIncidentLetter, a przez
-        /// niego przechodzi 7 z naszych 12 incydentow. Pozostale piec (MeteoriteImpact,
-        /// RefugeePodCrash, ManhunterPack, RaidEnemy, RansomDemand) buduje list samodzielnie
-        /// i to pole ignoruje. Wlaczenie przelacznika daje wiec rozgrywke, w ktorej CZESC
-        /// zdarzen ma opis zlozony z klockow, a czesc waniliowy - niespojnosc widoczna dla
-        /// gracza i trudna do obronienia w rozdziale o ewaluacji.
+        /// customLetterText honoruje tylko bazowy IncidentWorker.SendIncidentLetter (takze przez
+        /// SendStandardLetter), a przez niego przechodzi 9 z naszych 13 incydentow. Pozostale
+        /// cztery ignoruja pole: MeteoriteImpact i RansomDemand buduja list samodzielnie,
+        /// a WandererJoin i RefugeePodCrash (IncidentWorker_GiveQuest) oddaja list zadaniu.
+        /// Wlaczenie przelacznika daje wiec rozgrywke, w ktorej CZESC zdarzen ma opis zlozony
+        /// z klockow, a czesc waniliowy - niespojnosc widoczna dla gracza i trudna do obronienia
+        /// w rozdziale o ewaluacji. (Wczesniejsze "7 z 12" pochodzilo z pomiaru obalonego
+        /// przegladem - zgadnietych typow lisciowych bez przejscia po dziedziczeniu.)
         ///
-        /// Mechanizm jest gotowy i przetestowany; brakuje decyzji, czy niespojnosc 7/12 jest
-        /// akceptowalna, czy najpierw domknac pozostala piatke wlasnymi IncidentWorkerami.
+        /// Mechanizm jest gotowy i przetestowany; brakuje decyzji, czy niespojnosc 9/13 jest
+        /// akceptowalna, czy najpierw domknac pozostala czworke (dwie z nich wymagaja wejscia
+        /// w warstwe questow, nie w incydent).
         ///
         /// Katalog jest po stronie TEKSTU juz bezpieczny: regula "fakt w tekscie = warunek
         /// twardy" zostala przeprowadzona, a fragmenty, ktorych nie dalo sie zabezpieczyc
@@ -275,6 +295,18 @@ namespace ProceduralNarrator.Integration.Storyteller
                 poprawki.Add("<pass>: " + poprawkiPass);
             }
 
+            if (crisis == null)
+            {
+                poprawki.Add("brak bloku <crisis> -> parametry kryzysu domyslne");
+                crisis = CrisisParams.Default();
+            }
+
+            string poprawkiKryzysu = crisis.Sanitize();
+            if (!string.IsNullOrEmpty(poprawkiKryzysu))
+            {
+                poprawki.Add("<crisis>: " + poprawkiKryzysu);
+            }
+
             return poprawki.Count == 0 ? null : string.Join("; ", poprawki.ToArray());
         }
 
@@ -301,6 +333,9 @@ namespace ProceduralNarrator.Integration.Storyteller
               // ScoringWeights.Describe() dokleja sume SAM. Wczesniej bylo tu drugie
               // "(suma=...)", wiec linia kanarka drukowala te liczbe dwa razy - a jest to
               // linia, ktora idzie do pracy jako dowod zadzialania konfiguracji.
+              // "wagi awaryjne" to od drugiego przegladu etapu 4 wagi PROFILU AWARYJNEGO
+              // (NarratorProfile.Fallback) - wczesniej etykieta obiecywala to, czego sciezka
+              // awaryjna nie robila (brala inicjalizatory C#).
               .Append(" | wagi awaryjne: ").Append(weights == null ? "BRAK" : weights.Describe())
               .Append(" | ").Append(pass == null ? "BRAK BLOKU <pass>" : pass.ToString())
               // Blok <contrast> byl jedynym parametrem decyzyjnym pominietym w tej linii.
@@ -312,7 +347,8 @@ namespace ProceduralNarrator.Integration.Storyteller
               // kalibracji, a nie tylko w kodzie.
               .Append(" | kontrast: reliefGain=").Append(Num(contrast == null ? 0f : contrast.reliefGain))
               .Append(" strikeGain=").Append(Num(contrast == null ? 0f : contrast.strikeGain))
-              .Append(" | zlozonyList=").Append(useComposedLetter ? "tak" : "nie");
+              .Append(" | zlozonyList=").Append(useComposedLetter ? "tak" : "nie")
+              .Append(" | ").Append(crisis == null ? "BRAK BLOKU <crisis>" : crisis.ToString());
             return sb.ToString();
         }
 

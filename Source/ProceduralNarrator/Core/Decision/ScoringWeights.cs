@@ -27,8 +27,13 @@ namespace ProceduralNarrator.Core.Decision
     /// KALIBRACJA (uzasadnienie domyslnych wartosci): contextFit ma wage najwieksza, bo
     /// spojnosc z sytuacja jest podstawowa obietnica systemu; freshness jest tuz obok, bo
     /// roznorodnosc jest wprost metryka ewaluacji; dramaticContrast dostaje 1.0 jako czynnik
-    /// modelujacy rytm, a nie trafnosc; intentAlignment ma 0.0 do kroku 4 - jest wpiety,
-    /// liczony i logowany, ale neutralny (patrz komentarz przy Total()).
+    /// modelujacy rytm, a nie trafnosc; intentAlignment 1.0 od kroku 4 (do kroku 3 bylo 0 -
+    /// czynnik byl wpiety i logowany, ale neutralny, patrz komentarz przy Total()).
+    ///
+    /// SKAD SA WAGI W GRZE: od kroku 4 z PROFILU narratora (NarratorProfileDef). Blok
+    /// &lt;weights&gt; StorytellerDefa zasila wylacznie PROFIL AWARYJNY (NarratorProfile.Fallback),
+    /// a inicjalizatory ponizej - awaryjny bez bloku. Walidator offline uzywa bloku z XML jako
+    /// wag referencyjnych testow warstwy decyzyjnej.
     /// </summary>
     public class ScoringWeights
     {
@@ -37,10 +42,10 @@ namespace ProceduralNarrator.Core.Decision
         public float dramaticContrast = 1.0f;
 
         /// <summary>
-        /// Waga 0 w kroku 3: czynnik jest zarejestrowany i trafia do sladu, ale nie wplywa
-        /// na wynik. Podniesiona w kroku 4 razem z krzywa dramaturgiczna (bylo 0). UWAGA: od kroku 4 ta wartosc jest AWARYJNA - faktyczne wagi pochodza z wylosowanego profilu narratora (NarratorProfileDef). Dzieki temu format
-        /// danych badawczych (zestaw i kolejnosc kolumn) nie zmienia sie miedzy krokami
-        /// i skrypty agregujace w Pythonie nie wymagaja przepisania.
+        /// Do kroku 3 waga 0: czynnik byl zarejestrowany i trafial do sladu, ale nie wplywal
+        /// na wynik - dzieki temu format danych badawczych (zestaw i kolejnosc kolumn) nie
+        /// zmienil sie, gdy krok 4 podniosl wage razem z krzywa dramaturgiczna. Od kroku 4
+        /// ta wartosc jest AWARYJNA - faktyczne wagi pochodza z profilu narratora.
         /// </summary>
         public float intentAlignment = 1.0f;
 
@@ -201,6 +206,23 @@ namespace ProceduralNarrator.Core.Decision
         public override string ToString()
         {
             return Describe();
+        }
+
+        /// <summary>
+        /// Kopia pole po polu. Wagi zyja w Defach wspoldzielonych przez caly proces gry, wiec
+        /// kazdy odbiorca, ktory moglby je zmienic (sanityzacja, profil awaryjny), dostaje kopie.
+        /// Nowe pole wagi trzeba dopisac TUTAJ - walidator porownuje kopie z oryginalem refleksja
+        /// po wszystkich polach publicznych, wiec pominiecie nie przejdzie po cichu.
+        /// </summary>
+        public ScoringWeights Clone()
+        {
+            return new ScoringWeights
+            {
+                contextFit = contextFit,
+                freshness = freshness,
+                dramaticContrast = dramaticContrast,
+                intentAlignment = intentAlignment
+            };
         }
 
         /// <summary>Wartosc pola BEZ scinania - wylacznie do diagnostyki i logu startowego.</summary>

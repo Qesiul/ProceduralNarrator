@@ -66,6 +66,22 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Kazdy kandydat wypadl ponizej progu jakosci.</summary>
         BelowCutoff,
 
+        /// <summary>
+        /// Pula opustoszala, bo silnik nie mogl wydac WERDYKTU - nie dlatego, ze odmowil.
+        ///
+        /// Zachodzi, gdy o wszystkie payloady pytano juz w tym ticku przy innym celu albo innych
+        /// parametrach. CanFireNowSub jest buforowane na parze (IncidentDef, tick), wiec kolejne
+        /// pytanie zwrocilo by cudza odpowiedz; narrator odklada wtedy te akcje do nastepnej tury.
+        ///
+        /// OSOBNA WARTOSC, bo prowadzi do INNEJ naprawy niz AllRefusedByGame:
+        ///   AllRefusedByGame    -> warunki twarde luzniejsze niz wymagania workerow
+        ///   VerdictUnavailable  -> tura dzieli tick z inna tura narratora (wiecej niz jedna
+        ///                          kolonia), albo katalog ma wiele zestawow parametrow na payload
+        /// Zlanie ich kazaloby zaostrzac warunki twarde tam, gdzie problemem jest wspoldzielony
+        /// tick - czyli stroic zupelnie nie to pokretlo.
+        /// </summary>
+        VerdictUnavailable,
+
         /// <summary>Gra odmowila odpalenia kazdego wybranego incydentu (CanFireNow).</summary>
         AllRefusedByGame,
 

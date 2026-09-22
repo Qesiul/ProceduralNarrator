@@ -59,7 +59,8 @@ namespace ProceduralNarrator.Integration
                 IsNight = hour < 6 || hour >= 18,
                 WildAnimalCount = CountWildAnimals(map),
                 MaddenableAnimalCount = CountMaddenableAnimals(map),
-                DownedColonistCount = CountDownedColonists(map),
+                AcuteDownedCount = CountAcutelyDownedColonists(map),
+                ColonistsOnMap = CountColonistsOnMap(map),
                 Danger = MapDanger(map),
                 // Ta sama wielkosc, ktora bazowy IncidentWorker.CanFireNow porownuje
                 // z def.minThreatPoints. Liczona RAZ na ture (snapshot jest zamrazany),
@@ -271,24 +272,85 @@ namespace ProceduralNarrator.Integration
         }
 
         /// <summary>
-        /// Ilu kolonistow lezy powalonych. Sygnal dla krzywej dramaturgicznej (krok 4);
-        /// zaden warunek twardy tego nie czyta.
+        /// Ilu kolonistow OBECNYCH na mapie lezy powalonych OSTRO. Sygnal dla krzywej napiecia
+        /// i dla predykatu kryzysu skrajnego; zaden warunek twardy tego nie czyta.
         ///
-        /// FreeColonistsSpawned, a NIE FreeColonistsCount: liczymy tych, ktorzy sa NA TEJ MAPIE,
-        /// bo napiecie jest wielkoscia lokalna dla kolonii. Kolonista lezacy w karawanie po
-        /// drugiej stronie planety nie opisuje sytuacji tej osady.
+        /// "OSTRO" = Pawn.Downed ORAZ jeden z trzech sladow sytuacji, ktora wymaga pomocy teraz:
+        ///   - szok bolowy (Pawn_HealthTracker.InPainShock),
+        ///   - krwawienie (HediffSet.BleedRateTotal &gt; 0 - rany opatrzone i trwale nie krwawia,
+        ///     zdekompilowane Hediff_Injury.BleedRate zwraca 0 dla IsTended() i IsPermanent()),
+        ///   - cokolwiek do opatrzenia (HasHediffsNeedingTend -&gt; Hediff.TendableNow dla KAZDEGO
+        ///     hediffu: nieopatrzone rany, choroby nigdy nieopatrzone - tendTicksLeft = -1 - oraz
+        ///     choroby od 3 h PRZED wygasnieciem opatrunku, tendOverlapHours).
         ///
-        /// UWAGA NA MIANOWNIK: WorldSnapshot.ColonistCount pochodzi z FreeColonistsCount, ktore
-        /// powalonych LICZY (Downed jest stanem, nie utrata przynaleznosci). Ulamek powalonych
-        /// jest wiec dobrze okreslony i nie moze przekroczyc 1.
+        /// DLACZEGO NIE SAMO Downed - zmierzone w przegladzie etapu 4. Stan Down obejmuje stany
+        /// TRWALE: kazde niemowle (HumanlikeBaby ma alwaysDowned; wanilia sama je odfiltrowuje
+        /// w Caravan.cs: Downed &amp;&amp; !alwaysDowned), brak obu nog, abazje, sen smierci sanguofaga,
+        /// spiaczke, katatonie. Przy dwoch kolonistach i jednym takim pionku profil powsciagliwy
+        /// mial TRWALE Breathe; kolonia z czworgiem niemowlat miala napiecie sytuacyjne 1.0 na
+        /// stale. Wszystkie te stany sa po opatrzeniu "ciche" - nie krwawia, nie maja nic do
+        /// opatrzenia, nie sa w szoku - wiec kryterium je pomija bez wyliczania ich z nazwy.
+        ///
+        /// Precedens w wanilii: StoryWatcher_Adaptation liczy wylacznie powalenia z przemocy
+        /// ("violently downed", dinfo.Def.ExternalViolenceFor). Wanilia robi to ZDARZENIOWO,
+        /// w chwili powalenia; snapshot jest STANEM, wiec pytamy o slady, ktore przemoc
+        /// (i kazdy inny ostry kryzys) zostawia na pionku, dopoki ktos go nie opatrzy.
+        ///
+        /// ZNANE OGRANICZENIA I ZACHOWANIA, swiadome (zweryfikowane dekompilacja w przegladzie):
+        ///   - NIE liczony: powalony przez sama swiadomosc bez ran - udar cieplny, hipotermia,
+        ///     zatrucie toksynami (ToxicBuildup nie jest tendable i nie boli). Brak szoku, krwi
+        ///     i nic do opatrzenia.
+        ///   - LICZONY: porod (PregnancyLabor/Pushing - Moving 0 i bol 0.85 &gt;= prog szoku 0.8)
+        ///     - stan ostry i wymagajacy pomocy, wiec zgodny z intencja predykatu, ale w kolonii
+        ///     dwuosobowej wlacza kryzys skrajny;
+        ///   - LICZONY OKRESOWO: trwale powalony z przewlekla choroba do opatrywania (np. astma) -
+        ///     wraca do licznika na kilka godzin przed kazdym koncem opatrunku;
+        ///   - LICZONY ZAWSZE: pionek w trwalym szoku bolowym (przewlekle bolesne blizny).
+        /// Wszystkie sa rzadkie; liste da sie zmienic tutaj, bez zmian w Core. Weryfikacja
+        /// wylacznie w grze - walidator offline tej warstwy nie widzi.
+        ///
+        /// Pionek NOSZONY (akcja ratunkowa) nie jest spawnowany, wiec wypada z licznika i z
+        /// mianownika jednoczesnie - ulamek zostaje dobrze okreslony.
         /// </summary>
-        private static int CountDownedColonists(Map map)
+        private static int CountAcutelyDownedColonists(Map map)
         {
             List<Pawn> kolonisci = map.mapPawns.FreeColonistsSpawned;
             int n = 0;
             for (int i = 0; i < kolonisci.Count; i++)
             {
-                if (kolonisci[i] != null && kolonisci[i].Downed)
+                Pawn p = kolonisci[i];
+                if (p == null || !p.Downed || LifeStageUtility.AlwaysDowned(p) || p.health == null)
+                {
+                    continue;
+                }
+                if (p.health.InPainShock
+                    || p.health.hediffSet.BleedRateTotal > 0f
+                    || p.health.HasHediffsNeedingTend())
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Mianownik dla CountAcutelyDownedColonists: kolonisci OBECNI na mapie, bez niemowlat.
+        ///
+        /// Z TEJ SAMEJ listy co licznik (FreeColonistsSpawned). Wczesniej mianownikiem bylo
+        /// ColonistCount = FreeColonistsCount, ktore liczy tez pionki trzymane niespawnowane -
+        /// w kriokomorach, noszone, w transporterach - a licznik tylko obecnych. Stary komentarz
+        /// uzasadnial rozjazd karawana, ale karawany nie ma w zadnej z tych list, wiec
+        /// uzasadnienie bylo bledne, a ulamek zanizony dokladnie wtedy, gdy czesc kolonii
+        /// byla poza gra. Niemowleta wypadaja z obu stron, bo zadne z nich nie moze byc ani
+        /// "zdolne do dzialania", ani "powalone w kryzysie".
+        /// </summary>
+        private static int CountColonistsOnMap(Map map)
+        {
+            List<Pawn> kolonisci = map.mapPawns.FreeColonistsSpawned;
+            int n = 0;
+            for (int i = 0; i < kolonisci.Count; i++)
+            {
+                if (kolonisci[i] != null && !LifeStageUtility.AlwaysDowned(kolonisci[i]))
                 {
                     n++;
                 }

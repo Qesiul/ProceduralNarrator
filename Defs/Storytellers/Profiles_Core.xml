@@ -31,6 +31,19 @@
   ziarnie i tym samym stanie swiata JEDYNA zmienna jest profil. Na tym stoi
   demonstracja wzorca Strategia w rozdziale o ewaluacji.
 
+  PROGI PO POLEROWANIU ETAPU 4 - SWIADOMIE NIEPRZESTROJONE. Czlon narracyjny napiecia
+  liczy od v6 zanik KAZDEGO wpisu osobno (wczesniej: wspolny mnoznik z wieku najnowszego
+  wpisu). W grze wieki wpisow roznia sie praktycznie zawsze, wiec napiecie z samej historii
+  jest srednio nizsze. Zmierzone Monte Carlo w przegladzie (tempo 2.5 dnia, spokojna
+  kolonia): srednie napiecie spada o ok. 30-40%; Hold u powsciagliwego z ok. 24% do ok. 12%
+  decyzji, u zrownowazonego z ok. 3% do ok. 0.6%; napastliwy i tak eskalowal. Intencja Hold
+  z samej historii jest wiec dla zrownowazonego i napastliwego praktycznie nieosiagalna,
+  a przejscie Hold -> Escalate obniza uzytecznosc ciszy (Factor_PassIntent), czyli dziala
+  w strone MNIEJSZEGO udzialu PASS. Kalibracja progow z kroku 4 byla wyprowadzona, nie
+  zmierzona; przestrojenie ma isc na danych v6 z prawdziwej gry (dane v5 liczono stara
+  formula i do tego sie nie nadaja). Progi rownowazne kwantylowo, gdyby autor chcial
+  zachowac dawny rozklad intencji: calmBelow ok. 0.12 / 0.23 / 0.34-0.37.
+
   UWAGA SKLADNIOWA: wezel musi uzywac PELNEJ nazwy typu z namespace'em. Sama
   <NarratorProfileDef> jest po cichu ignorowana przez DirectXmlLoader - patrz
   pulapka opisana w sekcji 2 CLAUDE.md.

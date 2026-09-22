@@ -83,11 +83,65 @@ namespace ProceduralNarrator.Core.Decision
         /// </summary>
         public float RecentDensity;
 
-        /// <summary>Dlugosc biezacej serii decyzji PASS. Wypelnia integracja przez AttachTurnContext.</summary>
+        /// <summary>
+        /// Dlugosc biezacej serii SWIADOMEJ ciszy (patrz EventHistory.DeliberateSilenceStreak).
+        /// Wypelnia integracja przez AttachTurnContext.
+        /// </summary>
         public int PassStreak;
+
+        /// <summary>
+        /// Prawdopodobienstwo zwyciezcy w LOSOWANIU WYBORU, ktore go wskazalo - WARUNKOWE,
+        /// to znaczy przy juz rozstrzygnietej bramie. Null, gdy zwyciezila cisza: wtedy wyniku
+        /// nie wyprodukowalo losowanie wyboru, tylko brama, a ta ma wlasna kolumne pBrama.
+        ///
+        /// TRZY WIELKOSCI, TRZY ROZNE PYTANIA - i mylenie ich bylo czwartym zarzutem:
+        ///     Winner.SelectionProbability  -> jakie szanse mial ten kandydat w rozkladzie RUNDY
+        ///                                     PIERWSZEJ (po prewerifikacji, przed odmowami
+        ///                                     w petli); suma po calym Ranking wynosi dokladnie 1
+        ///     WinnerRoundProbability       -> jakie szanse mial w losowaniu, ktore go wybralo,
+        ///                                     przy juz znanym wyniku bramy
+        ///     GatePassProbability          -> jakie szanse miala cisza w tej turze
+        ///
+        /// CZEGO ZADNA Z NICH NIE ZNACZY: "prawdopodobienstwo, ze tura skonczy sie tym wynikiem".
+        /// Takiej liczby w wierszu nie ma i nie da sie jej policzyc z gory, bo zalezy od tego,
+        /// czemu silnik odmowi - a to wiadomo dopiero po fakcie.
+        /// </summary>
+        public float? WinnerRoundProbability;
+
+        /// <summary>
+        /// Czy wykonalnosc zwyciezcy zostala wywnioskowana z innego wariantu tej samej akcji.
+        /// Wypelnia warstwa integracji z TurnResult.FeasibilityInferred - patrz tam po pelne
+        /// wyprowadzenie (cache CanFireNowSub w silniku gry).
+        /// </summary>
+        public bool FeasibilityInferred;
+
+        /// <summary>
+        /// Ile wariantow odlozono do nastepnej tury ZANIM zapadla decyzja - inne parametry niz
+        /// potwierdzone czolo, niedostepny werdykt o payloadzie albo awaria przygotowania bez
+        /// pytania. Pelny opis przy TurnResult.DeferredVariants; wypelnia integracja z tamtego pola.
+        /// </summary>
+        public int DeferredVariants;
+
+        /// <summary>
+        /// Ile razy silnik nie mogl wydac swiezego werdyktu, bo o dany payload pytano juz
+        /// w tym ticku. Wypelnia integracja z TurnResult.UnanswerableScopes.
+        /// </summary>
+        public int UnanswerableScopes;
 
         /// <summary>Czy straznik serii wykluczyl PASS z losowania w tej turze.</summary>
         public bool PassSuppressedByStreak;
+
+        /// <summary>
+        /// Czy seria swiadomej ciszy byla na limicie W KRYZYSIE SKRAJNYM, czyli czy straznik
+        /// ZOSTAL ZAWIESZONY (SelectionPolicy.IsStreakWaivedByCrisis). Wypelnia TurnRunner.
+        ///
+        /// Wyklucza sie z PassSuppressedByStreak (tlumienie wymaga braku kryzysu, zawieszenie -
+        /// kryzysu), ale NIE jest jego lustrem: tlumienie zachodzi tylko przy niepustej puli
+        /// zdarzen, a zawieszenie jest liczone niezaleznie od puli. Tura z pusta pula w kryzysie
+        /// przy serii na limicie ma wiec zawieszony=true i stlumiony=false. Bez tej kolumny tura
+        /// z zawieszonym straznikiem wygladalaby w danych identycznie jak tura ponizej limitu.
+        /// </summary>
+        public bool StreakWaivedByCrisis;
 
         /// <summary>
         /// Rozstrzygniecie bramy tej TURY. Warstwa integracji podaje je z powrotem do Select
@@ -114,9 +168,11 @@ namespace ProceduralNarrator.Core.Decision
         public int CountInSoftmax;
 
         /// <summary>
-        /// Liczba pobran z generatora. Z konstrukcji rowna DWUKROTNOSCI liczby rund (brama plus
-        /// wybor zdarzenia), nigdy rozmiarowi puli - takze wtedy, gdy ktorys etap byl zdegenerowany
-        /// i jego losowanie zostalo zuzyte na pusto. Patrz SelectionPolicy.BurnDraw.
+        /// Liczba pobran z generatora w CALEJ turze: 1 + 2 * liczba rund (brama raz na ture, akcja
+        /// i wariant w kazdej rundzie; faza 0 nie losuje), nigdy zalezna od rozmiaru puli - takze
+        /// wtedy, gdy ktorys etap byl zdegenerowany i jego losowanie zostalo zuzyte na pusto.
+        /// Liczbe rund da sie wiec z danych odtworzyc dokladnie: rundy = (losowan - 1) / 2.
+        /// Patrz SelectionPolicy.BurnDraw. (Do wersji 4 formatu: dwukrotnosc liczby rund.)
         /// </summary>
         public int RandomDraws;
 
@@ -167,6 +223,22 @@ namespace ProceduralNarrator.Core.Decision
             Append(sb, "wynik", w == null ? string.Empty : Fmt(w.Utility));
             Append(sb, "p", w == null ? string.Empty : Fmt(w.SelectionProbability));
 
+            // PUSTE, a nie zero, gdy losowanie wyboru tego wyniku nie wyprodukowalo (cisza
+            // z bramy albo cisza techniczna). Zero jest wartoscia ZNACZACA - "bylo losowanie
+            // i mial zerowa szanse" - wiec wpisanie go tutaj zasilaloby srednie liczba, ktora
+            // nie opisuje zadnego losowania. W Pandas pusta kolumna to NaN i wypada sama.
+            Append(sb, "pRunda", WinnerRoundProbability.HasValue
+                                     ? Fmt(WinnerRoundProbability.Value) : string.Empty);
+            // NAZWA ZMIENIONA RAZEM ZE ZNACZENIEM. "wnioskowana" opisywala RYZYKO - potwierdzenie
+            // wziete od dowolnego rodzenstwa, takze o innych punktach. Odkad warianty o innych
+            // parametrach sa odkladane, wspoldzielenie zachodzi wylacznie miedzy kandydatami
+            // nieodroznialnymi dla CanFireNow, wiec kolumna opisuje OSZCZEDZONE PYTANIE, a nie
+            // niepewnosc. Zostawienie starej nazwy przy nowym znaczeniu byloby dokladnie ta
+            // pulapka, przed ktora ten projekt broni sie przy kazdej zmianie formatu.
+            Append(sb, "wspoldzielona", FeasibilityInferred ? "true" : "false");
+            Append(sb, "odlozonych", Int(DeferredVariants));
+            Append(sb, "niedostepnych", Int(UnanswerableScopes));
+
             Append(sb, "best", Fmt(BestUtility));
             Append(sb, "pasmo", Fmt(BandThreshold));
 
@@ -184,8 +256,14 @@ namespace ProceduralNarrator.Core.Decision
             Append(sb, "passWynik", Fmt(PassUtility));
             Append(sb, "pBrama", Fmt(GatePassProbability));
             Append(sb, "passStlumiony", PassSuppressedByStreak ? "true" : "false");
+            Append(sb, "straznikZawieszony", StreakWaivedByCrisis ? "true" : "false");
             Append(sb, "gestosc", Fmt(RecentDensity));
-            Append(sb, "seriaPass", Int(PassStreak));
+            // NAZWA KOLUMNY ZMIENIONA RAZEM ZE ZNACZENIEM (v4 "seriaPass" -> v5 "ciszaSwiadoma").
+            // Licznik liczyl kazda ture bez zdarzenia, a liczy wylacznie cisze wybrana przez brame.
+            // Zostawienie starej nazwy przy nowej semantyce daloby kolumne, ktora parsuje sie
+            // w obu seriach i znaczy w nich co innego - najgorszy mozliwy wariant dla danych
+            // badawczych, bo nic by tego nie zglosilo.
+            Append(sb, "ciszaSwiadoma", Int(PassStreak));
 
             // Czynniki ZDARZENIOWE zwyciezcy - puste dla decyzji PASS (brak pomiaru, nie zero).
             AppendFactor(sb, pass ? null : w, nameof(ScoringWeights.contextFit));

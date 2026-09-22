@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Tension;
+using ProceduralNarrator.Integration.Storyteller;
 using Verse;
 
 namespace ProceduralNarrator.Integration.Defs
@@ -85,19 +87,34 @@ namespace ProceduralNarrator.Integration.Defs
         /// <summary>
         /// Zwraca profil rdzenia dla podanego defName, albo profil awaryjny, gdy go nie ma.
         /// Sanityzuje kopie i zglasza poprawki - ta sama konwencja co przy parametrach compa.
+        /// Wagi profilu awaryjnego: blok &lt;weights&gt; naszego compa w aktywnym StorytellerDefie
+        /// (CurrentFallbackWeights), zeby akcje debugowe widzialy ten sam profil co narrator.
         /// </summary>
         public static NarratorProfile Resolve(string defName)
+        {
+            return Resolve(defName, CurrentFallbackWeights());
+        }
+
+        /// <summary>
+        /// Jak wyzej, z jawnymi wagami profilu awaryjnego. Comp podaje tu wlasne Props.weights -
+        /// to ten sam obiekt co w Defie (Storyteller.InitializeStorytellerComps przypisuje props
+        /// bez kopii), ale jawny parametr nie zalezy od tego, czy comp siedzi w aktywnym narratorze.
+        /// </summary>
+        public static NarratorProfile Resolve(string defName, ScoringWeights fallbackWeights)
         {
             NarratorProfileDef def = ById(defName);
             if (def == null)
             {
+                // Error trafia takze do pliku danych jako [PN-ERR] - kolumna "profil" niesie wtedy
+                // PN_Profil_Awaryjny, a ta linia mowi, ktory profil zastapiono. Pusty defName
+                // (pusty katalog przy przydziale) zglosil juz PrzydzielProfil.
                 if (!string.IsNullOrEmpty(defName))
                 {
-                    PNLog.Error("Profil narratora '" + defName + "' nie istnieje w katalogu - "
-                                + "uzywam profilu awaryjnego. Najczestsza przyczyna: profil usunieto "
-                                + "z XML miedzy sesjami, a zapis gry nadal go wskazuje.");
+                    PNLog.Error("Profil narratora '" + defName + "' nie istnieje w katalogu - uzywam profilu "
+                                + "awaryjnego " + NarratorProfile.FallbackId + ". Najczestsza przyczyna: profil "
+                                + "usunieto albo przemianowano w XML miedzy sesjami, a zapis gry nadal go wskazuje.");
                 }
-                return NarratorProfile.Fallback();
+                return NarratorProfile.Fallback(fallbackWeights);
             }
 
             NarratorProfile profil = def.ToProfile();
@@ -107,6 +124,29 @@ namespace ProceduralNarrator.Integration.Defs
                 PNLog.Warn("Profil " + profil.Id + " - poprawiono parametry krzywej: " + poprawki);
             }
             return profil;
+        }
+
+        /// <summary>
+        /// Blok &lt;weights&gt; naszego compa w AKTYWNYM StorytellerDefie albo null (poza gra, inny
+        /// narrator) - wtedy profil awaryjny bierze inicjalizatory ScoringWeights.
+        /// </summary>
+        public static ScoringWeights CurrentFallbackWeights()
+        {
+            if (Current.Game == null || Current.Game.storyteller == null || Current.Game.storyteller.def == null
+                || Current.Game.storyteller.def.comps == null)
+            {
+                return null;
+            }
+            var comps = Current.Game.storyteller.def.comps;
+            for (int i = 0; i < comps.Count; i++)
+            {
+                var nasz = comps[i] as StorytellerCompProperties_Generative;
+                if (nasz != null)
+                {
+                    return nasz.weights;
+                }
+            }
+            return null;
         }
 
         public static string DescribeCatalog()

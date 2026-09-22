@@ -19,6 +19,12 @@ namespace ProceduralNarrator.Core.Tension
         /// <summary>Napiecie, z ktorego to wyniklo. Do logu i do sladu.</summary>
         public float Tension;
 
+        /// <summary>
+        /// Czy intencje i moc nadpisala regula kryzysu skrajnego (ApplyCrisis). Napiecie zostaje
+        /// wtedy SUROWE - roznica miedzy nim a intencja jest sladem dzialania reguly.
+        /// </summary>
+        public bool CrisisOverride;
+
         public string Trace;
     }
 
@@ -77,5 +83,44 @@ namespace ProceduralNarrator.Core.Tension
             return decision;
         }
 
+        /// <summary>
+        /// REGULA KRYZYSU SKRAJNEGO, nakladana PO Select - decyzja autora po przegladzie etapu 4.
+        ///
+        /// Gdy kryzys zachodzi: intencja Breathe u KAZDEGO profilu, a docelowa moc
+        /// min(moc profilu, 0). Select zostaje nietkniety, wiec jego wlasnosci (progi bez
+        /// przeskoku, moc ciagla i nierosnaca wzgledem napiecia) obowiazuja nadal - a regula
+        /// jest osobna, jawna nieciagloscia na granicy predykatu, ktora widac w sladzie.
+        ///
+        /// DLACZEGO min(x, 0), A NIE STALA. Moc 0 PODNIOSLABY moc profilu, ktory przy ciezkiej
+        /// historii ma ja juz ujemna (napastliwy -0.875 -&gt; 0), czyli dala efekt odwrotny do celu.
+        /// Moc "-span" oddalaby zachowanie w kryzysie parametrowi osobowosci i dawala najwiekszy
+        /// skok. min(x, 0) nie dziala tam, gdzie profil juz lagodzi, i gwarantuje brak DODATNIEGO
+        /// nacisku na moc wszedzie indziej. Roznice miedzy profilami w kryzysie zostaja w wagach
+        /// i w mocy ujemnej - osobowosc dziala dalej, tylko ponad podloga bezpieczenstwa.
+        ///
+        /// Zwraca TEN SAM obiekt (zmieniony albo nie) - wolajacy nie musi wiedziec, czy regula
+        /// zadzialala; wie to slad i pole CrisisOverride.
+        /// </summary>
+        public static IntentDecision ApplyCrisis(IntentDecision decision, CrisisReading crisis)
+        {
+            if (decision == null || crisis == null || !crisis.Extreme)
+            {
+                return decision;
+            }
+
+            Intent przed = decision.Intent;
+            float mocPrzed = decision.TargetIntensity;
+
+            decision.Intent = Intent.Breathe;
+            decision.TargetIntensity = System.Math.Min(decision.TargetIntensity, 0f);
+            decision.CrisisOverride = true;
+
+            decision.Trace = (decision.Trace ?? string.Empty)
+                             + " | " + crisis.Trace
+                             + " -> intencja " + przed + "->" + decision.Intent
+                             + ", moc " + mocPrzed.ToString("0.00", CultureInfo.InvariantCulture)
+                             + "->" + decision.TargetIntensity.ToString("0.00", CultureInfo.InvariantCulture);
+            return decision;
+        }
     }
 }

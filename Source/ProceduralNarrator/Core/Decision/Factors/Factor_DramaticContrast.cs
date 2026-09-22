@@ -140,6 +140,33 @@ namespace ProceduralNarrator.Core.Decision
     }
 
     /// <summary>
+    /// Obciazenie historii z ZANIKIEM CZASOWYM KAZDEGO WPISU OSOBNO - wejscie czlonu
+    /// narracyjnego krzywej napiecia (TensionModel), NIE czynnika kontrastu.
+    ///
+    /// Te same wagi kolejnosci (lambda^i) i to samo okno co RhythmPoint, ale kazdy wpis jest
+    /// dodatkowo mnozony przez 2^(-wiek/polokres) liczone z JEGO WLASNEJ daty. Mianownik to
+    /// suma samych wag kolejnosci, bez zaniku - wpis stary nie znika z mianownika, tylko
+    /// przestaje wnosic ciezar, wiec "dawno i daleko" rozcienczaja, a nie wzmacniaja.
+    ///
+    /// Obie strony niesione OSOBNO (obciazenie i ulga), bo ich roznica jest wynikiem, a slad
+    /// ma pokazywac, z czego ten wynik powstal.
+    /// </summary>
+    public class AgedLoad
+    {
+        /// <summary>Suma w*max(0,-c)*zanik / suma w - ciezar zdarzen negatywnych, [0,1].</summary>
+        public float Negative;
+
+        /// <summary>Suma w*max(0,c)*zanik / suma w - ulga ze zdarzen pozytywnych, [0,1].</summary>
+        public float Positive;
+
+        /// <summary>Srednia wazona zanikow, [0,1]. 1.0 = wszystkie wpisy z tej chwili.</summary>
+        public float MeanDecay;
+
+        /// <summary>Ile wpisow weszlo do sumy.</summary>
+        public int Entries;
+    }
+
+    /// <summary>
     /// Czynnik POTENCJALU DRAMATURGICZNEGO liczony jako KONTRAST kandydata wobec rytmu
     /// ostatnich zdarzen, w przestrzeni (walencja x skala).
     ///
@@ -179,12 +206,13 @@ namespace ProceduralNarrator.Core.Decision
     /// a rozroznia ich dopasowanie kontekstowe.
     ///
     /// OGRANICZENIE ROZDZIELCZOSCI, KTORE TRZEBA OPISAC W PRACY: dzisiejszy katalog daje
-    /// tylko CZTERY osiagalne pary (walencja, skala) - (Neg,Major), (Neg,Moderate),
-    /// (Pos,Minor), (Neu,Minor) - wiec czynnik zwraca najwyzej cztery rozne wartosci na 84
-    /// kandydatow. To wlasciwosc, nie blad: kontrast rozstrzyga MIEDZY grupami, a wewnatrz
-    /// grupy decyduja dopasowanie i swiezosc. Jesli w ewaluacji kontrast wyjdzie statystycznie
-    /// nieistotny, przyczyna bedzie w KATALOGU (brak par Negative/Minor, Positive/Major,
-    /// Neutral/Moderate), a nie we wzorze.
+    /// tylko PIEC osiagalnych par (walencja, skala) - (Neg,Major), (Neg,Moderate), (Neg,Minor)
+    /// od PN_Akcja_Amok, (Pos,Minor), (Neu,Minor) - wiec czynnik zwraca najwyzej piec roznych
+    /// wartosci na wszystkich kandydatow (liczbe kandydatow drukuje walidator; tu jej nie
+    /// wpisujemy, bo sie starzeje). To wlasciwosc, nie blad: kontrast rozstrzyga MIEDZY grupami,
+    /// a wewnatrz grupy decyduja dopasowanie i swiezosc. Jesli w ewaluacji kontrast wyjdzie
+    /// statystycznie nieistotny, przyczyna bedzie w KATALOGU (brak par Positive/Major,
+    /// Positive/Moderate, Neutral/Moderate, Neutral/Major), a nie we wzorze.
     /// </summary>
     public class Factor_DramaticContrast : IScoringFactor
     {
@@ -477,6 +505,105 @@ namespace ProceduralNarrator.Core.Decision
             point.Magnitude = (float)(sumM / sumW);
             point.Entries = recent.Count;
             return point;
+        }
+
+        /// <summary>
+        /// Obciazenie historii z zanikiem czasowym KAZDEGO WPISU osobno. Uzywa go wylacznie
+        /// krzywa napiecia (TensionModel); ComputeRhythm i caly czynnik kontrastu zostaja
+        /// nietkniete.
+        ///
+        /// DLACZEGO OSOBNA METODA, A NIE MNOZNIK NA WYNIKU ComputeRhythm. Poprzednia krzywa
+        /// liczyla clamp01(-Rc) * 2^(-wiek NAJNOWSZEGO wpisu / polokres). Mnoznik wspolny dla
+        /// calej sumy mial wade, ktora ujawnil przeglad etapu 4: po dlugiej ciszy DOPISANIE
+        /// ZDARZENIA POZYTYWNEGO podnosilo napiecie. Nowy wpis zerowal wiek najnowszego, wiec
+        /// mnoznik wracal do 1 i "ozywial" ciezar napadow sprzed kilkudziesieciu dni. Skutek dla
+        /// INTENCJI zalezal od profilu (zmierzone w przegladzie, 8 napadow i prezent po 53 dniach
+        /// ciszy): powsciagliwy przechodzil z Escalate na Hold na ok. 6 dni, domyslny tylko przy
+        /// decyzji w ciagu ok. 0.6 dnia od prezentu, napastliwy nigdy. Tutaj kazdy wpis starzeje
+        /// sie sam, wiec swiezy prezent nie odmladza starych katastrof.
+        ///
+        /// WLASNOSCI (asercje w TEST 10g walidatora):
+        ///   - przy WSPOLNYM wieku wszystkich wpisow wynik jest TOZSAMY z clamp01(-Rc) * zanik,
+        ///     czyli ze stara formula. Uwaga na zasieg: w grze wieki wpisow roznia sie PRAKTYCZNIE
+        ///     ZAWSZE (kazda decyzja ma inny dzien), wiec poprawka dotyczy niemal kazdej tury;
+        ///   - w ciszy (brak nowych wpisow) wynik polowi sie DOKLADNIE co polokres;
+        ///   - dopisanie wpisu o ladunku nieujemnym moze podniesc wynik co najwyzej o ULGE,
+        ///     ktora wraz z wpisem WYPADAJACYM Z OKNA przestaje sie liczyc:
+        ///     lambda^okno * max(0, c_wyp) * zanik_wyp / suma wag okna. Przy niepelnym oknie nic
+        ///     nie wypada i wynik nie rosnie wcale (wyprowadzenie w TEST 10g walidatora).
+        ///
+        /// Sanityzacja okna i lambdy jest powielona z ComputeRhythm swiadomie (ComputeRhythm
+        /// zostaje nietkniety - decyzja przegladu): obie metody maja widziec ten sam zbior wpisow
+        /// z tymi samymi wagami, a zwiazanie ich pilnuje asercja tozsamosci przy wspolnym wieku
+        /// uruchamiana TAKZE na strojeniu zdegenerowanym (lambda ujemna, NaN, zero; okno zerowe
+        /// i ujemne) - TEST 10g(a). Bez tego galezie sanityzacji nie bylyby wykonywane w ogole.
+        /// </summary>
+        public AgedLoad ComputeAgedLoad(EventHistory history, float gameDay, float halfLifeDays)
+        {
+            var load = new AgedLoad();
+            if (history == null || history.Count == 0)
+            {
+                return load;
+            }
+
+            int window = tuning.rhythmWindow > 0 ? tuning.rhythmWindow : 1;
+            IReadOnlyList<EventHistoryEntry> recent = history.Recent(window);
+            if (recent.Count == 0)
+            {
+                return load;
+            }
+
+            double lambda = tuning.lambda;
+            if (double.IsNaN(lambda) || lambda < 0.0)
+            {
+                lambda = 0.0;
+            }
+
+            double sumW = 0.0;
+            double sumNeg = 0.0;
+            double sumPos = 0.0;
+            double sumD = 0.0;
+            int wpisow = 0;
+
+            for (int i = 0; i < recent.Count; i++)
+            {
+                EventHistoryEntry e = recent[i];
+                if (e == null)
+                {
+                    continue;
+                }
+
+                double w = Math.Pow(lambda, i);
+
+                // Wiek ujemny (wpis "z przyszlosci" po wczytaniu zapisu albo po symulatorze
+                // przywracajacym tick) HalfLifeDecay klamruje do zera, czyli do pelnej wagi -
+                // ten sam kierunek, ktory przyjmuja pozostale miejsca liczace wiek wpisu.
+                double d = Curves.HalfLifeDecay(gameDay - e.GameDay, halfLifeDays);
+                double c = Charge(e.Valence, e.Scale);
+
+                sumW += w;
+                sumD += w * d;
+                if (c < 0.0)
+                {
+                    sumNeg += w * (-c) * d;
+                }
+                else
+                {
+                    sumPos += w * c * d;
+                }
+                wpisow++;
+            }
+
+            if (sumW <= 0.0)
+            {
+                return load;
+            }
+
+            load.Negative = (float)(sumNeg / sumW);
+            load.Positive = (float)(sumPos / sumW);
+            load.MeanDecay = (float)(sumD / sumW);
+            load.Entries = wpisow;
+            return load;
         }
 
         /// <summary>

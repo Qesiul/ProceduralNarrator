@@ -20,7 +20,21 @@ namespace ProceduralNarrator.Core.Model
         Veto,
         QualityCutoff,
         NearBestBand,
-        EngineRefused
+        EngineRefused,
+
+        /// <summary>
+        /// Kandydat NIEDA SIE w tej turze sprawdzic - nie dlatego, ze gra odmowila, tylko
+        /// dlatego, ze o jego akcje juz pytano przy INNYCH parametrach wykonania, a silnik
+        /// buforuje odpowiedz na tick. Pytanie zwrocilo by werdykt policzony dla cudzych
+        /// punktow. Odkladamy go wiec do nastepnej tury.
+        ///
+        /// OSOBNA WARTOSC OD EngineRefused, bo diagnozuje CO INNEGO i prowadzi do innej naprawy:
+        ///   EngineRefused  -> warunki twarde luzniejsze niz wymagania workera
+        ///   Unverifiable   -> akcja ma w pasmie warianty o roznej intensywnosci, a cache silnika
+        ///                     nie pozwala sprawdzic wiecej niz jednej na ture
+        /// Zlanie ich w jeden licznik zafalszowaloby oba.
+        /// </summary>
+        Unverifiable
     }
 
     /// <summary>
@@ -87,6 +101,70 @@ namespace ProceduralNarrator.Core.Model
 
         /// <summary>Etap, na ktorym kandydat odpadl. Wypelnia wylacznie SelectionPolicy.</summary>
         public RejectionStage Rejected = RejectionStage.None;
+
+        /// <summary>
+        /// Czy silnik gry odmowil TEJ AKCJI w BIEZACEJ TURZE.
+        ///
+        /// OSOBNE POLE OD Rejected i to jest cala jego racja bytu: Rejected jest wlasnoscia RUNDY
+        /// i SelectionPolicy kasuje je na poczatku kazdego Select, wiec nie moze niesc stanu przez
+        /// cala ture. Ta flaga zyje od momentu odmowy do konca tury i jest zdejmowana przez
+        /// warstwe wolajaca przed tura nastepna.
+        ///
+        /// DLACZEGO ZAKRES AKCJI, A NIE WARIANTU - UWAGA, PIERWSZE UZASADNIENIE BYLO FALSZYWE.
+        ///
+        /// Pisalem tu, ze "jedynymi bramkami zaleznymi od IncidentParms sa min/maxThreatPoints",
+        /// wiec wszystkie warianty musza dostac te sama odpowiedz. Dekompilacja to OBALA:
+        /// CanFireNowSub czyta parms.points w 3 z 13 naszych payloadow, a wynik realnie od nich
+        /// zalezy w JEDNYM - ManhunterPack (TryFindAggressiveAnimalKind(points)). WandererJoin
+        /// i RefugeePodCrash przekazuja punkty do questScriptDef.CanRun, ale TestRunInt ich rootow
+        /// zwraca bezwarunkowe true. Jeden payload wystarczy: wykonalnosc bywa rozna miedzy
+        /// wariantami.
+        ///
+        /// Zakres akcyjny zostaje, ale z uzasadnienia DOKLADNIE ODWROTNEGO. IncidentWorker
+        /// buforuje wynik CanFireNowSub w polach instancyjnych na biezacy tick, a worker jest
+        /// jeden na IncidentDef; narrator zas siedzi przez cala ture w jednym ticku. Po pierwszym
+        /// pytaniu o dana akcje kolejne zwracaja wiec odpowiedz policzona dla PARAMETROW INNEGO
+        /// wariantu. Nie da sie poznac wykonalnosci rodzenstwa - mozna tylko dostac stara
+        /// odpowiedz w swiezym opakowaniu. Odkladamy zatem cala akcje do nastepnej tury; jest to
+        /// kierunek OSTROZNY, bo w najgorszym razie odrzucamy wariant byc moze wykonalny.
+        ///
+        /// Cache nie "potwierdza" wiec zakresu akcyjnego, jak pisalem - on go WYMUSZA, zabierajac
+        /// mozliwosc dowiedzenia sie czegokolwiek o rodzenstwie w tej samej turze.
+        /// </summary>
+        public bool EngineRefusedThisTurn;
+
+        /// <summary>
+        /// Czy tego kandydata NIE DA SIE w tej turze sprawdzic, bo o jego akcje zapytano juz przy
+        /// INNYCH parametrach wykonania.
+        ///
+        /// POWOD. IncidentWorker buforuje wynik CanFireNowSub na parze (IncidentDef, tick), a cala
+        /// tura miesci sie w jednym ticku. Skoro o akcje zapytano przy punktach P1, to pytanie
+        /// przy P2 zwroci odpowiedz policzona dla P1 - a wykonalnosc od punktow REALNIE zalezy
+        /// w ManhunterPack (TryFindAggressiveAnimalKind(points)); do tego bramki min/maxThreatPoints
+        /// leza przed cache'em i zaleza od punktow w kazdym payloadzie z progiem.
+        ///
+        /// DLACZEGO NIE WYSTARCZY FLAGA DIAGNOSTYCZNA. Mozna bylo odpalic taki wariant i tylko
+        /// oznaczyc niepewnosc w logu - i tak dzialala wersja poprzednia. Ale zdarzenie, ktore
+        /// sie nie wykona, trafia mimo to do historii narratora i wplywa na swiezosc, rytm oraz
+        /// kolejne decyzje. Odfiltrowanie wiersza w analizie tego NIE COFA. Dlatego wariant
+        /// o niesprawdzalnych parametrach jest odkladany, a nie odpalany z adnotacja.
+        ///
+        /// ZAKRES JEST WASKI Z ROZMYSLEM: odpadaja wylacznie warianty o INNYCH parametrach
+        /// wykonania. Warianty rozniace sie samym opisem - innym wyzwalaczem, aktorem, celem czy
+        /// modyfikatorem, ktore sumuja sie do tej samej intensywnosci - zostaja i nadal konkuruja,
+        /// bo ich IncidentParms sa identyczne co do wartosci istotnych dla CanFireNow.
+        /// </summary>
+        public bool UnverifiableThisTurn;
+
+        /// <summary>
+        /// Czy kandydat jest w tej turze niedostepny z jakiegokolwiek powodu po stronie silnika.
+        /// Jedno miejsce, bo kazde pominiecie jednej z dwoch flag w warunku daje kandydata,
+        /// ktory wchodzi do puli wyboru mimo ze nie wolno go odpalic.
+        /// </summary>
+        public bool UnavailableThisTurn
+        {
+            get { return EngineRefusedThisTurn || UnverifiableThisTurn; }
+        }
 
         /// <summary>
         /// Prawdopodobienstwo wylosowania w softmaksie, odtworzone z FAKTYCZNIE uzytych progow

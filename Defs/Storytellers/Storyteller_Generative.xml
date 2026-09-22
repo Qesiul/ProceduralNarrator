@@ -169,9 +169,12 @@
                   (nizsza wartosc = cisza szybciej zyskuje na wartosci przy zageszczeniu).
                2. gateTemperature - ZMIENIA, jak ostro brama reaguje na roznice uzytecznosci
                   (wyzsza = brama bardziej losowa, udzial PASS blizszy 50%).
-             Kolumna "pBrama" w PN_decyzje.log podaje udzial ciszy WPROST, w kazdej turze,
-             niezaleznie od tego, co faktycznie wylosowano - wiec da sie go usrednic po turach
-             zamiast czekac na rzadkie wygrane PASS. -->
+             Kolumna "pBrama" w PN_decyzje.log podaje P(brama wybiera cisze) w kazdej turze,
+             niezaleznie od tego, co faktycznie wylosowano - wiec da sie ja usrednic po turach
+             zamiast czekac na rzadkie wygrane PASS. To NIE jest zrealizowany udzial ciszy:
+             tura, w ktorej brama kazala dzialac, moze skonczyc sie cisza techniczna (odmowy,
+             budzet, niedostepne werdykty). Udzial ciszy liczyc z decyzja=PASS z podzialem na
+             powodPass, a srednia pBrama - po turach bez ciszy technicznej. -->
         <gateTemperature>0.1</gateTemperature>
 
         <!-- Weto spojnosci: kandydat o dopasowaniu kontekstowym ponizej tego
@@ -180,26 +183,29 @@
              wylacza wplyw dopasowania na wynik, ale NIE znosi weta. -->
         <vetoContextFitBelow>0.15</vetoContextFitBelow>
 
-        <!-- Budzet rund petli wyboru. NIE jest to zabezpieczenie poprawnosci:
-             petla konczy sie sama, bo kazda runda bez trafienia usuwa dokladnie
-             jednego kandydata z puli. Jest to budzet KOSZTU, bo CanFireNow bywa
-             drogie (Infestation przeszukuje mape). 8 to odpowiednik dawnego
-             MaxCompositionAttempts = 6 z zapasem. -->
+        <!-- Budzet tury. NIE jest to zabezpieczenie poprawnosci: petla konczy sie
+             sama, bo kazda odmowa silnika oznacza CALA akcje (zakres payloadu) jako
+             niewykonalna w tej turze. Jest to budzet KOSZTU i ogranicza naraz liczbe
+             rund wyboru ORAZ laczna liczbe pytan do gry (CanFireNow) w turze - wspolna
+             dla prewerifikacji czola i petli (pytanDoGry <= maxSelectionRounds).
+             8 to odpowiednik dawnego MaxCompositionAttempts = 6 z zapasem. -->
         <maxSelectionRounds>8</maxSelectionRounds>
 
         <!-- Wagi czynnikow ZDARZENIOWYCH - WARTOSC AWARYJNA OD KROKU 4.
              Faktyczne wagi pochodza z wylosowanego PROFILU narratora
-             (Defs/Storytellers/Profiles_Core.xml); ten blok dziala tylko wtedy, gdy
-             katalog profili jest pusty albo zapis wskazuje profil, ktorego juz nie ma.
-             Zostaje takze jako czesc kanarka konfiguracji w logu startowym.
+             (Defs/Storytellers/Profiles_Core.xml); ten blok zasila PROFIL AWARYJNY
+             (PN_Profil_Awaryjny), gdy katalog profili jest pusty albo zapis wskazuje
+             profil, ktorego juz nie ma. (Do drugiego przegladu etapu 4 byl tak opisany,
+             ale sciezka awaryjna go nie czytala - brala wartosci z kodu.) Walidator
+             offline uzywa go jako wag referencyjnych testow warstwy decyzyjnej.
 
              Nazwa wezla == nazwa pola == nazwa czynnika w sladzie decyzji; to inwariant,
              nie zbieg okolicznosci.
              Wynik jest srednia WAZONA znormalizowana przez sume wag, wiec licza
              sie wylacznie PROPORCJE miedzy nimi, a nie wartosci bezwzgledne.
              Czynnik o wadze 0 jest dokladnie NEUTRALNY (wnosi 0 do licznika
-             i 0 do mianownika), a nie rozcienczajacy - dlatego intentAlignment
-             moze byc juz wpiety, mimo ze krzywa dramaturgiczna wchodzi w kroku 4. -->
+             i 0 do mianownika), a nie rozcienczajacy - dlatego w kroku 3 intentAlignment
+             mogl byc wpiety z waga 0, zanim krzywa dramaturgiczna weszla w kroku 4. -->
         <weights>
           <!-- Najwyzsza waga, bo spojnosc z sytuacja kolonii jest glownym
                deklarowanym wkladem pracy wobec narratorow waniliowych. -->
@@ -240,10 +246,15 @@
                te wartosc; gdy jest za niski, OBNIZ ja. Nie ruszaj wag: nizsze
                weightRestraint podnosi PODLOGE uzytecznosci ciszy i daje efekt
                odwrotny do zamierzonego.
-               Zaleznosc jest liniowa i latwa do policzenia z logu:
-                 passWynik = weightRestraint * r + weightBaseline,  gdzie
-                 r = (gestosc - densityFloor) / (densitySaturation - densityFloor),
-               zweryfikowane na danych z gry co do trzeciego miejsca po przecinku. -->
+               Zaleznosc jest liniowa i latwa do policzenia z logu (suma wag = 1.0):
+                 passWynik = weightRestraint * r + weightBaseline
+                             + weightIntentAlignment * FitFor(intencja),  gdzie
+                 r = (gestosc - densityFloor) / (densitySaturation - densityFloor)
+                 (klamrowane do [0, 1]), FitFor: Escalate 0.0, Hold 0.5, Breathe 1.0
+               (Breathe wymuszone kryzysem skrajnym takze 1.0). Skladniki sa w kolumnach
+               passRestraint / passBaseline / passIntent. Zweryfikowane na 33 wierszach v5:
+               pelny wzor zgadza sie do 0.001; wzor bez czlonu intencji (wydanie tego
+               komentarza z kroku 3) myli sie o 0.125 w kazdym wierszu Hold. -->
           <densitySaturation>4.5</densitySaturation>
           <!-- Straznik serii: ile PASS-ow z rzedu wolno, zanim PASS zostanie
                wykluczony z losowania (0 wylacza straznika). Ubezpieczenie przed
@@ -274,8 +285,10 @@
                budzetu zdarzen, czyli argument, na ktorym stoi ewaluacja porownawcza.
                mtbDays jest SUFITEM, intencja decyduje, ile z niego narrator zuzyje.
 
-               PO PIERWSZYM PRZEBIEGU: zmierzyc udzial PASS. Jesli odbiegnie od ~12.5%
-               z testu dymnego kroku 3, stroic <densitySaturation>, NIGDY wagami. -->
+               PO PIERWSZYM PRZEBIEGU: zmierzyc udzial PASS. Punkt odniesienia: 10.5%
+               (4/38) w ostatnim przebiegu symulatora debugowego przed bramami v5/v6
+               (12.5% w tescie dymnym kroku 3); v6 nie ma jeszcze pomiaru. Stroic
+               <densitySaturation>, NIGDY wagami. -->
           <weightIntentAlignment>0.25</weightIntentAlignment>
         </pass>
 
@@ -297,15 +310,43 @@
           <strikeGain>1.0</strikeGain>
         </contrast>
 
+        <!-- KRYZYS SKRAJNY - regula bezpieczenstwa WSPOLNA dla wszystkich profili (polerowanie
+             etapu 4, decyzje autora).
+
+             Gdy co najmniej downedFraction kolonistow OBECNYCH na mapie (bez niemowlat) lezy
+             powalonych OSTRO - w szoku bolowym, krwawiac albo majac cokolwiek do opatrzenia
+             (rany, a takze nieopatrzone choroby) - kazdy
+             profil przechodzi na intencje Breathe, docelowa moc spada do min(moc profilu, 0),
+             a straznik serii ciszy przestaje zmuszac narratora do dzialania. Cisza w kryzysie
+             nie zuzywa limitu swiadomego milczenia.
+
+             Predykat NIE zalezy od DangerRating: zaraza w stadium skrajnym czy pozar tez kladzie
+             kolonie, a sam napad bez powalonych kryzysem skrajnym nie jest. Powalenia przez sama
+             swiadomosc bez ran (zatrucie toksynami, udar cieplny, hipotermia) nie sa liczone. Nie zakazuje tez zdarzen
+             negatywnych - przesuwa preferencje tak samo jak Breathe poza kryzysem.
+
+             Parametr ZYJE TUTAJ, a nie w profilu: gdyby prog byl czescia osobowosci, porownanie
+             profili mieszaloby osobowosc z tym, czy regula w ogole dziala. -->
+        <crisis>
+          <downedFraction>0.5</downedFraction>
+          <minDowned>1</minDowned>
+          <enabled>true</enabled>
+        </crisis>
+
         <!-- ZLOZONY OPIS ZAMIAST WANILIOWEGO LISTU - DECYZJA DO PODJECIA, nie zaniechanie.
 
-             Mechanizm jest gotowy (IncidentParmsBuilder). Wylaczony, bo zmierzone pokrycie
-             wynosi 7 z 12: waniliowy IncidentWorker.SendIncidentLetter honoruje customLetterText
-             tylko dla workerow, ktore przez niego przechodza -
-               DZIALA:     ResourcePodCrash, Flashstorm, Infestation, WandererJoin,
-                           PsychicEmanatorShipPartCrash, AmbrosiaSprout, WildManWandersIn
-               IGNORUJE:   MeteoriteImpact, RefugeePodCrash, ManhunterPack, RaidEnemy,
-                           RansomDemand  (buduja list samodzielnie)
+             Mechanizm jest gotowy (IncidentParmsBuilder). Wylaczony, bo pokrycie wynosi 9 z 13:
+             waniliowy IncidentWorker.SendIncidentLetter (takze przez SendStandardLetter) honoruje
+             customLetterText tylko dla workerow, ktore przez niego przechodza. Pomiar z przejsciem
+             po lancuchu dziedziczenia (CLAUDE.md, sekcja o IncidentParmsBuilder) plus Amok:
+               DZIALA:     ResourcePodCrash, Flashstorm, Infestation, PsychicEmanatorShipPartCrash,
+                           AmbrosiaSprout, WildManWandersIn, ManhunterPack, RaidEnemy,
+                           AnimalInsanitySingle
+               IGNORUJE:   MeteoriteImpact, RansomDemand (list budowany samodzielnie) oraz
+                           WandererJoin, RefugeePodCrash (IncidentWorker_GiveQuest - list nalezy
+                           do zadania, nie do incydentu)
+             Wczesniejsze wydanie tego komentarza (7 z 12, WandererJoin jako DZIALA, ManhunterPack
+             i RaidEnemy jako IGNORUJE) pochodzilo z pomiaru obalonego przegladem.
 
              Wlaczenie da wiec rozgrywke, w ktorej czesc zdarzen ma opis zlozony z klockow,
              a czesc waniliowy. Ta niespojnosc jest widoczna dla gracza i trudna do obronienia

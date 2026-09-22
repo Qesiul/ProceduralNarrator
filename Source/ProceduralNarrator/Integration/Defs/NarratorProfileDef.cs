@@ -45,7 +45,10 @@ namespace ProceduralNarrator.Integration.Defs
         /// Przepisuje Def na typ rdzenia. KOPIA, nie referencja: Def zyje w DefDatabase przez
         /// caly proces gry i jest wspoldzielony miedzy rozgrywkami, wiec przekazanie referencji
         /// pozwoliloby jednej rozgrywce po cichu przestroic profil innej. Sanitize() dziala
-        /// wtedy na kopii i nie mutuje danych z pliku.
+        /// wtedy na kopii i nie mutuje danych z pliku - dotyczy to takze audytu startowego
+        /// (PNStartup.AuditProfiles), ktory do drugiego przegladu etapu 4 sanityzowal sam Def.
+        /// Kompletnosc Clone (wszystkie pola publiczne, takze dodane w przyszlosci) walidator
+        /// sprawdza refleksja.
         /// </summary>
         public NarratorProfile ToProfile()
         {
@@ -54,20 +57,8 @@ namespace ProceduralNarrator.Integration.Defs
                 Id = defName,
                 Label = string.IsNullOrEmpty(label) ? defName : label,
                 SelectionWeight = selectionWeight,
-                Weights = CloneWeights(weights),
+                Weights = (weights ?? new ScoringWeights()).Clone(),
                 Tension = (tension ?? TensionParams.Default()).Clone()
-            };
-        }
-
-        private static ScoringWeights CloneWeights(ScoringWeights src)
-        {
-            ScoringWeights zrodlo = src ?? new ScoringWeights();
-            return new ScoringWeights
-            {
-                contextFit = zrodlo.contextFit,
-                freshness = zrodlo.freshness,
-                dramaticContrast = zrodlo.dramaticContrast,
-                intentAlignment = zrodlo.intentAlignment
             };
         }
 

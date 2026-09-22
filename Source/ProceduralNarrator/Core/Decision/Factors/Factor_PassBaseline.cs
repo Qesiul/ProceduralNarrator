@@ -9,9 +9,9 @@ namespace ProceduralNarrator.Core.Decision
     /// DLACZEGO WARTOSC JEST STALA, A REGULOWANA JEST WAGA:
     /// w modelu utylitarnym liczy sie wylacznie iloczyn wartosci i wagi, wiec konfigurowanie obu
     /// naraz jest nadmiarowe i daje dwa pokretla na to samo. Regulujemy WAGE. Przy domyslnej sumie
-    /// wag rownej 1.0 (0.75 + 0.25 + 0) waga baseline czyta sie wprost jako PODLOGA uzytecznosci
-    /// PASS: U_pass_min = w_baseline / sumW = 0.25. To jest "bazowa sklonnosc do ciszy" z decyzji
-    /// projektowych, wyrazona jedna liczba w XML.
+    /// wag rownej 1.0 (od kroku 4: 0.55 + 0.20 + 0.25; w kroku 3: 0.75 + 0.25 + 0) waga baseline
+    /// czyta sie wprost jako PODLOGA uzytecznosci PASS: U_pass_min = w_baseline / sumW = 0.20.
+    /// To jest "bazowa sklonnosc do ciszy" z decyzji projektowych, wyrazona jedna liczba w XML.
     ///
     /// KONTRARGUMENT DO ZAPISANIA W PRACY (bo czytelnik go postawi):
     /// staly wyraz w scoringu latwo odczytac jako sztuczke podbijajaca wynik PASS-a. Odpowiedz:

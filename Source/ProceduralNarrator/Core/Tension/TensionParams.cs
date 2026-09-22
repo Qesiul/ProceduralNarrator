@@ -30,18 +30,24 @@ namespace ProceduralNarrator.Core.Tension
         public float situationalWeight = 1.0f;
 
         /// <summary>
-        /// Polowiczny zanik czlonu narracyjnego W CISZY, w dniach gry.
+        /// Okres polowiczny WKLADU KAZDEGO WPISU historii do czlonu narracyjnego, w dniach gry.
+        ///
+        /// SEMANTYKA OD POLEROWANIA ETAPU 4. Do tej zmiany byl to wspolny mnoznik calej sumy,
+        /// liczony z wieku NAJNOWSZEGO wpisu ("zanik w ciszy"). Dzis kazdy wpis starzeje sie
+        /// wlasnym wiekiem (Factor_DramaticContrast.ComputeAgedLoad), wiec parametr wyznacza DWIE
+        /// rzeczy naraz: jak szybko napiecie opada w ciszy ORAZ jak mocno starsze wpisy waza
+        /// w trakcie aktywnosci. Przyklad: u profilu napastliwego (3 dni) przy odstepie 2.5 dnia
+        /// kolejny wpis wstecz waza efektywnie 0.75 * 2^(-2.5/3) = 0.42 zamiast 0.75.
         ///
         /// TEN PARAMETR JEST KONSTRUKCYJNIE KONIECZNY, NIE KOSMETYCZNY. Rytm z
         /// Factor_DramaticContrast zanika po INDEKSIE wpisu (lambda^i), a nie po czasie -
         /// osiem zdarzen wstecz wazy tyle samo, czy bylo to piec dni temu, czy piecdziesiat.
         /// Bez zaniku czasowego napiecie nigdy nie opadaloby w ciszy, wiec intencja Breathe,
-        /// raz osiagnieta, ZATRZASNELABY SIE NA STALE: narrator milczalby, cisza nie
-        /// obnizalaby napiecia, wiec dalej by milczal. Ten czlon domyka petle sprzezenia
-        /// zwrotnego i ma na to osobna asercje w walidatorze.
+        /// raz osiagnieta, ZATRZASNELABY SIE NA STALE. Zanik kazdego wpisu domyka petle
+        /// sprzezenia zwrotnego i ma na to osobna asercje w walidatorze (TEST 10b).
         ///
-        /// Domyslne 5 dni to ta sama stala co PassScoringParams.halfLifeDays (2 * mtbDays),
-        /// czyli pamiec o dwa typowe odstepy miedzy wydarzeniami.
+        /// Domyslne 5 dni to ta sama stala co PassScoringParams.halfLifeDays (2 * mtbDays) - i od
+        /// tej zmiany ten sam WZOR zaniku per wpis. Profile maja wlasne wartosci (8 / 5 / 3).
         /// </summary>
         public float halfLifeDays = 5f;
 

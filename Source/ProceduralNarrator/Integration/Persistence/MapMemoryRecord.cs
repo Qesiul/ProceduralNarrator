@@ -23,7 +23,7 @@ namespace ProceduralNarrator.Integration.Persistence
     public class MapMemoryRecord : IExposable
     {
         public int decisionCount;
-        public int consecutivePassCount;
+        public int deliberateSilenceStreak;
         public List<string> lines = new List<string>();
 
         public void ExposeData()
@@ -36,7 +36,20 @@ namespace ProceduralNarrator.Integration.Persistence
             // a nie brakiem danych. Bez forceSave wezel nie powstalby w XML, a przy wczytaniu
             // nie dalo by sie odroznic "zero decyzji" od "pole nie zostalo zapisane".
             Scribe_Values.Look(ref decisionCount, "decyzji", 0, true);
-            Scribe_Values.Look(ref consecutivePassCount, "seriaPass", 0, true);
+
+            // NOWY WEZEL, a nie zmiana nazwy pola pod starym - i to jest cala migracja.
+            //
+            // Licznik zmienil ZNACZENIE: liczyl kazda ture bez zdarzenia, a liczy wylacznie
+            // cisze SWIADOMA (PassReason.Competitive). Czytanie starej wartosci pod nowa
+            // semantyka daloby liczbe zawyzona o wszystkie ciszne techniczne - i to najmocniej
+            // w zapisach z koloni, w ktorych gra duzo odmawia, czyli dokladnie tam, gdzie
+            // straznik serii najbardziej szkodzi.
+            //
+            // Stary wezel "seriaPass" zostaje w zapisach nieczytany i wygasa naturalnie.
+            // Zapis sprzed tej wersji wczytuje sie wiec z seria ZEROWA, co jest bezpiecznym
+            // kierunkiem bledu: straznik nigdy nie wygasi PASS-a bez pokrycia w danych,
+            // a licznik odbuduje sie po kilku turach.
+            Scribe_Values.Look(ref deliberateSilenceStreak, "ciszaSwiadoma", 0, true);
 
             Scribe_Collections.Look(ref lines, "wpisy", LookMode.Value);
 

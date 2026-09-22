@@ -116,17 +116,37 @@ namespace ProceduralNarrator.Core.Model
         public bool HasPoweredCommsConsole;
 
         /// <summary>
-        /// Ilu kolonistow jest POWALONYCH (Downed) w tej chwili.
+        /// Ilu kolonistow obecnych na mapie lezy powalonych OSTRO - czyli powalonych I wymagajacych
+        /// pomocy teraz (szok bolowy, krwawienie albo nieopatrzone rany lub choroby).
         ///
-        /// Wchodzi WYLACZNIE do krzywej napiecia (krok 4), nie do zadnego warunku klocka.
-        /// Powod doboru: to najbardziej bezposredni sygnal "kolonii dzieje sie zle TERAZ",
-        /// i jest to ten sam sygnal, na ktory reaguje waniliowa adaptacja
-        /// (StoryWatcher_Adaptation.Notify_PawnEvent z AdaptationEvent.Downed).
+        /// Wchodzi do krzywej napiecia (czlon sytuacyjny) i do predykatu kryzysu skrajnego, nie do
+        /// zadnego warunku klocka. Powod doboru: to najbardziej bezposredni sygnal "kolonii dzieje
+        /// sie zle TERAZ", ten sam, na ktory reaguje waniliowa adaptacja - ktora tez liczy
+        /// wylacznie powalenia z przemocy (StoryWatcher_Adaptation: "violently downed").
         ///
-        /// Liczba, a nie ulamek: normalizacja nalezy do krzywej, bo to ona zna prog,
-        /// przy ktorym kolonia jest "w opalach". Snapshot podaje FAKT, nie interpretacje.
+        /// DLACZEGO "OSTRO", A NIE SAMO Pawn.Downed - i dlaczego pole zmienilo nazwe razem ze
+        /// znaczeniem. Poprzednie DownedColonistCount liczylo kazdy stan Downed, a ten obejmuje
+        /// stany TRWALE, ktore z kryzysem nie maja nic wspolnego: kazde niemowle (HumanlikeBaby ma
+        /// alwaysDowned), brak obu nog, abazje, sen smierci sanguofaga, spiaczke, katatonie.
+        /// Zmierzone w przegladzie: 2 kolonistow i jeden taki pionek dawaly profilowi
+        /// powsciagliwemu TRWALE Breathe; kolonia z czworgiem niemowlat miala napiecie sytuacyjne
+        /// 1.0 NA STALE. Snapshot podaje fakt "ilu lezy i potrzebuje pomocy", a nie "ilu lezy".
+        ///
+        /// Liczba, a nie ulamek: normalizacja nalezy do krzywej i do predykatu kryzysu. Mianownik
+        /// jest w ColonistsOnMap - Z TEJ SAMEJ listy pionkow.
         /// </summary>
-        public int DownedColonistCount;
+        public int AcuteDownedCount;
+
+        /// <summary>
+        /// Ilu kolonistow jest OBECNYCH na mapie (bez niemowlat) - mianownik dla AcuteDownedCount.
+        ///
+        /// Osobne pole, a nie ColonistCount, bo to INNY ZBIOR: ColonistCount (FreeColonistsCount)
+        /// liczy takze pionki trzymane niespawnowane - w kriokomorach, noszone, w transporterach -
+        /// i niemowleta. Licznik powalonych liczy wylacznie obecnych, wiec ulamek z ColonistCount
+        /// bylby zanizony dokladnie wtedy, gdy czesc kolonii jest poza gra. ColonistCount zostaje
+        /// bez zmian dla preferencji klockow - jego zmiana ruszylaby contextFit calego katalogu.
+        /// </summary>
+        public int ColonistsOnMap;
 
         /// <summary>
         /// Biezacy poziom zagrozenia na mapie (odwzorowanie waniliowego StoryDanger).
@@ -178,7 +198,7 @@ namespace ProceduralNarrator.Core.Model
                    + " odOstatniego=" + DaysSinceLastEvent.ToString("0.00", CultureInfo.InvariantCulture)
                    + " porwanych=" + KidnappedColonistCount
                    + " konsola=" + HasPoweredCommsConsole
-                   + " powalonych=" + DownedColonistCount
+                   + " powalonych=" + AcuteDownedCount + "/" + ColonistsOnMap
                    + " zagrozenie=" + Danger
                    + " punkty=" + ThreatPoints.ToString("0", CultureInfo.InvariantCulture);
         }

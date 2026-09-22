@@ -6,12 +6,15 @@ namespace ProceduralNarrator.Core.Model
     /// "co narracja ma teraz zrobic": podniesc napiecie, dac oddech, utrzymac biezacy poziom
     /// albo swiadomie zamilknac.
     ///
-    /// W kroku 3 warstwa planowania jeszcze nie istnieje, wiec BuildRecipe() ustawia na stale
-    /// Hold. Oba czynniki zgodnosci z intencja (Factor_IntentAlignment po stronie zdarzen
-    /// i Factor_PassIntent po stronie PASS-u) maja wtedy wage 0, ale sa MIMO TO liczone
-    /// i trafiaja do sladu decyzji. Powod: format logu badawczego ma byc identyczny w kroku 3
-    /// i 4, zeby dolozenie krzywej dramaturgicznej nie wymuszalo przepisania skryptow
-    /// agregujacych w Pythonie (krok 8).
+    /// STAN OD KROKU 4: intencje wyznacza IntentSelector z napiecia (Escalate / Hold / Breathe;
+    /// Pass jest zarezerwowany i NIGDY nie jest zwracany), regula kryzysu skrajnego wymusza
+    /// Breathe, a caly lancuch spina TurnPlanner. Oba czynniki zgodnosci z intencja maja
+    /// niezerowe wagi: Factor_IntentAlignment z profilu narratora, Factor_PassIntent 0.25
+    /// w &lt;pass&gt;. Intencja jedzie w DecisionContext, nie w przepisie kompozycji.
+    ///
+    /// HISTORIA (krok 3): warstwa planowania nie istniala, intencja byla stale Hold, a oba
+    /// czynniki mialy wage 0 i mimo to byly liczone - zeby format logu badawczego byl
+    /// identyczny w kroku 3 i 4.
     ///
     /// UWAGA - dwa rozne pojecia "pass" w tej warstwie. Intent.Pass to INTENCJA ("narrator
     /// chce teraz ciszy"), czyli WEJSCIE scoringu. PassReason to POWOD faktycznej decyzji
@@ -26,10 +29,14 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Daj oddech - preferuj zdarzenia lagodne albo pozytywne.</summary>
         Breathe,
 
-        /// <summary>Utrzymaj biezacy poziom. Wartosc DOMYSLNA i jedyna uzywana w kroku 3.</summary>
+        /// <summary>Utrzymaj biezacy poziom. Wartosc DOMYSLNA (w kroku 3 jedyna uzywana).</summary>
         Hold,
 
-        /// <summary>Cisza jest celem - narrator chce, zeby ta tura nie przyniosla zdarzenia.</summary>
+        /// <summary>
+        /// Cisza jest celem. ZAREZERWOWANA - IntentSelector jej nie zwraca: Breathe juz daje
+        /// FitFor ciszy 1.0, a intencja Pass wyprowadzona z napiecia odwrocilaby ujemne
+        /// sprzezenie Factor_PassRestraint na dodatnie i narrator zamilklby na stale.
+        /// </summary>
         Pass
     }
 }

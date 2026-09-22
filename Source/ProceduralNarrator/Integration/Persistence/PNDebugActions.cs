@@ -50,6 +50,9 @@ namespace ProceduralNarrator.Integration.Persistence
             var sb = new StringBuilder(512);
             sb.Append("STAN PAMIECI NARRATORA | runId=").Append(pamiec.RunId)
               .Append(" | profil=").Append(string.IsNullOrEmpty(pamiec.ProfileId) ? "(brak)" : pamiec.ProfileId)
+              .Append(string.Equals(pamiec.ProfileId, pamiec.EffectiveProfileId, System.StringComparison.Ordinal)
+                          ? string.Empty
+                          : " (FAKTYCZNIE: " + pamiec.EffectiveProfileId + ")")
               .Append(" | map z wlasna pamiecia: ")
               .Append(pamiec.MapCount.ToString(CultureInfo.InvariantCulture));
             sb.AppendLine();
@@ -80,11 +83,13 @@ namespace ProceduralNarrator.Integration.Persistence
         /// <summary>
         /// Kasuje cala pamiec narratora.
         ///
-        /// Glowne zastosowanie: odkrecenie skutkow waniliowego symulatora
-        /// DebugLogTestFutureIncidents. Symulator przechodzi przez pelny nasz kod decyzyjny,
-        /// wiec dopisuje do pamieci kilkadziesiat FIKCYJNYCH decyzji. RimWorld przywraca po nim
-        /// wlasny StoryState, ale o naszej pamieci nic nie wie - a odkad pamiec jest trwala,
-        /// zapisanie gry po takim eksperymencie utrwaliloby te decyzje na stale.
+        /// Pierwotnie sluzyla do odkrecania skutkow waniliowego symulatora
+        /// DebugLogTestFutureIncidents, ktory przechodzil przez nasz kod decyzyjny i dopisywal do
+        /// trwalej pamieci kilkadziesiat FIKCYJNYCH decyzji. Od polerowania etapu 4 comp odrzuca
+        /// wywolania spoza zegara gry (straznik zegara w StorytellerComp_Generative), a do testow
+        /// sluzy "PN: test przyszlych incydentow" ze zrzutem i przywroceniem stanu. Akcja zostaje
+        /// dla zapisow skazonych PRZED ta zmiana - i tylko pamieci: stanu gry popsutego przez
+        /// waniliowe narzedzie (wyzerowany StoryState, zamrozone obserwatory) nie naprawia.
         /// </summary>
         [DebugAction("Procedural Narrator", "PN: skasuj pamiec", allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void SkasujPamiec()

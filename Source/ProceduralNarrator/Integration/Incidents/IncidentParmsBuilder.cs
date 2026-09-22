@@ -139,8 +139,45 @@ namespace ProceduralNarrator.Integration.Incidents
         }
 
         /// <summary>
-        /// DOKLADNE sito kandydatow: usuwa te, ktorych gra i tak nie przepusci przez prog
-        /// punktow zagrozenia. Wolane MIEDZY generowaniem a scoringiem.
+        /// ODCISK PARAMETROW WYKONANIA - dwa zdarzenia o tym samym kluczu trafiaja do gry
+        /// z IncidentParms nieodroznialnymi z punktu widzenia CanFireNow.
+        ///
+        /// MUSI SIE ZMIENIAC RAZEM Z Apply I DLATEGO STOI TUZ POD NIA. Apply rozniicuje dzis
+        /// dokladnie dwie rzeczy:
+        ///   - parms.points   (przez IntensityTable.PointsFactor(Intensity))  -> ISTOTNE
+        ///   - customLetterText                                               -> nieistotne
+        /// Tekst listu nie bierze udzialu w zadnej bramce wykonalnosci - CanFireNow go nie czyta -
+        /// wiec do klucza nie wchodzi. Punkty wchodza, bo od nich wykonalnosc REALNIE zalezy:
+        /// bramki min/maxThreatPoints leza przed cache'em w kazdym payloadzie z progiem, a z 3 z 13
+        /// payloadow, ktore czytaja parms.points w CanFireNowSub, wynik zmienia sie w JEDNYM -
+        /// ManhunterPack (TryFindAggressiveAnimalKind(points)). WandererJoin i RefugeePodCrash
+        /// przekazuja punkty do questScriptDef.CanRun, ale TestRunInt ich rootow zwraca true.
+        ///
+        /// Klucz jest budowany z INTENSYWNOSCI, a nie z policzonych punktow, i jest to celowe:
+        /// punkty bazowe sa wspolne dla calej tury, wiec mnoznik intensywnosci wyznacza je
+        /// jednoznacznie, a klucz da sie policzyc bez budowania IncidentParms dla kazdego
+        /// z osiemdziesieciu kandydatow.
+        ///
+        /// GDY DOJDZIE NOWE POLE (raidArrivalMode, infestationLocOverride, spawnCenter przy
+        /// domykaniu slotu Target) - DOPISAC JE TUTAJ. Pominiecie nie da bledu kompilacji ani
+        /// wyjatku: narrator zacznie po cichu wspoldzielic potwierdzenie miedzy wariantami,
+        /// ktore ida do gry roznie. Jedynym widocznym objawem bedzie wzrost udzialu kolumny
+        /// "wspoldzielona" w danych badawczych.
+        /// </summary>
+        public static string ExecutionKey(ComposedEvent zdarzenie)
+        {
+            if (zdarzenie == null)
+            {
+                return null;
+            }
+            return (zdarzenie.ActionPayload ?? "?") + "|"
+                   + ((int)zdarzenie.Intensity).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// DOKLADNE sito kandydatow: usuwa te, ktorych gra i tak nie przepusci - przez prog
+        /// punktow zagrozenia ALBO przez filtr trudnosci dla ThreatBig (patrz BigThreatsAllowedNow).
+        /// Wolane MIEDZY generowaniem a scoringiem.
         ///
         /// DLACZEGO TU, A NIE W WARUNKU TWARDYM. Bazowy IncidentWorker.CanFireNow porownuje
         /// z def.minThreatPoints punkty JUZ PRZEMNOZONE przez intensywnosc gotowej kompozycji.
@@ -157,10 +194,13 @@ namespace ProceduralNarrator.Integration.Incidents
         ///
         /// SLAD W DANYCH: kandydaci usunieci tutaj nie trafiaja do puli ocenianej, wiec
         /// w linii [PN-DATA] zachodzi
-        ///     wygenerowanych - kandydatow == liczba odfiltrowanych jako nieosiagalne
-        /// Nie potrzeba wiec nowej kolumny ani podbicia wersji formatu; roznica jest
-        /// samoopisujaca, bo zaden inny mechanizm nie usuwa kandydatow miedzy tymi dwoma
-        /// pomiarami (weto i progi jakosci tylko OZNACZAJA, nie usuwaja).
+        ///     wygenerowanych - kandydatow == liczba odfiltrowanych (obie przyczyny RAZEM)
+        /// Zaden inny mechanizm nie usuwa kandydatow miedzy tymi dwoma pomiarami (weto i progi
+        /// jakosci tylko OZNACZAJA, nie usuwaja). Podzialu na przyczyny w [PN-DATA] NIE MA - niesie
+        /// go wylacznie log czytelny (osobne linie "Filtr trudnosci" i "Sito punktow zagrozenia").
+        /// Uwaga: przy wylaczonych duzych zagrozeniach sito punktow jest dzis NIEOSIAGALNE, bo oba
+        /// payloady z dodatnim minThreatPoints (Infestation, PsychicEmanatorShipPartCrash) sa
+        /// ThreatBig i filtr trudnosci odcina je wczesniej.
         ///
         /// ZWRACA NOWA LISTE I JEST TO NAPRAWA BLEDU, NIE STYL. Pierwsza wersja usuwala
         /// kandydatow W MIEJSCU, a wolajacy podawal jej CandidateSet.Candidates - czyli liste,
@@ -175,11 +215,22 @@ namespace ProceduralNarrator.Integration.Incidents
         /// projekt konsekwentnie zastepuje konstrukcja (patrz: prog czytany z obiektow warunkow
         /// zamiast z literalu). Metoda jest wiec funkcja czysta i wolajacy NIE MA JAK jej zepsuc.
         /// </summary>
+        /// <param name="duzeZagrozeniaDozwolone">
+        /// Wynik BigThreatsAllowedNow() - liczony RAZ na ture przez wolajacego. Gdy false,
+        /// odpadaja wszystkie kandydaty kategorii ThreatBig (patrz nizej).
+        /// </param>
+        /// <param name="usunietychTrudnosc">
+        /// Ile z usunietych odpadlo przez filtr trudnosci (a nie przez prog punktow). Zawiera sie
+        /// w "usunietych" - relacja wygenerowanych - kandydatow == usunietych obowiazuje dalej.
+        /// </param>
         public static List<ComposedEvent> OdfiltrujNieosiagalne(List<ComposedEvent> kandydaci,
                                                                 float punktyBazowe,
-                                                                out int usunietych)
+                                                                bool duzeZagrozeniaDozwolone,
+                                                                out int usunietych,
+                                                                out int usunietychTrudnosc)
         {
             usunietych = 0;
+            usunietychTrudnosc = 0;
             if (kandydaci == null)
             {
                 return new List<ComposedEvent>();
@@ -196,6 +247,16 @@ namespace ProceduralNarrator.Integration.Incidents
                 }
 
                 IncidentDef inc = DefDatabase<IncidentDef>.GetNamedSilentFail(e.ActionPayload);
+
+                // FILTR TRUDNOSCI - odwzorowanie tego, co Storyteller.MakeIncidentsForInterval
+                // robi Z WYNIKIEM compa. Patrz BigThreatsAllowedNow.
+                if (inc != null && !duzeZagrozeniaDozwolone && inc.category == IncidentCategoryDefOf.ThreatBig)
+                {
+                    usunietych++;
+                    usunietychTrudnosc++;
+                    continue;
+                }
+
                 if (inc == null || inc.minThreatPoints <= 0f)
                 {
                     // Brak progu w Defie albo nierozwiazany payload - nie nasza sprawa.
@@ -215,6 +276,49 @@ namespace ProceduralNarrator.Integration.Incidents
             }
 
             return przepuszczeni;
+        }
+
+        /// <summary>
+        /// Czy gra PRZEPUSCI teraz incydent kategorii ThreatBig zwrocony przez comp narratora.
+        ///
+        /// Zdekompilowane Storyteller.MakeIncidentsForInterval filtruje wynik compa PO FAKCIE:
+        ///     foreach (FiringIncident fi in comp.MakeIntervalIncidents(target))
+        ///         if ((difficulty.allowBigThreats || fi.def.category != ThreatBig)
+        ///             &amp;&amp; (!AnomalyActive || TicksGame - metalHellClosedTick &gt;= 300000
+        ///                 || fi.def.category != ThreatBig))
+        ///             yield return fi;
+        /// Nasz comp zapisuje zdarzenie do historii PRZED yield return (musi - patrz komentarz
+        /// przy RecordEvent).
+        ///
+        /// DWIE CZESCI PREDYKATU, DWA ROZNE SKUTKI (sprostowanie po przegladzie - pierwsze wydanie
+        /// tego komentarza twierdzilo, ze na Peaceful narrator zapisywal napady, ktorych nie bylo;
+        /// to NIEPRAWDA):
+        ///   - allowBigThreats: bazowy IncidentWorker.CanFireNow sam odrzuca ThreatBig przy
+        ///     allowBigThreats=false (bramka PRZED cache'em CanFireNowSub), wiec kandydat konczyl
+        ///     jako odmowa silnika, a nie wpis do historii. Tu filtr jest OPTYMALIZACJA i zmiana
+        ///     ksiegowania: ThreatBig nie zuzywa pytan fazy 0, nie zasila odmowSilnika/odmowCzola,
+        ///     a brama od razu widzi czolo wykonalne.
+        ///   - okno 300000 tickow po zamknieciu metalowego piekla (Anomaly): CanFireNow tego NIE
+        ///     sprawdza. Tu byl REALNY blad - narrator zapisywal do pamieci i do [PN-DATA] napad,
+        ///     ktory gra po cichu wyrzucala.
+        /// Warunek jest odwzorowaniem wanilii 1:1, a nie wlasna polityka.
+        /// </summary>
+        public static bool BigThreatsAllowedNow()
+        {
+            if (Find.Storyteller == null || Find.Storyteller.difficulty == null)
+            {
+                return true;
+            }
+            if (!Find.Storyteller.difficulty.allowBigThreats)
+            {
+                return false;
+            }
+            if (ModsConfig.AnomalyActive && Find.Anomaly != null && Find.TickManager != null
+                && Find.TickManager.TicksGame - Find.Anomaly.metalHellClosedTick < 300000)
+            {
+                return false;
+            }
+            return true;
         }
     }
 }

@@ -68,15 +68,21 @@ namespace ProceduralNarrator.Core.Decision
         /// Ladunek, ktorego narrator sobie zyczy przy danej intencji.
         ///
         /// WARTOSCI ODPOWIADAJA REALNIE OSIAGALNEMU ZBIOROWI, a nie teoretycznemu [-1, 1].
-        /// Dzisiejszy katalog produkuje dokladnie cztery ladunki: -1.00 (negatywne wielkie),
-        /// -0.60 (negatywne srednie), 0.00 (neutralne drobne) i +0.25 (pozytywne drobne).
-        /// Zyczenie +1.00 przy Breathe byloby wiec nieosiagalne dla KAZDEGO kandydata i cala
-        /// intencja "daj oddech" sprowadzalaby sie do stalego przesuniecia wyniku w dol -
-        /// czyli do niczego, bo softmax jest niewrazliwy na stala addytywna.
+        /// Dzisiejszy katalog (13 akcji) produkuje piec ladunkow: -1.00 (negatywne wielkie),
+        /// -0.60 (negatywne srednie), -0.25 (negatywne drobne - PN_Akcja_Amok), 0.00 (neutralne
+        /// drobne) i +0.25 (pozytywne drobne). Zyczenie +1.00 przy Breathe byloby wiec
+        /// nieosiagalne dla KAZDEGO kandydata i cala intencja "daj oddech" sprowadzalaby sie
+        /// do stalego przesuniecia wyniku w dol - czyli do niczego, bo softmax jest
+        /// niewrazliwy na stala addytywna. Skrajne wartosci Escalate i Breathe walidator
+        /// porownuje z min/max ladunku wyprowadzonym z WCZYTANEGO katalogu akcji.
         ///
-        /// Hold celuje w -0.30, czyli w srodek realnego zakresu, a nie w 0.00: katalog jest
-        /// przechylony ku zdarzeniom negatywnym i "utrzymaj poziom" ma znaczyc utrzymanie
-        /// TEGO rozkladu, a nie dryf ku rzadkim zdarzeniom neutralnym.
+        /// Hold celuje w -0.30, a nie w 0.00: katalog jest przechylony ku zdarzeniom negatywnym
+        /// i "utrzymaj poziom" ma znaczyc utrzymanie TEGO rozkladu, a nie dryf ku rzadkim
+        /// zdarzeniom neutralnym. -0.30 to srednia ladunku katalogu (-0.31 po akcjach, -0.30 po
+        /// kandydatach), a NIE srodek przedzialu [-1.00, +0.25] (to byloby -0.375). Najblizsza
+        /// klasa to dzis Negative/Minor (-0.25, dopasowanie 0.975) - PN_Akcja_Amok dodano
+        /// wlasnie po to, zeby rozbic remis 0.850 przy Hold (Blocks_Extended.xml). Walidator
+        /// pilnuje porzadku Escalate &lt; Hold &lt; Breathe; sama wartosc Hold jest kalibracja.
         ///
         /// Tablica, a nie wzor - swiadomie, tak samo jak w Factor_PassIntent.FitFor.
         /// Wzor sugerowalby, ze intencje leza na jednej osi liczbowej w ustalonych odstepach,
