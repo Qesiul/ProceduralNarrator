@@ -157,7 +157,18 @@ namespace ProceduralNarrator.Integration
         /// KONFIGURACJA W PLIKU DANYCH: od v6 po [PN-DATA-COLS] ida linie [PN-CONFIG] z efektywnymi
         /// parametrami (configStamp, kryzys, PASS, profile). Bez nich wylaczenie reguly kryzysu albo
         /// zmiana progu bylyby w danych niewidoczne - kolumna "kryzys" jest boolem.
-        public const int DataFormatVersion = 6;
+        ///
+        /// v7 (krok 5, luki narracyjne): kolumny kontekstu (bogactwo, punkty) i stanu lukow w preambule
+        /// oraz moc zwyciezcy i kolumny lukowe na koncu czesci decyzyjnej; linie [PN-ARC] i [PN-EXEC]
+        /// poza kontraktem.
+        ///
+        /// v8 (krok 6, blackboard): kolumna "faktow" w preambule (obowiazujace fakty w snapshocie
+        /// decyzji) i "konsekwencja" na koncu czesci decyzyjnej; linia [PN-FACT] poza kontraktem;
+        /// pole "fakty=" w [PN-LOAD] i [PN-RESET]. Podbicie jest KONIECZNE takze z drugiego powodu:
+        /// kolumna "klucz" (sygnatura kompozycji) ma od kroku 6 szesc segmentow zamiast pieciu, a bez
+        /// nowego numeru skrypt analizy zszylby obie serie bez ostrzezenia - porownywalnosc pozorna
+        /// jest gorsza niz zerwana.
+        public const int DataFormatVersion = 8;
 
         /// <summary>
         /// PELNA lista kolumn linii [PN-DATA] w ich OBOWIAZUJACEJ kolejnosci. Jedyne zrodlo
@@ -175,6 +186,11 @@ namespace ProceduralNarrator.Integration
             "histWpisow", "histDecyzji",
             "napiecie", "napiecieNarr", "napiecieSyt", "powalonych", "kolonistowNaMapie", "zagrozenie",
             "kryzys", "intencja", "docelowaMoc", "odmowSilnika", "odmowCzola", "pytanDoGry",
+            // --- krok 5 (v7): kontekst (P1) i stan lukow w chwili decyzji ---
+            "bogactwo", "bogactwoWzgl", "punkty",
+            "lukiAktywne", "lukFazy", "frakcjaLuku", "lukStosowany", "lukDopasowanych",
+            // --- krok 6 (v8): pamiec narratora w chwili decyzji ---
+            "faktow",
 
             // --- generowanie kandydatow (CandidateSet) ---
             "wygenerowanych", "budzet", "akcji", "limitNaAkcje", "przestrzen",
@@ -188,7 +204,11 @@ namespace ProceduralNarrator.Integration
             "powodPass", "passWynik", "pBrama", "passStlumiony", "straznikZawieszony",
             "gestosc", "ciszaSwiadoma",
             "contextFit", "freshness", "dramaticContrast", "intentAlignment",
-            "passRestraint", "passBaseline", "passIntent"
+            "passRestraint", "passBaseline", "passIntent",
+            // --- krok 5 (v7): moc zwyciezcy i luk ---
+            "intensywnosc", "arcAlignment", "premiaLuku", "lukWPasmie",
+            // --- krok 6 (v8): slad zostawiany przez zwyciezce ---
+            "konsekwencja"
         };
 
         private static bool formatVerified;
@@ -538,7 +558,8 @@ namespace ProceduralNarrator.Integration
         /// </summary>
         public static void Load(string runId, string zrodlo, string profil, string profilZapisany,
                                 int mapCount, int wpisow, int decyzji, int odrzuconych, int wersjaPamieci,
-                                string mapy)
+                                string mapy, string luki, string fakty,
+                                int odrzuconychHistorii, int odrzuconychLukow, int odrzuconychFaktow)
         {
             string linia = LoadPrefix
                            + "runId=" + (string.IsNullOrEmpty(runId) ? "?" : runId)
@@ -548,12 +569,23 @@ namespace ProceduralNarrator.Integration
                            + "; wpisow=" + wpisow.ToString(CultureInfo.InvariantCulture)
                            + "; decyzji=" + decyzji.ToString(CultureInfo.InvariantCulture)
                            + "; odrzuconych=" + odrzuconych.ToString(CultureInfo.InvariantCulture)
+                           // S6: ta sama suma rozbita na ksiegi - osobne wezly Scribe mialy izolowac bledy
+                           // kodekow, a jedna liczba nie mowila, ktora ksiega zawiodla.
+                           + "; odrzuconychHistorii=" + odrzuconychHistorii.ToString(CultureInfo.InvariantCulture)
+                           + "; odrzuconychLukow=" + odrzuconychLukow.ToString(CultureInfo.InvariantCulture)
+                           + "; odrzuconychFaktow=" + odrzuconychFaktow.ToString(CultureInfo.InvariantCulture)
                            + "; wersjaPamieci=" + wersjaPamieci.ToString(CultureInfo.InvariantCulture)
                            + "; profilZapisany=" + (string.IsNullOrEmpty(profilZapisany) ? "?" : profilZapisany)
                            + "; narrator=" + CurrentStorytellerName()
                            + "; tick=" + CurrentTickText()
                            + "; dzien=" + CurrentDayText()
-                           + "; mapy=" + (mapy ?? string.Empty);
+                           + "; mapy=" + (mapy ?? string.Empty)
+                           // Krok 5: otwarte luki "uid:luk#nr:faza,..." - stan lukow w chwili
+                           // wczytania; ta sama regula rozwidlenia co dla historii.
+                           + "; luki=" + (luki ?? string.Empty)
+                           // Krok 6: fakty "uid:klucz=wartosc@dzien/zycie,..." (+ "uid:kolejka@tick") -
+                           // stan pamieci faktow w chwili wczytania, ta sama regula rozwidlenia.
+                           + "; fakty=" + (fakty ?? string.Empty);
 
             WriteData(linia);
 
@@ -605,6 +637,95 @@ namespace ProceduralNarrator.Integration
                       + "; dzien=" + CurrentDayText()
                       + "; akcja=" + (akcja ?? "?")
                       + (string.IsNullOrEmpty(szczegoly) ? string.Empty : "; " + szczegoly));
+        }
+
+        private const string ArcPrefix = "[PN-ARC] ";
+        private const string ExecPrefix = "[PN-EXEC] ";
+        private const string FactPrefix = "[PN-FACT] ";
+
+        /// <summary>
+        /// Jedno zdarzenie ksiegi faktow (krok 6): ustawienie po potwierdzonym wykonaniu, odrzucenie
+        /// faktow zdarzenia niewykonanego albo deklaracja niepoprawna. Poza kontraktem [PN-DATA],
+        /// bo fakty trafiaja do pamieci MIEDZY decyzjami (na poczatku nastepnego wywolania compa).
+        ///
+        /// tick = chwila ZASTOSOWANIA, tickZrodla/decyzjaZrodla = zdarzenie, ktore fakt zostawilo -
+        /// analiza sprawdza z tego regule "fakt widoczny dopiero od nastepnej tury". Wygasanie nie ma
+        /// linii: jest leniwe, wiec analiza liczy je z dnia i czasu zycia.
+        /// </summary>
+        public static void Fact(int mapId, int tick, Core.Blackboard.FactEvent e)
+        {
+            if (e == null)
+            {
+                return;
+            }
+            WriteData(FactPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; tryb=" + (InExperiment ? "symulacja" : "gra")
+                      + "; eksperyment=" + (InExperiment ? experimentId + "/" + experimentArm : string.Empty)
+                      + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
+                      + "; mapa=" + mapId.ToString(CultureInfo.InvariantCulture)
+                      + "; zdarzenie=" + e.KindLabel()
+                      + "; klucz=" + (string.IsNullOrEmpty(e.Key) ? "-" : e.Key)
+                      + "; wartosc=" + (float.IsNaN(e.Value) ? string.Empty : e.Value.ToString("G9", CultureInfo.InvariantCulture))
+                      + "; dzien=" + e.Day.ToString("G9", CultureInfo.InvariantCulture)
+                      + "; zycie=" + e.LifespanDays.ToString("G9", CultureInfo.InvariantCulture)
+                      + "; tickZrodla=" + e.SourceTick.ToString(CultureInfo.InvariantCulture)
+                      + "; decyzjaZrodla=" + e.SourceDecision.ToString(CultureInfo.InvariantCulture)
+                      + "; powod=" + (string.IsNullOrEmpty(e.Reason) ? "-" : e.Reason));
+        }
+
+        /// <summary>
+        /// Jeden krok automatu luku (krok 5): otwarcie, przejscie, zamkniecie albo odrzucenie
+        /// instancji. Poza kontraktem [PN-DATA] - wlasna linia, bo kroki lukow zachodza takze
+        /// MIEDZY decyzjami (obserwacja co 1000 tickow). decyzjaNr = liczba decyzji mapy w chwili
+        /// kroku; rozwidlenie po wczytaniu rozstrzyga sie po ticku (tick &gt; tick [PN-LOAD]).
+        /// </summary>
+        public static void Arc(int mapId, int decyzjaNr, Core.Arcs.ArcTransitionRecord r)
+        {
+            if (r == null)
+            {
+                return;
+            }
+            WriteData(ArcPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; tryb=" + (InExperiment ? "symulacja" : "gra")
+                      + "; eksperyment=" + (InExperiment ? experimentId + "/" + experimentArm : string.Empty)
+                      + "; tick=" + r.Tick.ToString(CultureInfo.InvariantCulture)
+                      + "; dzien=" + r.GameDay.ToString("0.000", CultureInfo.InvariantCulture)
+                      + "; mapa=" + mapId.ToString(CultureInfo.InvariantCulture)
+                      + "; decyzjaNr=" + decyzjaNr.ToString(CultureInfo.InvariantCulture)
+                      + "; " + r.ToDataFragment());
+        }
+
+        /// <summary>
+        /// Potwierdzenie wykonania zdarzenia wyemitowanego przez narratora (krok 5, decyzja autora
+        /// nr 6): lastFireTicks[def] przed i po TryFire. Jedna linia na kazde zdarzenie - takze
+        /// niewykonane, bo odsetek wykonan to wprost pomiar dlugu 7 ("historia zapisuje intencje").
+        /// </summary>
+        public static void Exec(int mapId, int decyzjaNr, string incydent, string klucz, string status,
+                                int ostatniPrzed, int ostatniPo, string frakcja, string frakcjaZwiazana, int tick,
+                                string frakcjaZrodlo, int tickDecyzji)
+        {
+            WriteData(ExecPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; tryb=" + (InExperiment ? "symulacja" : "gra")
+                      + "; eksperyment=" + (InExperiment ? experimentId + "/" + experimentArm : string.Empty)
+                      + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
+                      + "; mapa=" + mapId.ToString(CultureInfo.InvariantCulture)
+                      + "; decyzjaNr=" + decyzjaNr.ToString(CultureInfo.InvariantCulture)
+                      + "; incydent=" + (incydent ?? "-")
+                      + "; klucz=" + (klucz ?? "-")
+                      + "; status=" + (status ?? "-")
+                      + "; ostatniPrzed=" + ostatniPrzed.ToString(CultureInfo.InvariantCulture)
+                      + "; ostatniPo=" + ostatniPo.ToString(CultureInfo.InvariantCulture)
+                      + "; frakcja=" + (string.IsNullOrEmpty(frakcja) ? "-" : frakcja)
+                      + "; frakcjaZwiazana=" + (string.IsNullOrEmpty(frakcjaZwiazana) ? "-" : frakcjaZwiazana)
+                      // parms = faktyczna frakcja z IncidentParms po TryExecute; emulacja = symulator
+                      // (FactionBinding.EmulatedRaidFaction); "-" = brak frakcji.
+                      + "; frakcjaZrodlo=" + (string.IsNullOrEmpty(frakcjaZrodlo) ? "-" : frakcjaZrodlo)
+                      // S6: tick DECYZJI, ktorej dotyczy potwierdzenie. Na sciezce normalnej == tick; na
+                      // spoznionej tick to chwila emisji (T+1000), a analiza laczy wykonanie z decyzja po tym polu.
+                      + "; tickDecyzji=" + tickDecyzji.ToString(CultureInfo.InvariantCulture));
         }
 
         private static string CurrentDayText()
@@ -695,6 +816,26 @@ namespace ProceduralNarrator.Integration
             Append(sb, "odmowSilnika", Int(engineRefusals));
             Append(sb, "odmowCzola", Int(preGateRefusals));
             Append(sb, "pytanDoGry", Int(acceptorCalls));
+
+            // KROK 5 (v7). Kontekst decyzji z SNAPSHOTU tury (ten sam, na ktorym liczono warunki):
+            // bogactwo dla storytellera, jego krotnosc normy dnia i bazowe punkty zagrozenia -
+            // do rozdzialu o kontekstowosci (dlug 5, rozszerzenie P1).
+            Append(sb, "bogactwo", swiat == null ? string.Empty : Num(swiat.ColonyWealth));
+            Append(sb, "bogactwoWzgl", swiat == null ? string.Empty : Num(swiat.WealthRelative));
+            Append(sb, "punkty", swiat == null ? string.Empty : Num(swiat.ThreatPoints));
+            // Stan lukow: PUSTE, gdy warstwa lukow w tej turze nie istnieje (wylaczona albo ramie
+            // "bez lukow"); 0/false, gdy istnieje, ale nic nie jest otwarte - pustka to brak
+            // pomiaru, zero to pomiar.
+            Core.Arcs.ArcFocus fokus = context == null ? null : context.ArcFocus;
+            Append(sb, "lukiAktywne", fokus == null ? string.Empty : Int(fokus.Entries.Count));
+            Append(sb, "lukFazy", fokus == null ? string.Empty : fokus.DataPhases());
+            Append(sb, "frakcjaLuku", fokus == null ? string.Empty : fokus.BoundFaction());
+            Append(sb, "lukStosowany", fokus == null ? string.Empty : (fokus.Applied ? "true" : "false"));
+            Append(sb, "lukDopasowanych", fokus == null ? string.Empty : Int(fokus.Matched));
+            // KROK 6 (v8): liczba OBOWIAZUJACYCH faktow w snapshocie decyzji - tych, ktore widzialy
+            // warunki. Analiza odtwarza ja z linii [PN-FACT] (dzien ustawienia + czas zycia) i porownuje.
+            Append(sb, "faktow", swiat == null ? string.Empty
+                                              : Int(Core.Blackboard.NarratorBlackboard.FactCountIn(swiat.Facts)));
 
             // ---- generowanie kandydatow ----
             // Kolumny budowane tutaj, a NIE przez CandidateSet.DataLogFragment(), mimo ze tamta
