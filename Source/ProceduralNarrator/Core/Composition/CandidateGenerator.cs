@@ -20,15 +20,17 @@ namespace ProceduralNarrator.Core.Composition
     /// Gwarancja z przebiegu 1 jest wazniejsza niz oszczednosc: KAZDY temat ma reprezentanta
     /// w rankingu, bo roznorodnosc typow jest metryka ewaluacji.
     ///
-    /// Na dzisiejszym katalogu (m=12, N=84, B=400) budzet w ogole nie tnie: K=33, kazde N_i &lt;= 16,
-    /// wiec przebieg 1 wyczerpuje przestrzen, przebieg 2 sie nie odbywa, a caly zbior powstaje
-    /// bez ANI JEDNEGO siegniecia po losowosc. To najlepszy mozliwy punkt wyjscia do ewaluacji:
+    /// Na dzisiejszym katalogu (B=400) budzet w ogole nie tnie: K = B/m jest nie mniejsze niz
+    /// maksimum wariantow na akcje N_i, wiec przebieg 1 wyczerpuje przestrzen, przebieg 2 sie nie
+    /// odbywa, a caly zbior powstaje bez ANI JEDNEGO siegniecia po losowosc. Te wlasnosc pilnuje
+    /// ASERCJA liczaca maksimum z prawdziwego katalogu (TEST 1 "budzet z XML"), a nie ten komentarz -
+    /// dawne liczby w tym miejscu (m=12, N=84, N_i &lt;= 16) zestarzaly sie po cichu w kroku 6. To najlepszy mozliwy punkt wyjscia do ewaluacji:
     /// ranking jest odtwarzalny nawet przy zmianie ziarna.
     /// </summary>
     public class CandidateGenerator
     {
         /// <summary>
-        /// Domyslny budzet ocen na ture. Dobrany tak, zeby dzisiejsza przestrzen (84) miescila sie
+        /// Domyslny budzet ocen na ture. Dobrany tak, zeby dzisiejsza przestrzen miescila sie
         /// w calosci z duzym zapasem, a jednoczesnie zeby przy katalogu rzedu 50 akcji limit na
         /// akcje nie spadl ponizej kilku wariantow.
         ///

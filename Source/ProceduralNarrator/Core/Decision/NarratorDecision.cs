@@ -198,6 +198,11 @@ namespace ProceduralNarrator.Core.Decision
         /// Doklada wielkosci TURY, ktorych polityka wyboru nie zna, bo nie widzi kontekstu decyzji.
         /// Wywolywane przez warstwe integracji zaraz po Select.
         /// </summary>
+        /// <summary>
+        /// Kandydaci z wartoscia lukowa 1 w pasmie rundy pierwszej (TurnStats); -1 = luk wstrzymany.
+        /// </summary>
+        public int ArcMatchedInBand = -1;
+
         public void AttachTurnContext(float recentDensity, int passStreak)
         {
             RecentDensity = recentDensity;
@@ -277,6 +282,22 @@ namespace ProceduralNarrator.Core.Decision
             AppendFactorAs(sb, p, PassScoringParams.RestraintFactorName, ColPassRestraint);
             AppendFactorAs(sb, p, PassScoringParams.BaselineFactorName, ColPassBaseline);
             AppendFactorAs(sb, p, PassScoringParams.IntentAlignmentFactorName, ColPassIntent);
+
+            // KROK 5 (format v7): moc zwyciezcy (skala IntensityLevel, jak docelowaMoc) i luk.
+            // Puste przy PASS i gdy luk sie w tej turze wstrzymal - brak pomiaru, nie zero.
+            // premiaLuku to premia RUNDY, ktora wybrala zwyciezce; przy jednej rundzie (losowan=3)
+            // rowna (best - pasmo) * arcAlignment - niezmiennik sprawdzany w analizie danych.
+            Append(sb, "intensywnosc", pass || w == null || w.Event == null ? string.Empty : Int((int)w.Event.Intensity));
+            bool lukowy = !pass && w != null && w.ArcValue >= 0f;
+            Append(sb, "arcAlignment", lukowy ? Fmt(w.ArcValue) : string.Empty);
+            Append(sb, "premiaLuku", lukowy ? Fmt(w.ArcBonus) : string.Empty);
+            Append(sb, "lukWPasmie", ArcMatchedInBand >= 0 ? Int(ArcMatchedInBand) : string.Empty);
+
+            // KROK 6 (format v8): slad, ktory zwyciezca zostawia (klocek konsekwencji). Pusty przy
+            // PASS (brak pomiaru), "-" gdy zdarzenie wypalilo bez konsekwencji (slot pusty
+            // WYMUSZONY - akcja nie ma zadnej zgodnej). Material na metryke "wariant narracyjny"
+            // odrozniana od "typu incydentu" (dlug 10).
+            Append(sb, "konsekwencja", pass || w == null || w.Event == null ? string.Empty : ConsequenceId(w.Event));
 
             return sb.ToString();
         }
@@ -434,6 +455,22 @@ namespace ProceduralNarrator.Core.Decision
                 sb.Append("; ");
             }
             sb.Append(name).Append('=').Append(value ?? string.Empty);
+        }
+
+        /// <summary>Id klocka konsekwencji zdarzenia albo "-", gdy slot jest pusty (WYMUSZONY).</summary>
+        private static string ConsequenceId(ComposedEvent e)
+        {
+            if (e.Blocks != null)
+            {
+                foreach (Block b in e.Blocks)
+                {
+                    if (b != null && b.Type == BlockType.Consequence)
+                    {
+                        return b.Id;
+                    }
+                }
+            }
+            return "-";
         }
 
         private static string Fmt(float v)

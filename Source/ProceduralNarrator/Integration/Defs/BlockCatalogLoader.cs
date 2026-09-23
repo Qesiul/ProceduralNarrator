@@ -30,7 +30,8 @@ namespace ProceduralNarrator.Integration.Defs
                     Scale = def.scale,
                     Intensity = def.intensity,
                     Payload = def.payload,
-                    TextFragment = def.textFragment
+                    TextFragment = def.textFragment,
+                    CarriesFaction = def.carriesFaction
                 };
 
                 if (def.tags != null)
@@ -49,6 +50,11 @@ namespace ProceduralNarrator.Integration.Defs
                 if (def.preferences != null)
                 {
                     block.Preferences.AddRange(def.preferences);
+                }
+
+                if (def.factsOnExecute != null)
+                {
+                    block.FactsOnExecute.AddRange(def.factsOnExecute);
                 }
 
                 blocks.Add(block);

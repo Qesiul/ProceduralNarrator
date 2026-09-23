@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Tension;
@@ -158,6 +159,13 @@ namespace ProceduralNarrator.Integration.Storyteller
         public CrisisParams crisis = CrisisParams.Default();
 
         /// <summary>
+        /// Warstwa LUKOW narracyjnych (krok 5) - WSPOLNA maszyneria, nie profil: limit lukow
+        /// rownoczesnych i wylacznik do serii kontrolnych "bez lukow". Katalog lukow zyje osobno,
+        /// w Defs/Arcs (NarrativeArcDef).
+        /// </summary>
+        public ArcParams arcs = ArcParams.Default();
+
+        /// <summary>
         /// Czy zlozony opis narracyjny ma zastapic waniliowy list w grze.
         ///
         /// DOMYSLNIE WYLACZONE I TO JEST DECYZJA, NIE ZANIECHANIE. Powod jest zmierzony:
@@ -307,6 +315,18 @@ namespace ProceduralNarrator.Integration.Storyteller
                 poprawki.Add("<crisis>: " + poprawkiKryzysu);
             }
 
+            if (arcs == null)
+            {
+                poprawki.Add("brak bloku <arcs> -> parametry lukow domyslne");
+                arcs = ArcParams.Default();
+            }
+
+            string poprawkiLukow = arcs.Sanitize();
+            if (!string.IsNullOrEmpty(poprawkiLukow))
+            {
+                poprawki.Add("<arcs>: " + poprawkiLukow);
+            }
+
             return poprawki.Count == 0 ? null : string.Join("; ", poprawki.ToArray());
         }
 
@@ -348,7 +368,8 @@ namespace ProceduralNarrator.Integration.Storyteller
               .Append(" | kontrast: reliefGain=").Append(Num(contrast == null ? 0f : contrast.reliefGain))
               .Append(" strikeGain=").Append(Num(contrast == null ? 0f : contrast.strikeGain))
               .Append(" | zlozonyList=").Append(useComposedLetter ? "tak" : "nie")
-              .Append(" | ").Append(crisis == null ? "BRAK BLOKU <crisis>" : crisis.ToString());
+              .Append(" | ").Append(crisis == null ? "BRAK BLOKU <crisis>" : crisis.ToString())
+              .Append(" | ").Append(arcs == null ? "BRAK BLOKU <arcs>" : arcs.ToString());
             return sb.ToString();
         }
 

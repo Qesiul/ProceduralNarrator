@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using LudeonTK;
+using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Integration.Defs;
 using ProceduralNarrator.Integration.Persistence;
@@ -83,6 +84,14 @@ namespace ProceduralNarrator.Integration.Experiments
             public int Interwalow;
             public string OdciskPamieci = string.Empty;
             public bool Kompletne;
+
+            /// <summary>
+            /// Ramie "bez lukow" (krok 5): ten sam profil co ramie 1, warstwa lukow nieobecna.
+            /// Luk nie zmienia decyzji "dzialac czy milczec" w turze, ale zmienia historie, a przez
+            /// nia gestosc, napiecie i intencje kolejnych tur - roznica ramion 1 i B mierzy ten
+            /// efekt DRUGIEGO RZEDU (tempo, udzial PASS).
+            /// </summary>
+            public bool BezLukow;
         }
 
         private static void Uruchom(int dni, bool wszystkieProfile)
@@ -133,6 +142,14 @@ namespace ProceduralNarrator.Integration.Experiments
             // odczycie (Storyteller.cs) - trzymanie referencji pod petla byloby zakladem.
             var cele = new List<IIncidentTarget>(Find.Storyteller.AllIncidentTargets);
 
+            // Kanarek pamieci gracza (S6): odcisk PRZED eksperymentem porownywany z odciskiem po
+            // przywroceniu. Z konstrukcji (ramiona dostaja kopie, oryginal wraca referencja) to prawie
+            // tautologia - ma zapalic sie dopiero, gdy ktos kiedys zmieni te konstrukcje.
+            string odciskGryPrzed = OdciskPamieci(pamiec);
+            // Bezpieczniki warstw sa polami compa, ktorego uzywa i symulator, i gra (przeglad S6).
+            StorytellerComp_Generative.Bezpieczniki bezpiecznikiGry = comp.OdczytajBezpieczniki();
+            var wylaczeniaWarstw = new List<string>();
+
             string problem;
             GameStateCheckpoint cp = GameStateCheckpoint.Capture(comp, pamiec, cele, out problem);
             if (cp == null)
@@ -162,6 +179,8 @@ namespace ProceduralNarrator.Integration.Experiments
                 ramiona.Add(new Ramie { Etykieta = (i + 1).ToString(CultureInfo.InvariantCulture) + "-" + profile[i],
                                         Profil = profile[i] });
             }
+            // Ramie "bez lukow" PRZED kontrolnym: kanarek izolacji porownuje ramie 1 z OSTATNIM.
+            ramiona.Add(new Ramie { Etykieta = "B-" + profile[0], Profil = profile[0], BezLukow = true });
             ramiona.Add(new Ramie { Etykieta = "K-" + profile[0], Profil = profile[0] });
 
             var bledyIzolacji = new List<string>();
@@ -185,8 +204,12 @@ namespace ProceduralNarrator.Integration.Experiments
                         bledyIzolacji.Add(ramie.Etykieta + ": odbudowa pamieci odrzucila "
                                           + odrzuconych.ToString(CultureInfo.InvariantCulture) + " linii");
                     }
+                    // Kazde ramie startuje z bezpiecznikami gry - wyjatek w poprzednim ramieniu nie moze
+                    // wylaczyc warstwy w nastepnym (inaczej "kontrola=ROZNA" bez widocznej przyczyny).
+                    comp.UstawBezpieczniki(bezpiecznikiGry);
                     int decyzjiPrzed = SumaDecyzji(pamiec);
-                    PNLog.BeginArm(ramie.Etykieta, "profil=" + ramie.Profil);
+                    comp.ArcsDisabledForArm = ramie.BezLukow;
+                    PNLog.BeginArm(ramie.Etykieta, "profil=" + ramie.Profil + (ramie.BezLukow ? "; luki=wylaczone" : string.Empty));
 
                     for (int j = 0; j < interwalow; j++)
                     {
@@ -243,6 +266,12 @@ namespace ProceduralNarrator.Integration.Experiments
                     ramie.Decyzji = SumaDecyzji(pamiec) - decyzjiPrzed;
                     ramie.OdciskPamieci = OdciskPamieci(pamiec);
                     ramie.Kompletne = true;
+                    StorytellerComp_Generative.Bezpieczniki poRamieniu = comp.OdczytajBezpieczniki();
+                    if (poRamieniu.Luki != bezpiecznikiGry.Luki || poRamieniu.Fakty != bezpiecznikiGry.Fakty)
+                    {
+                        wylaczeniaWarstw.Add(ramie.Etykieta + ":" + (poRamieniu.Luki != bezpiecznikiGry.Luki ? "luki" : "")
+                                             + (poRamieniu.Fakty != bezpiecznikiGry.Fakty ? "fakty" : ""));
+                    }
                 }
             }
             catch (Exception e)
@@ -252,8 +281,12 @@ namespace ProceduralNarrator.Integration.Experiments
             }
             finally
             {
+                comp.ArcsDisabledForArm = false;
                 List<string> bledyPrzywracania = cp.RestoreAll();
+                comp.UstawBezpieczniki(bezpiecznikiGry);
                 running = false;
+                string pamiecGry = string.Equals(odciskGryPrzed, OdciskPamieci(pamiec), StringComparison.Ordinal)
+                    ? "zgodna" : "ROZNA";
 
                 // Kanarek izolacji: ramie kontrolne musi byc identyczne z ramieniem 1.
                 Ramie pierwsze = ramiona[0];
@@ -270,7 +303,9 @@ namespace ProceduralNarrator.Integration.Experiments
                 PNLog.EndExperiment("status=" + status
                                     + "; kontrola=" + (!kontrolaPoliczona ? "brak" : (kontrolaZgodna ? "zgodna" : "ROZNA"))
                                     + "; bledyPrzywracania=" + bledyPrzywracania.Count.ToString(CultureInfo.InvariantCulture)
-                                    + "; bledyIzolacji=" + bledyIzolacji.Count.ToString(CultureInfo.InvariantCulture));
+                                    + "; bledyIzolacji=" + bledyIzolacji.Count.ToString(CultureInfo.InvariantCulture)
+                                    + "; pamiecGry=" + pamiecGry
+                                    + "; wylaczeniaWarstw=" + (wylaczeniaWarstw.Count == 0 ? "-" : string.Join(",", wylaczeniaWarstw.ToArray())));
 
                 // Raport do Verse.Log - PO EndExperiment, wiec idzie do zwyklego logu.
                 PNLog.Decision(Raport(idEksperymentu, dni, ramiona, kontrolaPoliczona, kontrolaZgodna, przerwanie,
@@ -284,6 +319,17 @@ namespace ProceduralNarrator.Integration.Experiments
                 for (int i = 0; i < bledyIzolacji.Count; i++)
                 {
                     PNLog.Error("Eksperyment: blad izolacji ramienia - " + bledyIzolacji[i]);
+                }
+                if (wylaczeniaWarstw.Count > 0)
+                {
+                    PNLog.Error("Eksperyment: wyjatek WYLACZYL warstwe w ramieniu (" + string.Join(", ", wylaczeniaWarstw.ToArray())
+                                + ") - przyczyna jest wyzej w logu z przedrostkiem [PN][SYM]. Bezpieczniki gry przywrocono, "
+                                + "ale wyniki tego ramienia i kontrola izolacji sa niewiarygodne.");
+                }
+                if (pamiecGry != "zgodna")
+                {
+                    PNLog.Error("Eksperyment: pamiec narratora PO przywroceniu rozni sie od pamieci PRZED eksperymentem - "
+                                + "przeciek symulacji do prawdziwej gry. NIE ZAPISUJ gry; wczytaj zapis sprzed eksperymentu.");
                 }
                 if (przerwanie == null && !kontrolaZgodna)
                 {
@@ -327,6 +373,27 @@ namespace ProceduralNarrator.Integration.Experiments
                   .Append(para.Value.DeliberateSilenceStreak.ToString(CultureInfo.InvariantCulture)).Append('|')
                   .Append(string.Join("#", para.Value.ToPersistableLines().ToArray())).Append('\n');
             }
+            // Ksiegi lukow (krok 5) - stan watkow tez musi byc identyczny w ramieniu 1 i kontrolnym.
+            foreach (KeyValuePair<int, ArcLedger> para in pamiec.AllLedgers.OrderBy(p => p.Key))
+            {
+                if (para.Value == null)
+                {
+                    continue;
+                }
+                sb.Append("L").Append(para.Key.ToString(CultureInfo.InvariantCulture)).Append('|')
+                  .Append(string.Join("#", para.Value.ToPersistableLines().ToArray())).Append('\n');
+            }
+            // Ksiegi faktow (krok 6) razem z kolejka - ramie kontrolne musi zostawic w pamieci
+            // dokladnie te same slady co ramie 1, inaczej kanarek izolacji jest slepy na fakty.
+            foreach (KeyValuePair<int, Core.Blackboard.FactLedger> para in pamiec.AllFacts.OrderBy(p => p.Key))
+            {
+                if (para.Value == null)
+                {
+                    continue;
+                }
+                sb.Append("F").Append(para.Key.ToString(CultureInfo.InvariantCulture)).Append('|')
+                  .Append(string.Join("#", para.Value.ToPersistableLines().ToArray())).Append('\n');
+            }
             return sb.ToString();
         }
 
@@ -351,6 +418,7 @@ namespace ProceduralNarrator.Integration.Experiments
                   .Append(" PASS=").Append((r.Decyzji - r.Wypalone.Count).ToString(CultureInfo.InvariantCulture))
                   .Append(" interwalow=").Append(r.Interwalow.ToString(CultureInfo.InvariantCulture))
                   .Append(r.Kompletne ? string.Empty : " (NIEKOMPLETNE)")
+                  .Append(r.BezLukow ? " [BEZ LUKOW]" : string.Empty)
                   .Append(" | ");
                 sb.Append(string.Join(", ", r.PoIncydencie.OrderByDescending(p => p.Value)
                                               .Select(p => p.Key + " " + p.Value.ToString(CultureInfo.InvariantCulture))

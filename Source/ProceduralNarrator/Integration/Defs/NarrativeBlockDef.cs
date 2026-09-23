@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Conditions;
 using ProceduralNarrator.Core.Model;
 using Verse;
@@ -32,6 +33,9 @@ namespace ProceduralNarrator.Integration.Defs
         /// <summary>Dla klocka akcji: defName incydentu RimWorlda realizujacego ten klocek.</summary>
         public string payload;
 
+        /// <summary>Incydent przyjmuje frakcje sprawcy (Block.CarriesFaction; audyt: tylko IncidentWorker_RaidEnemy).</summary>
+        public bool carriesFaction;
+
         /// <summary>Fragment opisu narracyjnego wnoszony przez ten klocek.</summary>
         public string textFragment;
 
@@ -43,5 +47,11 @@ namespace ProceduralNarrator.Integration.Defs
 
         /// <summary>Miekkie preferencje - nie blokuja, zasilaja contextFit kandydata.</summary>
         public List<NarrativeCondition> preferences = new List<NarrativeCondition>();
+
+        /// <summary>
+        /// Fakty zostawiane w pamieci po POTWIERDZONYM wykonaniu zdarzenia (krok 6).
+        /// Nazwa pola musi sie zgadzac z Block.FactsOnExecute - pilnuje tego audyt startowy.
+        /// </summary>
+        public List<FactWrite> factsOnExecute = new List<FactWrite>();
     }
 }

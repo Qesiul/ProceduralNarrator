@@ -19,13 +19,19 @@
       preferences  MIEKKIE preferencje 0..1 - nie blokuja, skladaja sie na contextFit
                    gotowego kandydata. Odpowiadaja za KONTEKSTOWOSC.
       incompatibleWith  krawedzie grafu, deklarowane przy klocku AKCJI, zeby reguly
-                   jednego wydarzenia byly w jednym miejscu.
+                   jednego wydarzenia byly w jednym miejscu. WYJATEK (krok 6): klocki
+                   KONSEKWENCJI deklaruja swoje zakazy same (Blocks_Consequences.xml).
+      factsOnExecute   (tylko Consequence) fakty zostawiane po POTWIERDZONYM wykonaniu.
+
+    NOWA AKCJA wymaga wpisu w tabelach walidatora (TestsComposition: Oczekiwane
+    i DozwoloneKonsekwencje). Graf jest "brak krawedzi = zgoda", wiec akcja, o ktorej
+    Blocks_Consequences.xml nie wie, jest zgodna ze WSZYSTKIMI konsekwencjami.
 
     UWAGA: wezel musi miec PELNA nazwe typu z namespace'em - sama <NarrativeBlockDef>
     jest po cichu ignorowana przez DirectXmlLoader.
 
     Fragmenty tekstu skladaja sie w kolejnosci slotow:
-        Trigger -> Actor -> Action -> Target -> Modifier
+        Trigger -> Actor -> Action -> Target -> Modifier -> Consequence
     Dlatego fragmenty celu i modyfikatora sa neutralne - musza brzmiec sensownie
     zarowno przy wydarzeniu negatywnym, jak i pozytywnym.
   -->
@@ -181,6 +187,10 @@
     <intensity>Normal</intensity>
     <tags><li>militarny</li></tags>
     <payload>RaidEnemy</payload>
+    <!-- Krok 5: jedyny incydent katalogu, ktory honoruje parms.faction (IncidentWorker_RaidEnemy,
+         dekompilacja 1.5.4063). Pozwala lukowi Wendeta sprowadzic ponownie TE SAMA frakcje.
+         Audyt startowy odrzuca te flage na klocku, ktorego worker nie jest typu RaidEnemy. -->
+    <carriesFaction>true</carriesFaction>
     <!-- BEZ slowa "zbrojnie": jedyny dozwolony aktor to PN_Aktor_Piraci, ktory po audycie
          etapu 3 mowi "Wroga grupa zbrojna" - zlozone zdanie brzmialo "Wroga grupa zbrojna
          uderza na kolonie zbrojnie". Zapamietac: przepisanie tekstu JEDNEGO klocka moze
@@ -342,7 +352,8 @@
     <valence>Positive</valence>
     <scale>Minor</scale>
     <intensity>Low</intensity>
-    <tags><li>zasoby</li></tags>
+    <!-- "niebo": wspolny tag lukow PN_Luk_ZnakiZNieba (krok 5) - kapsula spada z nieba. -->
+    <tags><li>zasoby</li><li>niebo</li></tags>
     <payload>ResourcePodCrash</payload>
     <textFragment>zostawia po sobie rozbita kapsule z zaopatrzeniem.</textFragment>
     <!-- Uboga kolonia bardziej potrzebuje zaopatrzenia -->

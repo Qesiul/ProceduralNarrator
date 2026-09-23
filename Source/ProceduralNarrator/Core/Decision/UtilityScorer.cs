@@ -222,6 +222,14 @@ namespace ProceduralNarrator.Core.Decision
                 }
                 wynik.Add(Score(kandydat, context));
             }
+
+            // WARTOSC LUKOWA (krok 5) - PO wecie i PO ocenie CALEJ stawki, bo wstrzymanie luku
+            // zalezy od tego, czy w puli jest KTORYKOLWIEK pasujacy niezawetowany kandydat.
+            // Nie wchodzi do Utility ani do Factors (premia w koncowym wyborze, decyzja R4-1).
+            if (context != null && context.ArcFocus != null)
+            {
+                context.ArcFocus.Apply(wynik);
+            }
             return wynik;
         }
 

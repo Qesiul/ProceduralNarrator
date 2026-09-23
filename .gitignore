@@ -11,3 +11,6 @@ bin/
 
 # Skopiowane DLL-e gry (nigdy nie commitujemy assembly RimWorlda)
 Source/**/Assemblies/
+
+# Pamiec podreczna Pythona (narzedzia w Dev/Narzedzia)
+__pycache__/

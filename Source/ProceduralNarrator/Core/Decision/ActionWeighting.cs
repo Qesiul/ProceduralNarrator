@@ -88,19 +88,19 @@ namespace ProceduralNarrator.Core.Decision
                 }
 
                 ActionGroup g;
+                // Ocena = SelectionScore (Utility + premia lukowa z etapu C6; bez luku rowna Utility).
+                // Pula jest posortowana po Utility, wiec od kroku 5 maksimum NIE musi siedziec
+                // w pierwszym wariancie - pasujacy do luku wariant slabszy bazowo moze miec wyzsza
+                // ocene koncowa. Galaz "else if" ponizej przestala byc nieosiagalna.
                 if (!indeks.TryGetValue(klucz, out g))
                 {
-                    g = new ActionGroup { ActionId = klucz, Score = k.Utility };
+                    g = new ActionGroup { ActionId = klucz, Score = k.SelectionScore };
                     indeks.Add(klucz, g);
                     grupy.Add(g);
                 }
-                else if (k.Utility > g.Score)
+                else if (k.SelectionScore > g.Score)
                 {
-                    // Nieosiagalne przy posortowanym wejsciu. Liczymy mimo to, bo maksimum ma byc
-                    // WLASNOSCIA danych, a nie konsekwencja zalozenia o kolejnosci: gdyby ktos
-                    // podal pule nieposortowana, ocena grupy nadal bedzie poprawna, a jedynie
-                    // kolejnosc grup przestanie byc malejaca.
-                    g.Score = k.Utility;
+                    g.Score = k.SelectionScore;
                 }
 
                 g.Variants.Add(k);

@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ===================================================================================
+       LUKI NARRACYJNE (krok 5, koncepcja 5.4) - automaty skonczone prowadzace watki przez
+       fazy Zasiew -> Eskalacja -> Kulminacja -> Rozwiazanie. Katalog startowy = decyzja autora
+       (2026-09-22): Wendeta, Gniew natury, Znaki z nieba, Scigani.
+
+       JAK DZIALA LUK (skrot; pelny opis: Core/Arcs, dziennik "Krok 5 - plan i decyzje autora"):
+       - Otwiera sie ROZPOZNANIEM: wykonane zdarzenie pasuje do Zasiewu, warunki startu
+         zachodza, minal odstep (cooldownDays), jest wolny slot i grupa. Zero losowania.
+       - Biezaca faza to ta, na ktorej zdarzenie luk CZEKA. Pasujace kandydaty dostaja premie
+         w koncowym wyborze - ale tylko, gdy walencja fazy jest zgodna z intencja krzywej
+         (krzywa decyduje KIEDY, luk decyduje CO). Faza przesuwa sie tylko po POTWIERDZONYM
+         wykonaniu zdarzenia.
+       - minDaysAfterPrevious = dojrzalosc fazy; maxDays = limit: Eskalacja/Kulminacja po limicie
+         przechodza do Rozwiazania, Rozwiazanie po limicie zamyka luk jako "wygaszony".
+       - transitions = reakcja na gracza (straznicy na roznicach od wejscia w faze).
+
+       TEKSTY KOMUNIKATOW - ZASADA PRAWDY: stwierdzaja tylko fakty gwarantowane warunkiem
+       (fakt w tekscie = warunek TWARDY). Bez liczebnikow porzadkowych ("ponownie", nie "trzeci
+       raz") - napadow wanilii nie widzimy. Bez przyczyn i miejsc. {FRAKCJA} tylko po zwiazaniu
+       frakcji (pilnuje ArcCatalog.Validate). Zestaw ZAAKCEPTOWANY przez autora 2026-09-22 (wersja poprawiona:
+       {FRAKCJA} zawsze po dwukropku albo na koncu, bez liczenia napadow).
+       =================================================================================== -->
+
+  <!-- WENDETA: ta sama wroga frakcja wraca. Jedyny luk wiazacy frakcje (Napad = jedyny
+       incydent honorujacy parms.faction). -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_Wendeta</defName>
+    <label>wendeta</label>
+    <priority>10</priority>
+    <exclusionGroup>frakcja</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <!-- KROK 6: wendeta rodzi sie z SERII starc, a nie z jednego napadu. Warunki widza swiat
+           z POCZATKU TURY (decyzja autora 2026-09-23), wiec walka.byla >= 1 znaczy "co najmniej
+           jedna walka PRZED napadem, ktory otwiera watek" - razem z nim seria dwoch starc
+           w ciagu 20 dni (czas zycia licznika). STARCIE = KAZDA WALKA, takze ze zwierzetami
+           (Szal, Amok, Rojenie) - decyzja autora 2026-09-23 po przegladzie S6: Wendeta moze otworzyc
+           sie PIERWSZYM napadem rozgrywki, jesli wczesniej byly walki ze zwierzetami (1 z 4 otwarc
+           w danych v8). "Ta sama wroga frakcja wraca" opisuje Eskalacje, nie otwarcie. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FaktLiczba">
+        <key>walka.byla</key>
+        <min>1</min>
+      </li>
+    </startConditions>
+    <transitions>
+      <li>
+        <guards>
+          <li Class="ProceduralNarrator.Core.Arcs.Guard_BoundFactionNotHostile"/>
+        </guards>
+        <close>pojednanie</close>
+        <message>Wendeta wygasa: {FRAKCJA} - juz nie wrogowie.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+      <li>
+        <guards>
+          <li Class="ProceduralNarrator.Core.Arcs.Guard_BoundFactionGone"/>
+        </guards>
+        <close>frakcjaZniknela</close>
+        <message>Wrogowie, ktorzy nekali kolonie, przestali sie liczyc.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </transitions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <bindsFaction>true</bindsFaction>
+        <expectations>
+          <li>
+            <themes><li>Raid</li></themes>
+            <valences><li>Negative</li></valences>
+          </li>
+        </expectations>
+        <message>Kolonisci zapamietali, kto ich napadl: {FRAKCJA}.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Raid</li></themes>
+            <valences><li>Negative</li></valences>
+            <sameFaction>true</sameFaction>
+          </li>
+        </expectations>
+        <message>Znowu oni: {FRAKCJA}.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Raid</li></themes>
+            <valences><li>Negative</li></valences>
+            <minIntensity>High</minIntensity>
+            <sameFaction>true</sameFaction>
+          </li>
+        </expectations>
+        <message>Kolejny atak - i znowu {FRAKCJA}.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Po trudnych chwilach los wreszcie sprzyja kolonii.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- GNIEW NATURY: zwierzeta i zywioly. Kulminacja (decyzja autora R4-3): Major (Rojenie)
+       albo Moderate z moca >= Normal - Szal ma najwyzej moc Normal, wiec prog High byl
+       osiagalny tylko dla Burzy noca. Druga alternatywa jest osiagalna na KAZDEJ mapie, ale
+       tylko NOCA: za dnia slot modyfikatora zajmuje zawsze PN_Mod_Slabo (-1), wiec Burza
+       dochodzi do Low (sprostowanie 2026-09-22; pilnuje test 11b). -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_GniewNatury</defName>
+    <label>gniew natury</label>
+    <priority>5</priority>
+    <exclusionGroup>natura</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Minor</li></scales>
+          </li>
+        </expectations>
+        <message>Zwierzeta w okolicy sa niespokojne.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+          </li>
+        </expectations>
+        <message>Natura nie odpuszcza.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+          </li>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+            <minIntensity>Normal</minIntensity>
+          </li>
+        </expectations>
+        <message>Gniew natury siega szczytu.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Economic</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Po trudnym czasie los okazuje sie dla kolonii laskawy.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- ZNAKI Z NIEBA: wszystko, co spada z nieba (tag "niebo": Meteoryt, Zrzut, Burza, Emanator).
+       Otwiera go zdarzenie POZYTYWNE. Start od dnia 20, bo Kulminacja (Emanator) wymaga dnia > 20. -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_ZnakiZNieba</defName>
+    <label>znaki z nieba</label>
+    <priority>5</priority>
+    <exclusionGroup>niebo</exclusionGroup>
+    <cooldownDays>40</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>20</min>
+      </li>
+      <!-- KROK 6: watek zaczyna sie od SLADU na niebie, nie z niczego. Czas zycia faktu (40 dni)
+           jest rowny odstepowi tego luku, wiec pamiec o znaku trwa dokladnie tyle, ile pamiec
+           o poprzednim przebiegu watku. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt">
+        <key>niebo.znak</key>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <valences><li>Positive</li></valences>
+            <requiredTag>niebo</requiredTag>
+          </li>
+        </expectations>
+        <message>Niebo nad kolonia jest ostatnio dziwnie niespokojne.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+            <requiredTag>niebo</requiredTag>
+          </li>
+        </expectations>
+        <message>Niebo znowu daje o sobie znac.</message>
+        <messageType>NegativeEvent</messageType>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+            <requiredTag>niebo</requiredTag>
+          </li>
+        </expectations>
+        <message>Z nieba spada cos, co nie powinno bylo spasc.</message>
+        <messageType>NegativeEvent</messageType>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Positive</li></valences>
+            <requiredTag>niebo</requiredTag>
+          </li>
+        </expectations>
+        <message>Tym razem niebo przynosi dar.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- SCIGANI: luk 3-fazowy (bez eskalacji). Komunikaty stwierdzaja tylko KOLEJNOSC zdarzen -
+       nie wiemy, czy napastnicy maja cokolwiek wspolnego z rozbitkiem. Napad Kulminacji moze
+       jednoczesnie otworzyc Wendete (splatanie przez wspolne zdarzenie). -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_Scigani</defName>
+    <label>scigani</label>
+    <priority>8</priority>
+    <exclusionGroup>ludzie</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <!-- KROK 6 (decyzja autora 2026-09-23): najpierw plotki, potem uciekinierzy. Wczesniejszy
+           przybysz z konsekwencja Plotki przynosi wiesci z zewnatrz; dopiero potem rozbija sie
+           kapsula ze scigana grupa. Warunek czyta swiat z poczatku tury, wiec wiesci musza
+           pochodzic od INNEGO, wczesniejszego przybysza - i o to wlasnie chodzi. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt">
+        <key>wiesci.zrodlo</key>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Social</li></themes>
+            <valences><li>Neutral</li></valences>
+            <requiredTag>kapsula</requiredTag>
+          </li>
+        </expectations>
+        <message>Rozbitek z kapsuly - kto wie, przed czym uciekal.</message>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>1</minDaysAfterPrevious>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Raid</li></themes>
+            <valences><li>Negative</li></valences>
+          </li>
+        </expectations>
+        <message>Po rozbiciu sie kapsuly pod kolonie przychodza napastnicy.</message>
+        <messageType>NegativeEvent</messageType>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Social</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Do kolonii przybywa ktos, kto chce do niej dolaczyc.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+</Defs>

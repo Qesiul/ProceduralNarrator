@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using ProceduralNarrator.Core.Arcs;
+using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
+using ProceduralNarrator.Integration.Arcs;
 using ProceduralNarrator.Integration.Defs;
 using ProceduralNarrator.Integration.Incidents;
 using ProceduralNarrator.Integration.Persistence;
@@ -163,6 +166,29 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// symulacyjny: na starcie kazdego ramienia (rejestr z poprzedniego ramienia nie moze
         /// odrzucac pytan nowego) i po przywroceniu stanu gry.
         /// </summary>
+        /// <summary>Stan bezpiecznikow warstw (luki, fakty) - do zapamietania i przywrocenia przez symulator.</summary>
+        internal struct Bezpieczniki
+        {
+            public bool Luki;
+            public bool Fakty;
+        }
+
+        /// <summary>
+        /// Symulator uzywa TEGO SAMEGO obiektu compa co gra, a bezpieczniki sa jego polami - bez
+        /// zapamietania i przywrocenia wyjatek w jednym ramieniu wylaczalby warstwe w nastepnych
+        /// ramionach i w prawdziwej grze po eksperymencie (przeglad S6).
+        /// </summary>
+        internal Bezpieczniki OdczytajBezpieczniki()
+        {
+            return new Bezpieczniki { Luki = arcsBroken, Fakty = faktyBroken };
+        }
+
+        internal void UstawBezpieczniki(Bezpieczniki b)
+        {
+            arcsBroken = b.Luki;
+            faktyBroken = b.Fakty;
+        }
+
         internal void ResetTickState()
         {
             rejestrWerdyktow.Clear();
@@ -196,6 +222,30 @@ namespace ProceduralNarrator.Integration.Storyteller
 
         private string activeProfileId;
 
+        // ---------------------------------------------------------------- LUKI NARRACYJNE (krok 5)
+
+        /// <summary>
+        /// Silnik automatow lukow - wspolny dla sesji (katalog z Defow + blok &lt;arcs&gt;), budowany
+        /// leniwie przy pierwszym wywolaniu. Stan lukow NIE zyje tutaj, tylko w NarratorMemoryComponent
+        /// (ksiega per mapa) - comp nie przezywa wczytania, tak samo jak przy historii.
+        /// </summary>
+        private ArcDirector arcDirector;
+
+        /// <summary>Warstwa lukow rzucila wyjatek - wylaczona do konca sesji (raport raz, bez spamu logu).</summary>
+        private bool arcsBroken;
+
+        /// <summary>
+        /// Ramie eksperymentu "bez lukow": warstwa lukow nieobecna w turze (fokus null, zero obserwacji
+        /// i potwierdzen po stronie lukow). Mierzy efekt drugiego rzedu lukow na tempo. Ustawia
+        /// i zdejmuje wylacznie FutureIncidentsExperiment.
+        /// </summary>
+        internal bool ArcsDisabledForArm;
+
+        private bool LukiAktywne
+        {
+            get { return arcDirector != null && !arcsBroken && !ArcsDisabledForArm && arcDirector.Params.enabled; }
+        }
+
         private StorytellerCompProperties_Generative Props
         {
             get { return (StorytellerCompProperties_Generative)props; }
@@ -216,6 +266,18 @@ namespace ProceduralNarrator.Integration.Storyteller
             {
                 yield break;
             }
+
+            // LUKI - OBSERWACJA PRZY KAZDYM WYWOLANIU (krok 5, decyzja autora nr 5), PRZED bramka
+            // MTB: straznicy (reakcja na gracza) i limity czasu nie moga czekac na ture decyzji,
+            // ktora przychodzi srednio co 2.5 dnia. Bez losowosci (kanarek w ArcTick).
+            ArcTick(map);
+
+            // FAKTY (krok 6) - JEDYNE miejsce, w ktorym slady zdarzen trafiaja do pamieci. PO lukach:
+            // spoznione potwierdzenie luku buduje swiezy snapshot, a ten nie moze widziec sladu
+            // zdarzenia, ktore wlasnie potwierdza (warunki widza swiat z poczatku tury - decyzja
+            // autora). PRZED bramka MTB: fakty maja byc widoczne w snapshocie ewentualnej decyzji
+            // w tym samym wywolaniu. Niezalezne od lukow i bez losowosci.
+            FactTick(map);
 
             // Bramka tempa. mtbDays jest wyprowadzone z czestotliwosci podmienionych compow
             // Cassandry (0.14 + 0.06 + 0.21 = 0.40/dzien), zeby budzet wydarzen byl porownywalny.
@@ -248,13 +310,32 @@ namespace ProceduralNarrator.Integration.Storyteller
             // Stan swiata zamrazamy RAZ na cala ture. Wszystkie rundy oceniaja ten sam kontekst,
             // wiec ranking jest wewnetrznie spojny i da sie go w calosci odtworzyc z logu.
             EventHistory history = HistoryFor(map);
-            WorldSnapshot snapshot = WorldSnapshotBuilder.Build(map, history, gameDay);
+
+            // Pamiec narratora musi byc znana PRZED zamrozeniem snapshotu (krok 6): to snapshot
+            // niesie ja dalej w postaci kanonicznej i tylko przez niego widza ja warunki.
+            // Luki (krok 5): fokus tury z ksiegi mapy i intencji PO kryzysie. Warstwa nieobecna
+            // (wylaczona, uszkodzona albo ramie "bez lukow") = fokus null = tura v6.
+            NarratorMemoryComponent pamiecLukow = LukiAktywne && Current.Game != null
+                ? Current.Game.GetComponent<NarratorMemoryComponent>()
+                : null;
+            ArcLedger ksiega = pamiecLukow == null ? null : pamiecLukow.LedgerFor(map.uniqueID);
+
+            // Ksiega faktow (krok 6) NIE zalezy od lukow - fakty sa czescia blackboardu.
+            FactLedger fakty = KsiegaFaktow(map);
+
+            // Stan swiata zamrazamy RAZ na cala ture. Wszystkie rundy oceniaja ten sam kontekst,
+            // wiec ranking jest wewnetrznie spojny i da sie go w calosci odtworzyc z logu.
+            WorldSnapshot snapshot = WorldSnapshotBuilder.Build(map, history, ksiega, fakty, gameDay);
 
             // WARSTWA PLANOWANIA: napiecie -> intencja + docelowa moc -> regula kryzysu skrajnego
             // -> kontekst decyzji. Caly lancuch zyje w Core (TurnPlanner), wiec walidator offline
             // sprawdza go od snapshotu do DecisionContext.ExtremeCrisis - tutaj tylko jedno
             // wywolanie, bez wlasnej logiki (precedens: TurnRunner).
-            TurnPlan plan = TurnPlanner.Plan(tensionModel, Props.crisis, history, snapshot, gameDay);
+            // Uzytecznosc frakcji do wiazania (krok 5, S5): pelny waniliowy filtr zrodla napadu przy
+            // punktach tury razy mnoznik mocy kandydata - te same punkty bazowe co sito ponizej.
+            IFactionUsability uzytecznoscFrakcji = new FactionUsability(map, snapshot.ThreatPoints);
+            TurnPlan plan = TurnPlanner.Plan(tensionModel, Props.crisis, history, snapshot, gameDay,
+                                             ksiega == null ? null : arcDirector, ksiega, uzytecznoscFrakcji);
             TensionReading napiecie = plan.Tension;
             CrisisReading kryzys = plan.Crisis;
             IntentDecision zamiar = plan.Intent;
@@ -274,9 +355,10 @@ namespace ProceduralNarrator.Integration.Storyteller
             CandidateSet kandydaci = generator.Generate(recipe, snapshot, rngGen, Props.candidateBudget);
             if (kandydaci.Truncated)
             {
-                // Dzis nieosiagalne (najwieksza akcja ma 16 wariantow wobec TraversalCap 20000),
-                // ale flaga bez konsumenta jest flaga martwa i nikt nie zauwazylby dnia, w ktorym
-                // zastrzeli. Wtedy TotalVariants jest DOLNYM ograniczeniem, a nie wartoscia.
+                // Dzis nieosiagalne (najwieksza akcja ma kilkadziesiat wariantow wobec TraversalCap
+                // 20000 - dokladna liczbe pilnuje asercja walidatora, nie ten komentarz), ale flaga
+                // bez konsumenta jest flaga martwa i nikt nie zauwazylby dnia, w ktorym zastrzeli.
+                // Wtedy TotalVariants jest DOLNYM ograniczeniem, a nie wartoscia.
                 PNLog.Warn("Enumeracja wariantow uderzyla w TraversalCap - pole przestrzen w [PN-DATA] "
                            + "jest dolnym ograniczeniem, a pokrycie gornym. " + kandydaci.Trace);
             }
@@ -375,6 +457,19 @@ namespace ProceduralNarrator.Integration.Storyteller
                     return AcceptorVerdict.RefusedByGame;
                 }
 
+                // REGULA GRY Z TryExecute (S6; dekompilacja 1.5.4063, IncidentWorker.cs:169): incydent
+                // z requireColonistsPresent przy braku wolnych kolonistow na mapie NIC nie robi, ale zwraca
+                // sukces - a Storyteller.TryFire wpisuje wtedy lastFireTicks, wiec potwierdzenie wykonania
+                // uznaloby go za WYKONANY (falszywe fakty, Scigani z komunikatem o kapsule, ktorej nie bylo).
+                // CanFireNow tej flagi nie czyta (Uchodzcy = IncidentWorker_GiveQuest przepuszcza, gdy ktos
+                // zyje w karawanie). Odwzorowanie reguly silnika, nie switch po nazwie - obejmuje kazdy Def
+                // z ta flaga (dzis tylko RefugeePodCrash). PRZED pytaniem o CanFireNow: nie zuzywa cache'u gry.
+                if (kandydacki.requireColonistsPresent && map.mapPawns.FreeColonistsSpawnedCount == 0)
+                {
+                    powod = kandydacki.defName + ": brak wolnych kolonistow na mapie (requireColonistsPresent)";
+                    return AcceptorVerdict.RefusedByGame;
+                }
+
                 // IncidentParms budowane LENIWIE, wylacznie dla zwyciezcy DANEJ RUNDY.
                 // StorytellerUtility.DefaultParmsNow (pod spodem GenerateParms) liczy punkty
                 // zagrozenia z bogactwa, kolonistow i krzywych adaptacji - zbudowanie parms dla
@@ -384,8 +479,12 @@ namespace ProceduralNarrator.Integration.Storyteller
                 // Tlumaczenie kompozycji na mechanike ma JEDEN dom - IncidentParmsBuilder.
                 // Tam tez zapisane jest, ktore pola IncidentParms nasz katalog realnie honoruje,
                 // a ktore sa dla niego bezczynne (zmierzone dekompilacja, nie zalozone).
+                // FRAKCJA LUKU (krok 5): tylko dla kandydata dopasowanego przez oczekiwanie
+                // sameFaction, przy frakcji uzytecznej dla jego mocy (ArcFocus.FactionToBind).
+                string frakcjaLukuId = context.ArcFocus == null ? null : context.ArcFocus.FactionToBind(zdarzenie);
+                Faction frakcjaLuku = ArcObservationBuilder.ResolveFaction(frakcjaLukuId);
                 IncidentParms kandydackieParms = IncidentParmsBuilder.Apply(
-                    GenerateParms(kandydacki.category, target), zdarzenie, Props.useComposedLetter);
+                    GenerateParms(kandydacki.category, target), zdarzenie, Props.useComposedLetter, frakcjaLuku);
 
                 // PYTAMY SILNIK TYLKO WTEDY, GDY RDZEN O TO PROSI.
                 //
@@ -418,7 +517,7 @@ namespace ProceduralNarrator.Integration.Storyteller
                     string zakres = zdarzenie.ActionPayload ?? "?";
                     string odciskPytania = zakres + "@" + (target == null ? "?" : target.GetHashCode()
                                                .ToString(CultureInfo.InvariantCulture))
-                                           + "#" + IncidentParmsBuilder.ExecutionKey(zdarzenie);
+                                           + "#" + IncidentParmsBuilder.ExecutionKey(zdarzenie, frakcjaLukuId);
 
                     if (rejestrTick != tick)
                     {
@@ -458,7 +557,8 @@ namespace ProceduralNarrator.Integration.Storyteller
             ExecutionKeySelector kluczWykonania =
                 delegate(ScoredCandidate kandydat)
                 {
-                    return kandydat == null ? null : IncidentParmsBuilder.ExecutionKey(kandydat.Event);
+                    return kandydat == null ? null : IncidentParmsBuilder.ExecutionKey(
+                        kandydat.Event, context.ArcFocus == null ? null : context.ArcFocus.FactionToBind(kandydat.Event));
                 };
 
             // ZAKRES CACHE'U = SAM PAYLOAD. Cache silnika jest kluczowany IncidentDefem, a nie
@@ -569,15 +669,474 @@ namespace ProceduralNarrator.Integration.Storyteller
             // bylby zakladem o cudza petle, a przegrana objawia sie pusta historia i czynnikiem
             // swiezosci zamrozonym na wartosci neutralnej - czyli cicho.
             // Do zapisania w pracy: historia rejestruje INTENCJE narratora, nie potwierdzone
-            // wykonanie (TryExecute moze pozniej zwrocic false). Domkniecie petli faktycznym
-            // wynikiem tury to krok 6 i hak Harmony na IncidentWorker.TryExecute.
+            // wykonanie (TryExecute moze pozniej zwrocic false). Wykonanie jest od kroku 5 MIERZONE
+            // bez Harmony (lastFireTicks przed/po yield, [PN-EXEC]) - i od niego zaleza luki i fakty;
+            // sama historia zostaje zapisem intencji (decyzja autora nr 6, dlug 7).
             if (!history.RecordEvent(decyzja.Winner.Event, gameDay, tick))
             {
                 PNLog.Error("Nie udalo sie dopisac zdarzenia do historii - czynniki swiezosci "
                             + "i kontrastu strace ta ture. Kandydat: " + decyzja.Winner.Label);
             }
 
+            // POTWIERDZENIE WYKONANIA (krok 5, decyzja autora nr 6) - bez Harmony. Wanilia wpisuje
+            // tick do StoryState.lastFireTicks[def] WYLACZNIE po udanym CanFireNow i TryExecute
+            // (Storyteller.TryFire -> Notify_IncidentFired), a nasz kod po yield return wykonuje
+            // sie PO TryFire w tym samym ticku (leniwy lancuch iteratorow). Odczyt PRZED zapisujemy
+            // takze w pamieci (Pending), gdyby iterator nie zostal wznowiony - wtedy potwierdzenie
+            // domknie ArcTick przy nastepnym wywolaniu.
+            int ostatniPrzed = OstatnieOdpalenie(map, incydent);
+            if (ksiega != null)
+            {
+                ksiega.Pending = new PendingExecution
+                {
+                    Tick = tick,
+                    GameDay = gameDay,
+                    DecisionIndex = context.DecisionIndex,
+                    IncidentDefName = incydent.defName,
+                    // FactionId = frakcja, ktora MY ustawilismy (albo null) - do kolumny frakcjaZwiazana;
+                    // faktyczna frakcje po TryExecute czyta PotwierdzWykonanie.
+                    Event = ArcEventView.FromCandidate(decyzja.Winner.Event,
+                        context.ArcFocus == null ? null : context.ArcFocus.FactionToBind(decyzja.Winner.Event)),
+                    LastFireBefore = ostatniPrzed
+                };
+                // Pamiec decyzji (S6): pola snapshotu zalezne od historii, zanim RecordEvent je zmieni
+                // (RecordEvent jest wyzej, ale snapshot zamrozono przed nim). Sciezka spozniona nalozy je
+                // na swoj snapshot - warunki startu luku widza wtedy ten sam swiat co tutaj.
+                ksiega.Pending.CaptureDecisionMemory(snapshot);
+            }
+
+            // FAKTY ZDARZENIA DO KOLEJKI (krok 6) - przed yield, z tego samego powodu co Pending
+            // lukow: kod za yield moze sie nie wykonac. Do pamieci trafia dopiero po rozstrzygnieciu
+            // wykonania, na poczatku nastepnego wywolania (FactTick).
+            ZakolejkujFakty(map, fakty, decyzja.Winner.Event, tick, gameDay, context.DecisionIndex,
+                            incydent.defName, ostatniPrzed);
+
             yield return new FiringIncident(incydent, this, parms);
+
+            PotwierdzWykonanie(map, ksiega, history, snapshot, incydent, parms, ostatniPrzed, tick,
+                               context.DecisionIndex, decyzja.Winner);
+        }
+
+        /// <summary>lastFireTicks[def] tej mapy albo -1, gdy incydent nigdy nie odpalal.</summary>
+        private static int OstatnieOdpalenie(Map map, IncidentDef def)
+        {
+            int t;
+            if (map != null && def != null && map.StoryState != null && map.StoryState.lastFireTicks != null
+                && map.StoryState.lastFireTicks.TryGetValue(def, out t))
+            {
+                return t;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Klasyfikacja wykonania, linia [PN-EXEC] (zawsze - odsetek wykonan to pomiar dlugu 7)
+        /// i krok automatu lukow. Metoda zwykla, nie iterator: wyjatek tutaj nie moze zabic petli
+        /// storytellera, wiec jest lapany i wylacza warstwe lukow (raport raz).
+        /// </summary>
+        private void PotwierdzWykonanie(Map map, ArcLedger ksiega, EventHistory history, WorldSnapshot snapshot,
+                                        IncidentDef incydent, IncidentParms parms, int ostatniPrzed, int tick,
+                                        int decyzjaNr, ScoredCandidate zwyciezca)
+        {
+            try
+            {
+                int ostatniPo = OstatnieOdpalenie(map, incydent);
+                ExecStatus status = ExecutionConfirmation.Classify(ostatniPrzed, ostatniPo, tick, PNLog.InExperiment);
+
+                // Faktyczna frakcja zdarzenia: nasz obiekt parms PO TryExecute (worker napadu
+                // rozwiazuje ja w miejscu). Pewniejsze niz StoryState.lastRaidFaction, ktore
+                // nadpisuje kazdy napad na mapie.
+                string frakcja = parms == null ? null : ArcObservationBuilder.FactionId(parms.faction);
+                string zrodloFrakcji = frakcja == null ? "-" : "parms";
+                PendingExecution czekajace = ksiega == null ? null : ksiega.Pending;
+                string zwiazana = czekajace == null || czekajace.Event == null ? null : czekajace.Event.FactionId;
+
+                // EMULACJA FRAKCJI W SYMULATORZE (decyzja autora R4-4): bez TryExecute worker napadu
+                // nie rozwiazuje frakcji, wiec luk wiazacy frakcje nigdy by sie tam nie otworzyl.
+                // Tylko dla akcji niosacej frakcje, tylko w eksperymencie, jawnie oznaczone.
+                if (frakcja == null && status == ExecStatus.Simulated && czekajace != null && czekajace.Event != null
+                    && czekajace.Event.CarriesFaction)
+                {
+                    frakcja = ArcObservationBuilder.FactionId(
+                        FactionBinding.EmulatedRaidFaction(map, parms == null ? 0f : parms.points));
+                    zrodloFrakcji = frakcja == null ? "-" : "emulacja";
+                }
+
+                PNLog.Exec(map == null ? -1 : map.uniqueID, decyzjaNr, incydent == null ? null : incydent.defName,
+                           zwyciezca == null ? null : zwyciezca.SortKey, ExecutionConfirmation.Label(status),
+                           ostatniPrzed, ostatniPo, frakcja, zwiazana, tick, zrodloFrakcji, tick);
+
+                // Fakty (krok 6): ten sam werdykt co luki, ale WLASNY try/catch wewnatrz metody -
+                // wyjatek po stronie faktow nie moze wylaczyc lukow, a luki wylaczone nie moga
+                // zatrzymac faktow (dlatego to wywolanie stoi PRZED wczesnym powrotem ponizej).
+                PotwierdzFakty(map, decyzjaNr, tick, status);
+
+                if (ksiega == null || arcDirector == null || !LukiAktywne)
+                {
+                    return;
+                }
+                ArcEventView wykonane = czekajace != null && czekajace.Event != null
+                    ? czekajace.Event
+                    : ArcEventView.FromCandidate(zwyciezca.Event, null);
+                wykonane.FactionId = frakcja;
+                ksiega.Pending = null;
+
+                ArcObservation obs = ArcObservationBuilder.Build(map, ksiega, tick);
+                List<ArcTransitionRecord> rekordy = arcDirector.OnExecuted(ksiega, wykonane, status, snapshot, obs);
+                EmitArcRecords(map, history == null ? decyzjaNr : history.DecisionCount, rekordy);
+            }
+            catch (Exception e)
+            {
+                WylaczLuki("potwierdzenie wykonania", e);
+            }
+        }
+
+        // =====================================================================================
+        //  LUKI: obserwacja przy kazdym wywolaniu, spoznione potwierdzenia, emisja krokow
+        // =====================================================================================
+
+        /// <summary>
+        /// Krok lukow przy KAZDYM wywolaniu compa: uzgodnienie ksiegi z katalogiem (Reconcile),
+        /// domkniecie spoznionego potwierdzenia wykonania, obserwacja swiata, straznicy i limity.
+        /// Nie losuje (kanarek Rand.iterations wokol obserwacji) i nie rzuca - wyjatek wylacza
+        /// warstwe lukow z jednym raportem, narrator dziala dalej jak w v6.
+        /// </summary>
+        private void ArcTick(Map map)
+        {
+            if (arcsBroken || ArcsDisabledForArm || map == null || Current.Game == null)
+            {
+                return;
+            }
+            try
+            {
+                if (arcDirector == null)
+                {
+                    List<string> problemy;
+                    // Bledy katalogu wypisal juz audyt startowy (PNStartup.AuditArcs) - tu bez powtorki.
+                    arcDirector = new ArcDirector(ArcCatalogLoader.Load(out problemy), Props.arcs);
+                }
+                if (!arcDirector.Params.enabled)
+                {
+                    return;
+                }
+                NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
+                if (pamiec == null)
+                {
+                    return;
+                }
+                ArcLedger ksiega = pamiec.LedgerFor(map.uniqueID);
+                int tick = CurrentTick();
+                float dzien = tick / TicksPerDay;
+                EventHistory history = HistoryFor(map);
+
+                uint rand0 = RandCanary.Read();
+                var rekordy = arcDirector.Reconcile(ksiega, tick, dzien);
+
+                PendingExecution czekajace = ksiega.Pending;
+                if (czekajace != null && czekajace.Tick < tick)
+                {
+                    // Iterator nie zostal wznowiony po naszym yield (np. wyjatek w TryFire) - domykamy
+                    // teraz. Frakcja faktyczna jest nieznana (obiekt parms przepadl), wiec zdarzenie
+                    // nie spelni sameFaction i nie otworzy luku wiazacego frakcje.
+                    IncidentDef def = DefDatabase<IncidentDef>.GetNamedSilentFail(czekajace.IncidentDefName);
+                    int teraz = OstatnieOdpalenie(map, def);
+                    ExecStatus st = ExecutionConfirmation.ClassifyLate(teraz, czekajace);
+                    PNLog.Exec(map.uniqueID, czekajace.DecisionIndex, czekajace.IncidentDefName, null,
+                               ExecutionConfirmation.Label(st), czekajace.LastFireBefore, teraz, null,
+                               czekajace.Event == null ? null : czekajace.Event.FactionId, tick, "-", czekajace.Tick);
+                    ArcEventView ev = czekajace.Event ?? new ArcEventView();
+                    ev.FactionId = null;
+                    ksiega.Pending = null;
+                    // TEN SAM SWIAT PAMIECI CO NA SCIEZCE NORMALNEJ (S6 - przeglad adwersarialny). Snapshot
+                    // zbudowany tu od nowa widzialby historie JUZ z tym zdarzeniem (RecordEvent idzie przed
+                    // yield): inny wiek tematow, "dni od ostatniego zdarzenia" ok. 0,017 zamiast dni, a przy
+                    // pelnym buforze - bez najstarszego wpisu. Dlatego: pola historii z pamieci decyzji
+                    // (Pending), fakty oceniane w dniu DECYZJI i przez KsiegaFaktow (bezpiecznik faktow
+                    // obowiazuje tak samo jak na sciezce normalnej). Fakty TEGO zdarzenia nie sa widoczne,
+                    // bo FactTick biegnie PO ArcTick. Zostaje roznica swiadoma (CLAUDE.md 2.4): zywy swiat
+                    // (bogactwo, koloniscy, frakcje) i zegar obserwacji sa z T+1000. Stara linia P (sprzed S6)
+                    // nie ma pamieci decyzji - wtedy snapshot jak dawniej, z dniem biezacym.
+                    float dzienSwiata = czekajace.HasDecisionMemory ? czekajace.GameDay : dzien;
+                    WorldSnapshot swiat = WorldSnapshotBuilder.Build(map, history, ksiega, KsiegaFaktow(map), dzienSwiata);
+                    czekajace.ApplyDecisionMemoryTo(swiat);
+                    rekordy.AddRange(arcDirector.OnExecuted(ksiega, ev, st, swiat,
+                                                            ArcObservationBuilder.Build(map, ksiega, tick)));
+                }
+
+                ArcObservation obs = ArcObservationBuilder.Build(map, ksiega, tick);
+                rekordy.AddRange(arcDirector.Observe(ksiega, obs));
+                RandCanary.Check(rand0, "ArcTick");
+
+                EmitArcRecords(map, history.DecisionCount, rekordy);
+            }
+            catch (Exception e)
+            {
+                WylaczLuki("obserwacja", e);
+            }
+        }
+
+        /// <summary>
+        /// Linie [PN-ARC], komunikaty w grze i JEDEN komunikat logu czytelnego na wywolanie
+        /// (limit 1000 komunikatow Verse.Log - patrz PNLog).
+        /// </summary>
+        private static void EmitArcRecords(Map map, int decyzjaNr, List<ArcTransitionRecord> rekordy)
+        {
+            if (rekordy == null || rekordy.Count == 0)
+            {
+                return;
+            }
+            var czytelne = new List<string>(rekordy.Count);
+            foreach (ArcTransitionRecord r in rekordy)
+            {
+                PNLog.Arc(map == null ? -1 : map.uniqueID, decyzjaNr, r);
+                ArcMessages.Show(r);
+                czytelne.Add(r.ToString() + (string.IsNullOrEmpty(r.Message) ? string.Empty : " \"" + r.Message + "\""));
+            }
+            PNLog.Decision("Luki (mapa " + (map == null ? "?" : map.uniqueID.ToString(CultureInfo.InvariantCulture))
+                           + "): " + string.Join(" | ", czytelne.ToArray()));
+        }
+
+        private void WylaczLuki(string gdzie, Exception e)
+        {
+            if (arcsBroken)
+            {
+                return;
+            }
+            arcsBroken = true;
+            PNLog.Error("WARSTWA LUKOW rzucila wyjatek (" + gdzie + ") i jest WYLACZONA do wczytania zapisu "
+                        + "albo zmiany narratora (comp powstaje wtedy od nowa). "
+                        + "Narrator dziala dalej bez lukow (jak v6); kolumny lukow beda puste.\n" + e);
+        }
+
+        // =====================================================================================
+        //  FAKTY (krok 6): kolejka przed yield, potwierdzenie po nim, zastosowanie w nastepnym
+        //  wywolaniu. Wlasny bezpiecznik - niezalezny od lukow w obie strony.
+        // =====================================================================================
+
+        /// <summary>Warstwa faktow rzucila wyjatek - wylaczona do wczytania zapisu albo zmiany narratora (raport raz).</summary>
+        private bool faktyBroken;
+
+        /// <summary>Ksiega faktow mapy albo null (brak komponentu pamieci, warstwa wylaczona).</summary>
+        private FactLedger KsiegaFaktow(Map map)
+        {
+            if (faktyBroken || map == null || Current.Game == null)
+            {
+                return null;
+            }
+            NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
+            return pamiec == null ? null : pamiec.FactsFor(map.uniqueID);
+        }
+
+        /// <summary>
+        /// Rozstrzygniecie kolejki faktow na poczatku wywolania compa: potwierdzone wykonanie -
+        /// fakty do ksiegi z dniem DECYZJI; niepotwierdzone (iterator nie wrocil) - spozniona
+        /// klasyfikacja przez lastFireTicks, ten sam kod co luki. Bez Verse.Rand.
+        /// </summary>
+        private void FactTick(Map map)
+        {
+            try
+            {
+                FactLedger fakty = KsiegaFaktow(map);
+                if (fakty == null || fakty.Pending == null)
+                {
+                    return;
+                }
+                int tick = CurrentTick();
+                List<FactEvent> zdarzenia = fakty.ResolvePending(tick, nazwa => OstatnieOdpalenie(
+                    map, string.IsNullOrEmpty(nazwa) ? null : DefDatabase<IncidentDef>.GetNamedSilentFail(nazwa)));
+                EmitFactRecords(map, tick, zdarzenia);
+            }
+            catch (Exception e)
+            {
+                WylaczFakty("rozstrzygniecie kolejki", e);
+            }
+        }
+
+        /// <summary>
+        /// Stawia fakty zwyciezcy w kolejce. Deklaracje sa KOPIOWANE, a nie wspoldzielone z obiektami
+        /// z Defow - kolejka zyje w zapisie gry i nie moze zmieniac sie razem z katalogiem.
+        /// </summary>
+        private void ZakolejkujFakty(Map map, FactLedger fakty, ComposedEvent zdarzenie, int tick, float dzien,
+                                     int decyzjaNr, string incydent, int ostatniPrzed)
+        {
+            if (fakty == null || zdarzenie == null || zdarzenie.Blocks == null)
+            {
+                return;
+            }
+            try
+            {
+                var zapisy = new List<FactWrite>();
+                foreach (Block b in zdarzenie.Blocks)
+                {
+                    if (b == null || b.FactsOnExecute == null)
+                    {
+                        continue;
+                    }
+                    foreach (FactWrite w in b.FactsOnExecute)
+                    {
+                        if (w != null)
+                        {
+                            zapisy.Add(new FactWrite { key = w.key, value = w.value, accumulate = w.accumulate,
+                                                       lifespanDays = w.lifespanDays });
+                        }
+                    }
+                }
+                if (zapisy.Count == 0)
+                {
+                    return;
+                }
+
+                bool nadpisano;
+                List<FactEvent> odrzucone = fakty.Queue(new PendingFacts
+                {
+                    Tick = tick,
+                    Day = dzien,
+                    DecisionIndex = decyzjaNr,
+                    IncidentDefName = incydent,
+                    LastFireBefore = ostatniPrzed,
+                    Writes = zapisy
+                }, out nadpisano);
+                if (nadpisano)
+                {
+                    // Nie powinno sie zdarzyc: kazde wywolanie zaczyna sie od FactTick. Jesli jednak
+                    // tak - fakty poprzedniego zdarzenia przepadly, i to musi byc widac.
+                    PNLog.Warn("Kolejka faktow mapy " + map.uniqueID.ToString(CultureInfo.InvariantCulture)
+                               + " nie byla pusta przy nowej decyzji - fakty poprzedniego zdarzenia przepadly.");
+                }
+                EmitFactRecords(map, tick, odrzucone);
+            }
+            catch (Exception e)
+            {
+                WylaczFakty("kolejkowanie", e);
+            }
+        }
+
+        /// <summary>Potwierdzenie na sciezce normalnej (ten sam tick co decyzja) - tylko oznacza kolejke.</summary>
+        private void PotwierdzFakty(Map map, int decyzjaNr, int tick, ExecStatus status)
+        {
+            try
+            {
+                FactLedger fakty = KsiegaFaktow(map);
+                if (fakty == null)
+                {
+                    return;
+                }
+                FactEvent odrzucenie = fakty.ConfirmPending(decyzjaNr, tick, status);
+                if (odrzucenie != null)
+                {
+                    EmitFactRecords(map, tick, new List<FactEvent> { odrzucenie });
+                }
+            }
+            catch (Exception e)
+            {
+                WylaczFakty("potwierdzenie", e);
+            }
+        }
+
+        /// <summary>Linie [PN-FACT] i JEDEN komunikat logu czytelnego na wywolanie (limit Verse.Log).</summary>
+        private static void EmitFactRecords(Map map, int tick, List<FactEvent> zdarzenia)
+        {
+            if (zdarzenia == null || zdarzenia.Count == 0)
+            {
+                return;
+            }
+            int mapa = map == null ? -1 : map.uniqueID;
+            var czytelne = new List<string>(zdarzenia.Count);
+            foreach (FactEvent e in zdarzenia)
+            {
+                PNLog.Fact(mapa, tick, e);
+                czytelne.Add(e.KindLabel() + " " + (string.IsNullOrEmpty(e.Key) ? "(cale zdarzenie)" : e.Key)
+                             + (float.IsNaN(e.Value) ? string.Empty : "=" + e.Value.ToString("0.##", CultureInfo.InvariantCulture))
+                             + " (" + (e.Reason ?? "-") + ")");
+            }
+            PNLog.Decision("Fakty (mapa " + mapa.ToString(CultureInfo.InvariantCulture) + "): "
+                           + string.Join(" | ", czytelne.ToArray()));
+        }
+
+        private void WylaczFakty(string gdzie, Exception e)
+        {
+            if (faktyBroken)
+            {
+                return;
+            }
+            faktyBroken = true;
+            PNLog.Error("WARSTWA FAKTOW rzucila wyjatek (" + gdzie + ") i jest WYLACZONA do wczytania zapisu "
+                        + "albo zmiany narratora (comp powstaje wtedy od nowa). "
+                        + "Narrator i luki dzialaja dalej; warunki faktowe beda niespelnione (pusta pamiec "
+                        + "faktow zabiera klocki i luki z puli, nie wpuszcza ich bez pokrycia).\n" + e);
+        }
+
+        /// <summary>
+        /// Straty kolonistow per mapa (Guard_ColonistsLost) - bez Harmony: wanilia wola ten hook
+        /// dla KAZDEGO compa storytellera (Storyteller.Notify_PawnEvent), przy zgonie z
+        /// DoKillSideEffects i przy porwaniu z PreKidnapped - w obu chwilach pionek ma jeszcze
+        /// frakcje gracza, wiec IsColonist dziala (dekompilacja 1.5.4063, Pawn.cs).
+        /// </summary>
+        public override void Notify_PawnEvent(Pawn p, AdaptationEvent ev, DamageInfo? dinfo = null)
+        {
+            if (p == null || (ev != AdaptationEvent.Died && ev != AdaptationEvent.Kidnapped) || !p.IsColonist)
+            {
+                return;
+            }
+            // Symulator nie zabija pionkow; zdarzenie w jego trakcie byloby zdarzeniem prawdziwej
+            // gry, a ksiegi sa wtedy podmienione na kopie ramienia.
+            if (PNLog.InExperiment || Current.Game == null)
+            {
+                return;
+            }
+            NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
+            if (pamiec == null)
+            {
+                return;
+            }
+            // STRATA LICZY SIE DLA KOLONII (decyzja autora 2026-09-23, przeglad S6): zgon albo porwanie
+            // poza mapa domowa (zasadzka, mapa zadania, kontratak na baze frakcji) trafial do osobnej
+            // ksiegi niewidocznej dla lukow domu, a w karawanie (MapHeld == null) nie liczyl sie wcale.
+            // Przy JEDNEJ kolonii strata idzie do jej mapy; przy kilku nie da sie wskazac wlasciwej -
+            // wtedy nie jest liczona (znane ograniczenie, CLAUDE.md 2.4) i log mowi to raz.
+            Map mapa = p.MapHeld;
+            if (mapa == null || !mapa.IsPlayerHome)
+            {
+                Map dom = JedynaMapaDomowa();
+                if (dom == null)
+                {
+                    if (!strataPozaDomemZgloszona)
+                    {
+                        strataPozaDomemZgloszona = true;
+                        PNLog.Warn("Strata kolonisty poza mapa domowa przy " + (Find.Maps == null ? 0 : Find.Maps.Count(m => m.IsPlayerHome))
+                                   .ToString(CultureInfo.InvariantCulture)
+                                   + " koloniach - nie da sie wskazac kolonii, wiec nie jest liczona dla lukow (ostrzezenie raz na sesje).");
+                    }
+                    return;
+                }
+                mapa = dom;
+            }
+            pamiec.LedgerFor(mapa.uniqueID).ColonistLosses++;
+        }
+
+        private bool strataPozaDomemZgloszona;
+
+        /// <summary>Jedyna mapa domowa gracza albo null (brak albo kilka kolonii).</summary>
+        private static Map JedynaMapaDomowa()
+        {
+            if (Find.Maps == null)
+            {
+                return null;
+            }
+            Map jedyna = null;
+            foreach (Map m in Find.Maps)
+            {
+                if (m == null || !m.IsPlayerHome)
+                {
+                    continue;
+                }
+                if (jedyna != null)
+                {
+                    return null;
+                }
+                jedyna = m;
+            }
+            return jedyna;
         }
 
 
@@ -730,16 +1289,28 @@ namespace ProceduralNarrator.Integration.Storyteller
             else if (zegar != int.MinValue)
             {
                 int oczekiwany = zegar + (DebugSettings.fastEcology ? 2000 : 1);
-                if (tick == oczekiwany)
+                if (tick == oczekiwany && ostatniInterwalMapy.TryGetValue(map.uniqueID, out ostatni) && tick <= ostatni)
+                {
+                    // DRUGIE wywolanie compa dla tej samej mapy w tym samym ticku (S6): kolejka faktow
+                    // potwierdzonego zdarzenia zostalaby nadpisana bez linii [PN-FACT]. Wanilia tak nie
+                    // wola (StorytellerTick raz na tick) - to mogl by zrobic tylko obcy mod.
+                    powod = "interwal mapy " + map.uniqueID.ToString(CultureInfo.InvariantCulture)
+                            + " juz przetworzony w tym ticku (" + tick.ToString(CultureInfo.InvariantCulture)
+                            + ") - drugie wywolanie compa";
+                }
+                else if (tick == oczekiwany)
                 {
                     straznikKlatka = klatka;
                     straznikTick = tick;
                     ostatniInterwalMapy[map.uniqueID] = tick;
                     return false;
                 }
-                powod = "tick " + tick.ToString(CultureInfo.InvariantCulture)
-                        + " nie nastepuje po zegarze gry " + zegar.ToString(CultureInfo.InvariantCulture)
-                        + " (wywolanie spoza TickManager.DoSingleTick)";
+                else
+                {
+                    powod = "tick " + tick.ToString(CultureInfo.InvariantCulture)
+                            + " nie nastepuje po zegarze gry " + zegar.ToString(CultureInfo.InvariantCulture)
+                            + " (wywolanie spoza TickManager.DoSingleTick)";
+                }
             }
             else if (tick % (int)TicksPerInterval != 0)
             {
@@ -942,7 +1513,7 @@ namespace ProceduralNarrator.Integration.Storyteller
             {
                 runtimeBroken = true;
                 PNLog.Error("INICJALIZACJA NARRATORA RZUCILA WYJATEK. Narrator jest wylaczony "
-                            + "do konca tej sesji i nie wyprodukuje zadnego wydarzenia; waniliowe "
+                            + "do wczytania zapisu albo zmiany narratora i nie wyprodukuje zadnego wydarzenia; waniliowe "
                             + "compy dzialaja dalej. Napraw konfiguracje i uruchom gre ponownie "
                             + "(RimWorld czyta Defy i DLL tylko przy starcie procesu).\n" + e);
                 return false;
@@ -956,8 +1527,8 @@ namespace ProceduralNarrator.Integration.Storyteller
                 // w konfiguracji. Zglaszamy z lista brakujacych skladnikow i wylaczamy sie,
                 // zamiast czekac na NullReferenceException kilka linii dalej.
                 runtimeBroken = true;
-                PNLog.Error("Narrator nie jest kompletnie zainicjalizowany - wylaczony do konca "
-                            + "sesji. Brakuje: "
+                PNLog.Error("Narrator nie jest kompletnie zainicjalizowany - wylaczony do wczytania "
+                            + "zapisu albo zmiany narratora. Brakuje: "
                             + (composer == null ? "composer " : string.Empty)
                             + (generator == null ? "generator " : string.Empty)
                             + (policy == null ? "policy " : string.Empty)

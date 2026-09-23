@@ -1,3 +1,4 @@
+using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Model;
 
 namespace ProceduralNarrator.Core.Tension
@@ -50,6 +51,23 @@ namespace ProceduralNarrator.Core.Tension
             plan.Context = DecisionContext.Create(snapshot, history, gameDay,
                                                   plan.Intent.Intent, plan.Intent.TargetIntensity,
                                                   plan.Tension.Tension, plan.Crisis.Extreme);
+            return plan;
+        }
+
+        /// <summary>
+        /// Plan tury Z WARSTWA LUKOW (krok 5, koncepcja 6 pkt 4: "luki aktualizuja stany i zglaszaja
+        /// biezaca faze"). Fokus budowany z intencji PO regule kryzysu, wiec kryzys (Breathe) sam
+        /// wstrzymuje fazy negatywne - bez osobnej reguly (decyzja autora nr 2). Luk NIE zmienia
+        /// intencji ani mocy: krzywa decyduje KIEDY, luk decyduje CO.
+        /// </summary>
+        public static TurnPlan Plan(TensionModel tensionModel, CrisisParams crisisParams, EventHistory history,
+                                    WorldSnapshot snapshot, float gameDay, ArcDirector arcs, ArcLedger ledger,
+                                    IFactionUsability usability)
+        {
+            TurnPlan plan = Plan(tensionModel, crisisParams, history, snapshot, gameDay);
+            plan.Context.ArcFocus = arcs == null || ledger == null
+                ? null
+                : arcs.BuildFocus(ledger, plan.Intent.Intent, gameDay, usability);
             return plan;
         }
     }

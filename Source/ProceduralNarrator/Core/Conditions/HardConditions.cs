@@ -1,4 +1,6 @@
+using System;
 using System.Globalization;
+using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Model;
 
 namespace ProceduralNarrator.Core.Conditions
@@ -274,6 +276,162 @@ namespace ProceduralNarrator.Core.Conditions
         public override string Describe()
         {
             return "spokoj >= " + minDays.ToString("0.##", CultureInfo.InvariantCulture) + " dnia";
+        }
+    }
+
+    // =====================================================================================
+    //  KROK 6 - warunki czytajace PAMIEC NARRATORA (blackboard) przez postac kanoniczna
+    //  w WorldSnapshot. Zadna z tych klas nie zna ani ksiegi faktow, ani ksiegi lukow:
+    //  widza dokladnie to, co zamrozil snapshot na poczatku tury.
+    // =====================================================================================
+
+    /// <summary>
+    /// Wymaga, by fakt o danym kluczu obowiazywal (albo NIE obowiazywal, przy required = false).
+    ///
+    /// Obecnosc, a nie wartosc: zero jest poprawna wartoscia faktu, wiec sprawdzanie "czy jest"
+    /// porownaniem z zerem odpowiadaloby falszywie dla licznika, ktory wlasnie wyzerowano.
+    /// </summary>
+    public class Cond_Fakt : NarrativeCondition
+    {
+        public string key;
+        public bool required = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return NarratorBlackboard.FactPresentIn(s.Facts, key) == required;
+        }
+
+        public override string Describe()
+        {
+            return (required ? "fakt " : "brak faktu ") + (key ?? "?");
+        }
+    }
+
+    /// <summary>
+    /// Wymaga, by fakt obowiazywal i byl starszy niz zadana liczba dni ("rany zdazyly ostygnac").
+    /// Brak faktu NIE spelnia warunku - "nigdy sie nie zdarzylo" to nie to samo co "zdarzylo sie dawno".
+    /// </summary>
+    public class Cond_FaktOd : NarrativeCondition
+    {
+        public string key;
+        public float minDays = 1f;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            float wiek = NarratorBlackboard.FactAgeFrom(s.Facts, key);
+            // Tolerancja granicy jak w Fact.IsActive: w interwale, w ktorym fakt osiaga minDays,
+            // warunek jest spelniony niezaleznie od szumu float32 w wieku z postaci kanonicznej.
+            return !float.IsNaN(wiek) && wiek >= minDays - FactLedger.BoundaryToleranceDays;
+        }
+
+        public override string Describe()
+        {
+            return "fakt " + (key ?? "?") + " starszy niz "
+                   + minDays.ToString("0.##", CultureInfo.InvariantCulture) + " dnia";
+        }
+    }
+
+    /// <summary>
+    /// Wymaga, by wartosc obowiazujacego faktu miescila sie w przedziale (licznik: "co najmniej
+    /// dwa razy", "nie wiecej niz piec razy"). Brak faktu nie spelnia warunku.
+    /// </summary>
+    public class Cond_FaktLiczba : NarrativeCondition
+    {
+        public string key;
+        public float min;
+        public float max = float.MaxValue;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            float v = NarratorBlackboard.FactValueFrom(s.Facts, key);
+            return !float.IsNaN(v) && v >= min && v <= max;
+        }
+
+        public override string Describe()
+        {
+            return "fakt " + (key ?? "?") + " w [" + min.ToString("0.##", CultureInfo.InvariantCulture)
+                   + ", " + (max >= float.MaxValue ? "inf" : max.ToString("0.##", CultureInfo.InvariantCulture)) + "]";
+        }
+    }
+
+    /// <summary>
+    /// Wymaga, by watek (instancja luku) byl teraz otwarty - albo NIE byl, przy required = false.
+    /// Realizuje przyklad wnioskowania z sekcji 5.2 koncepcji: "watek ruiny wciaz otwarty".
+    /// </summary>
+    public class Cond_WatekOtwarty : NarrativeCondition
+    {
+        public string arc;
+        public bool required = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return NarratorBlackboard.ThreadHasStatus(s.Threads, NarratorBlackboard.StatusOpen, arc) == required;
+        }
+
+        public override string Describe()
+        {
+            return (required ? "watek otwarty " : "watek nieotwarty ") + (arc ?? "?");
+        }
+    }
+
+    /// <summary>
+    /// Wymaga, by watek byl juz kiedys zamkniety - opcjonalnie z konkretnym wynikiem
+    /// (ArcDirector.OutcomeResolved / OutcomeFaded). Pusty outcome znaczy "dowolny wynik".
+    ///
+    /// Pamiec zamkniec jest OGRANICZONA (ArcLedger.MaxClosed), wiec "nie bylo zamkniete" znaczy
+    /// scisle "nie ma tego w pamieci watkow", a nie "nigdy w tej rozgrywce". Fakt licznikowy jest
+    /// wlasciwym narzedziem, gdy potrzebna jest pamiec bez horyzontu.
+    /// </summary>
+    public class Cond_WatekZamkniety : NarrativeCondition
+    {
+        public string arc;
+        public string outcome;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            string wynik = NarratorBlackboard.ThreadTail(s.Threads, NarratorBlackboard.StatusClosed, arc);
+            if (wynik == null)
+            {
+                return false;
+            }
+            return string.IsNullOrEmpty(outcome) || string.Equals(wynik, outcome, StringComparison.Ordinal);
+        }
+
+        public override string Describe()
+        {
+            return "watek zamkniety " + (arc ?? "?") + (string.IsNullOrEmpty(outcome) ? "" : " jako " + outcome);
+        }
+    }
+
+    /// <summary>
+    /// Wymaga, by od ostatniego zdarzenia o danym TEMACIE uplynelo co najmniej tyle TUR (decyzji
+    /// narratora, nie dni). Realizuje drugi przyklad wnioskowania z sekcji 5.2: "3 tury bez
+    /// zdarzenia militarnego".
+    ///
+    /// beyondHorizonCounts rozstrzyga przypadek "tematu nie ma w buforze pamieci" JAWNIE, zamiast
+    /// chowac go pod nieskonczonoscia: bufor ma 24 wpisy, wiec temat nieuzywany od 24 emisji wyglada
+    /// dokladnie tak samo jak nigdy nieuzyty, a to sa dwa rozne zdania o swiecie.
+    /// </summary>
+    public class Cond_TurBezTematu : NarrativeCondition
+    {
+        public Theme theme;
+        public int min = 3;
+        public bool beyondHorizonCounts = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            int tur = NarratorBlackboard.TurnsSinceThemeFrom(s.TurnsSinceThemes, theme);
+            if (tur == NarratorBlackboard.BeyondHorizon)
+            {
+                return beyondHorizonCounts;
+            }
+            return tur >= min;
+        }
+
+        public override string Describe()
+        {
+            return "bez tematu " + theme + " od >= " + min.ToString(CultureInfo.InvariantCulture) + " tur"
+                   + (beyondHorizonCounts ? "" : " (poza horyzontem nie liczy sie)");
         }
     }
 }

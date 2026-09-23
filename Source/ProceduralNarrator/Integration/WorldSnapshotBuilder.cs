@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using ProceduralNarrator.Core.Arcs;
+using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Model;
 using RimWorld;
 using Verse;
@@ -28,6 +30,30 @@ namespace ProceduralNarrator.Integration
             snapshot.DaysSinceLastEvent = ostatnie == null
                 ? gameDay
                 : System.Math.Max(0f, gameDay - ostatnie.GameDay);
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Wersja z PAMIECIA NARRATORA (krok 6): poza stanem gry doklada postacie kanoniczne
+        /// blackboardu - watki, fakty i wiek tematow.
+        ///
+        /// Snapshot pyta BLACKBOARD, a nie trzech magazynow po kolei. Dzieki temu istnieje jedno
+        /// miejsce odpowiadajace sekcji 5.2 koncepcji, a warstwa integracji nie musi znac zasad
+        /// wnioskowania (co znaczy "poza horyzontem", ktore zamkniecie luku jest aktualne).
+        ///
+        /// Ksiega faktow moze byc null, dopoki nie ma jej w pamieci gry - wtedy pole faktow jest
+        /// puste, a warunki faktowe po prostu nie sa spelnione. To jest kierunek bledu bezpieczny:
+        /// brak pamieci ZABIERA klocki z puli, zamiast wpuszczac do niej klocki bez pokrycia.
+        /// </summary>
+        public static WorldSnapshot Build(Map map, EventHistory history, ArcLedger arcs, FactLedger facts, float gameDay)
+        {
+            WorldSnapshot snapshot = Build(map, history, gameDay);
+
+            var blackboard = new NarratorBlackboard(history, arcs, facts, gameDay);
+            snapshot.Threads = blackboard.ThreadsCanonical();
+            snapshot.Facts = blackboard.FactsCanonical();
+            snapshot.TurnsSinceThemes = blackboard.TurnsSinceThemesCanonical();
 
             return snapshot;
         }
@@ -134,7 +160,7 @@ namespace ProceduralNarrator.Integration
         /// w normalnym trybie, a petla rund wezmie kolejnego. Tekst pozostaje przy tym prawdziwy,
         /// bo porwany faktycznie istnieje.
         /// </summary>
-        private static int CountKidnappedColonists()
+        internal static int CountKidnappedColonists()
         {
             int n = 0;
             Faction gracz = Faction.OfPlayer;
@@ -371,7 +397,7 @@ namespace ProceduralNarrator.Integration
         /// Mapowanie jawnym switchem, a nie rzutowaniem int-int: obie enumeracje maja dzis
         /// zgodna kolejnosc, ale to zbieg okolicznosci po stronie Ludeona, a nie kontrakt.
         /// </summary>
-        private static DangerLevel MapDanger(Map map)
+        internal static DangerLevel MapDanger(Map map)
         {
             if (map.dangerWatcher == null)
             {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Conditions;
 
 namespace ProceduralNarrator.Core.Model
@@ -57,6 +58,14 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Intencja co do sily zdarzenia. Przeklada sie na punkty w Integration.</summary>
         public IntensityLevel Intensity = IntensityLevel.Normal;
 
+        /// <summary>
+        /// Czy incydent tego klocka AKCJI przyjmuje frakcje sprawcy (krok 5, ciaglosc frakcji
+        /// w lukach). Deklaracja danych, nie zgadywanie po defName: audyt startowy dopuszcza ja
+        /// tylko wtedy, gdy worker incydentu jest typu IncidentWorker_RaidEnemy - jedynym z naszych
+        /// trzynastu, ktory honoruje parms.faction (sprawdzone dekompilacja 1.5.4063).
+        /// </summary>
+        public bool CarriesFaction;
+
         /// <summary>Fragment opisu narracyjnego wnoszony przez ten klocek.</summary>
         public string TextFragment;
 
@@ -65,6 +74,16 @@ namespace ProceduralNarrator.Core.Model
 
         /// <summary>Preferencje kontekstowe - nie blokuja, zasilaja contextFit.</summary>
         public List<NarrativeCondition> Preferences = new List<NarrativeCondition>();
+
+        /// <summary>
+        /// Fakty, ktore klocek zostawia w pamieci po POTWIERDZONYM wykonaniu zdarzenia (krok 6).
+        ///
+        /// Pole nalezy do KAZDEGO typu klocka, nie tylko do konsekwencji - slot Consequence jest
+        /// naturalnym nosnikiem sladu, ale nic nie stoi na przeszkodzie, zeby akcja albo modyfikator
+        /// tez cos zapamietaly. Ograniczanie tego typem bylo by regula w kodzie tam, gdzie wystarczy
+        /// dyscyplina w danych.
+        /// </summary>
+        public List<FactWrite> FactsOnExecute = new List<FactWrite>();
 
         public bool HasTag(string tag)
         {

@@ -183,6 +183,27 @@ namespace ProceduralNarrator.Core.Model
         /// </summary>
         public float ThreatPoints;
 
+        /// <summary>
+        /// PAMIEC NARRATORA W POSTACI KANONICZNEJ - trzy pola ponizej sa jedynym kanalem, ktorym
+        /// blackboard (watki, fakty, wiek tematow) dociera do warunkow. Wzorzec jest ten sam co przy
+        /// DaysSinceLastEvent: warunek widzi WYLACZNIE snapshot, wiec wielkosc z pamieci musi trafic
+        /// wlasnie tutaj, i to zamrozona na cala ture.
+        ///
+        /// DLACZEGO TEKST, A NIE KOLEKCJA. Snapshot jest plaski i kopiowalny pole po polu (pilnuje
+        /// tego straznik roznicowy walidatora, ktory na nieobslugiwanym typie pola RZUCA, oraz plytka
+        /// Kopia(), ktora przy polu referencyjnym dzielilaby stan miedzy scenariuszami testow).
+        /// Tekst jest niemutowalny, wiec plytka kopia jest dla niego poprawna, a postac kanoniczna
+        /// (posortowana, z separatorami takze na brzegach) daje warunkom jednoznaczne dopasowanie
+        /// jednym IndexOf, bez alokacji. Buduje je NarratorBlackboard, czyta - klasy Cond_*.
+        /// </summary>
+        public string Threads = string.Empty;
+
+        /// <summary>Fakty o kolonii: ";klucz=wartosc@wiekWdniach;", juz bez wygaslych (WIEK, nie dzien ustawienia).</summary>
+        public string Facts = string.Empty;
+
+        /// <summary>Wiek tematow w TURACH: ";Temat=N;", gdzie -1 znaczy "poza horyzontem pamieci".</summary>
+        public string TurnsSinceThemes = string.Empty;
+
         public override string ToString()
         {
             return "dzien=" + DaysPassed
@@ -200,7 +221,9 @@ namespace ProceduralNarrator.Core.Model
                    + " konsola=" + HasPoweredCommsConsole
                    + " powalonych=" + AcuteDownedCount + "/" + ColonistsOnMap
                    + " zagrozenie=" + Danger
-                   + " punkty=" + ThreatPoints.ToString("0", CultureInfo.InvariantCulture);
+                   + " punkty=" + ThreatPoints.ToString("0", CultureInfo.InvariantCulture)
+                   + " watki=" + (string.IsNullOrEmpty(Threads) ? "-" : Threads)
+                   + " fakty=" + (string.IsNullOrEmpty(Facts) ? "-" : Facts);
         }
     }
 }

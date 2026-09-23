@@ -91,6 +91,124 @@ namespace ProceduralNarrator.Integration.Persistence
         /// dla zapisow skazonych PRZED ta zmiana - i tylko pamieci: stanu gry popsutego przez
         /// waniliowe narzedzie (wyzerowany StoryState, zamrozone obserwatory) nie naprawia.
         /// </summary>
+        /// <summary>
+        /// Stan lukow narracyjnych (krok 5) per mapa: otwarte instancje z faza, dniem wejscia,
+        /// zwiazana frakcja i bazami strazniekow, dni ostatnich zamkniec, oczekujace wykonanie
+        /// i licznik strat. Do sprawdzenia cyklu zapis -> wczytanie bez czekania na przejscie.
+        /// </summary>
+        [DebugAction("Procedural Narrator", "PN: stan lukow", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void StanLukow()
+        {
+            NarratorMemoryComponent pamiec = Pamiec;
+            if (pamiec == null)
+            {
+                PNLog.Error("Brak NarratorMemoryComponent - luki nie maja gdzie zyc.");
+                return;
+            }
+            var sb = new StringBuilder(512);
+            sb.Append("STAN LUKOW NARRACYJNYCH | runId=").Append(pamiec.RunId);
+            int map = 0;
+            foreach (KeyValuePair<int, Core.Arcs.ArcLedger> para in pamiec.AllLedgers)
+            {
+                map++;
+                Core.Arcs.ArcLedger l = para.Value;
+                sb.AppendLine();
+                sb.Append("  mapa ").Append(para.Key.ToString(CultureInfo.InvariantCulture)).Append(": ");
+                if (l == null)
+                {
+                    sb.Append("BRAK OBIEKTU");
+                    continue;
+                }
+                sb.Append("aktywnych=").Append(l.Active.Count.ToString(CultureInfo.InvariantCulture))
+                  .Append(" nastepnyNr=").Append(l.NextNumber.ToString(CultureInfo.InvariantCulture))
+                  .Append(" stratKolonistow=").Append(l.ColonistLosses.ToString(CultureInfo.InvariantCulture))
+                  .Append(" oczekujace=").Append(l.Pending == null ? "-" : l.Pending.IncidentDefName + "@" + l.Pending.Tick.ToString(CultureInfo.InvariantCulture));
+                foreach (Core.Arcs.ArcInstance a in l.Active)
+                {
+                    sb.AppendLine();
+                    sb.Append("    ").Append(a.ToString())
+                      .Append(" wejscie=").Append(a.PhaseEnteredDay.ToString("0.00", CultureInfo.InvariantCulture))
+                      .Append(" otwarcie=").Append(a.OpenedDay.ToString("0.00", CultureInfo.InvariantCulture))
+                      .Append(" bazaStrat=").Append(a.BaseColonistLosses.ToString(CultureInfo.InvariantCulture))
+                      .Append(" bazaPorwanych=").Append(a.BaseKidnapped.ToString(CultureInfo.InvariantCulture))
+                      .Append(" szczytZagrozenia=").Append(a.PeakDanger.ToString());
+                }
+                foreach (KeyValuePair<string, float> z in l.LastCloseDay)
+                {
+                    sb.AppendLine();
+                    sb.Append("    zamkniety ").Append(z.Key).Append(" w dniu ").Append(z.Value.ToString("0.00", CultureInfo.InvariantCulture));
+                }
+                // Slad po zamknietych watkach (krok 6): wynik i faza koncowa - model Thread z pracy.
+                foreach (Core.Arcs.ArcClosure z in l.Closed)
+                {
+                    sb.AppendLine();
+                    sb.Append("    watek ").Append(z.ArcId).Append('#').Append(z.Number.ToString(CultureInfo.InvariantCulture))
+                      .Append(" zamkniety jako ").Append(z.Outcome).Append(" na fazie ").Append(z.FinalPhaseId)
+                      .Append(" w dniu ").Append(z.Day.ToString("0.00", CultureInfo.InvariantCulture));
+                }
+            }
+            if (map == 0)
+            {
+                sb.AppendLine();
+                sb.Append("  (pusto - zaden luk jeszcze nie ruszyl)");
+            }
+            PNLog.Decision(sb.ToString());
+        }
+
+        /// <summary>
+        /// Stan ksiegi faktow (krok 6) na kazdej mapie: wszystkie fakty z dniem ustawienia, czasem
+        /// zycia i informacja, czy dzis obowiazuja, plus kolejka faktow czekajacych na rozstrzygniecie.
+        /// Do sprawdzenia cyklu zapis -> wczytanie i tego, czy konsekwencje w ogole cos zapisuja.
+        /// </summary>
+        [DebugAction("Procedural Narrator", "PN: stan faktow", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void StanFaktow()
+        {
+            NarratorMemoryComponent pamiec = Pamiec;
+            if (pamiec == null)
+            {
+                PNLog.Error("Brak NarratorMemoryComponent - fakty nie maja gdzie zyc.");
+                return;
+            }
+            float dzis = Find.TickManager == null ? 0f : Find.TickManager.TicksGame / 60000f;
+            var sb = new StringBuilder(512);
+            sb.Append("STAN FAKTOW BLACKBOARDU | runId=").Append(pamiec.RunId)
+              .Append(" | dzien ").Append(dzis.ToString("0.00", CultureInfo.InvariantCulture));
+            int map = 0;
+            foreach (KeyValuePair<int, Core.Blackboard.FactLedger> para in pamiec.AllFacts)
+            {
+                map++;
+                Core.Blackboard.FactLedger f = para.Value;
+                sb.AppendLine();
+                sb.Append("  mapa ").Append(para.Key.ToString(CultureInfo.InvariantCulture)).Append(": ");
+                if (f == null)
+                {
+                    sb.Append("BRAK OBIEKTU");
+                    continue;
+                }
+                sb.Append("faktow=").Append(f.Count.ToString(CultureInfo.InvariantCulture))
+                  .Append(" obowiazujacych=").Append(f.Active(dzis).Count.ToString(CultureInfo.InvariantCulture))
+                  .Append(" kolejka=").Append(f.Pending == null ? "-"
+                      : f.Pending.IncidentDefName + "@" + f.Pending.Tick.ToString(CultureInfo.InvariantCulture)
+                        + (f.Pending.Confirmed ? " (potwierdzona)" : " (czeka)"));
+                foreach (Core.Blackboard.Fact fakt in f.AllSorted())
+                {
+                    sb.AppendLine();
+                    sb.Append("    ").Append(fakt.Key).Append('=').Append(fakt.Value.ToString("0.##", CultureInfo.InvariantCulture))
+                      .Append(" od dnia ").Append(fakt.SetDay.ToString("0.00", CultureInfo.InvariantCulture))
+                      .Append(fakt.LifespanDays > 0f
+                          ? ", zycie " + fakt.LifespanDays.ToString("0.##", CultureInfo.InvariantCulture) + " d"
+                          : ", bez wygasania")
+                      .Append(fakt.IsActive(dzis) ? " [OBOWIAZUJE]" : " [wygasl]");
+                }
+            }
+            if (map == 0)
+            {
+                sb.AppendLine();
+                sb.Append("  (pusto - zadne zdarzenie z konsekwencja jeszcze sie nie wykonalo)");
+            }
+            PNLog.Decision(sb.ToString());
+        }
+
         [DebugAction("Procedural Narrator", "PN: skasuj pamiec", allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void SkasujPamiec()
         {

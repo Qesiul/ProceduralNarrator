@@ -222,7 +222,8 @@
     <valence>Negative</valence>
     <scale>Moderate</scale>
     <intensity>Normal</intensity>
-    <tags><li>pogoda</li><li>ogien</li></tags>
+    <!-- "niebo": wspolny tag lukow PN_Luk_ZnakiZNieba (krok 5). Tag nie wplywa na scoring ani tekst. -->
+    <tags><li>pogoda</li><li>ogien</li><li>niebo</li></tags>
     <payload>Flashstorm</payload>
     <textFragment>rozpetuje nad osada burze z piorunami.</textFragment>
     <!-- Burza ogniowa grozniejsza w suchym lecie -->
@@ -247,7 +248,7 @@
     <valence>Negative</valence>
     <scale>Major</scale>
     <intensity>High</intensity>
-    <tags><li>psychika</li><li>wrak</li></tags>
+    <tags><li>psychika</li><li>wrak</li><li>niebo</li></tags>
     <payload>PsychicEmanatorShipPartCrash</payload>
     <textFragment>strzaska sie o grunt, a z wraku zaczyna saczyc sie psychiczny szum.</textFragment>
     <conditions>

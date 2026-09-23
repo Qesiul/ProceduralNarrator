@@ -94,7 +94,7 @@
 
              Wartosc jest opisowa i ma sie zmieniac razem z kalibracja - dzieki temu w serii
              ewaluacyjnej widac w logu, na ktorej wersji konfiguracji powstal dany wiersz. -->
-        <configStamp>krok4-krzywa-i-profile</configStamp>
+        <configStamp>krok6-przeglad</configStamp>
         <allowedTargetTags>
           <li>Map_PlayerHome</li>
         </allowedTargetTags>
@@ -112,10 +112,11 @@
         -->
 
         <!-- Budzet OCEN na jedna decyzje: gorna granica liczby zlozonych
-             i ocenionych kandydatow. Dzisiejszy katalog (12 dostepnych akcji,
-             84 kombinacje) miesci sie w calosci, wiec decyzja jest w 100%
-             enumeracyjna i nie zuzywa ANI JEDNEGO losowania przy generowaniu
-             kandydatow - to najlepszy mozliwy punkt wyjscia do ewaluacji.
+             i ocenionych kandydatow. Dzisiejszy katalog miesci sie w calosci
+             (K = budzet / liczba akcji >= maksimum wariantow na akcje - pilnuje
+             tego asercja walidatora "budzet z XML" i ostrzezenie audytu startowego),
+             wiec decyzja jest w 100% enumeracyjna i nie zuzywa ANI JEDNEGO losowania
+             przy generowaniu kandydatow - to najlepszy mozliwy punkt wyjscia do ewaluacji.
              Przy okolo 40 akcjach warto przejsc na B = max(400, 8 * akcji),
              zeby limit na akcje nie spadl ponizej 8 wariantow. -->
         <candidateBudget>400</candidateBudget>
@@ -333,6 +334,17 @@
           <enabled>true</enabled>
         </crisis>
 
+        <!-- LUKI NARRACYJNE (krok 5) - WSPOLNA maszyneria, nie profil. Katalog lukow: Defs/Arcs.
+
+             maxConcurrent 2 = decyzja autora (najwyzej dwa watki naraz na mape, splatane przez
+             wspolny stan). enabled=false wylacza cala warstwe - do ramienia kontrolnego "bez lukow",
+             ktore mierzy efekt drugiego rzedu lukow na tempo (luk nie zmienia decyzji "dzialac czy
+             milczec" w turze, ale zmienia historie, a przez nia kolejne tury). -->
+        <arcs>
+          <enabled>true</enabled>
+          <maxConcurrent>2</maxConcurrent>
+        </arcs>
+
         <!-- ZLOZONY OPIS ZAMIAST WANILIOWEGO LISTU - DECYZJA DO PODJECIA, nie zaniechanie.
 
              Mechanizm jest gotowy (IncidentParmsBuilder). Wylaczony, bo pokrycie wynosi 9 z 13:
@@ -352,9 +364,11 @@
              a czesc waniliowy. Ta niespojnosc jest widoczna dla gracza i trudna do obronienia
              w rozdziale o ewaluacji - stad decyzja nalezy do autora, a nie do kodu.
 
-             Po stronie TEKSTU katalog jest juz bezpieczny: regula "fakt w tekscie = warunek
-             twardy" zostala przeprowadzona, a fragmenty, ktorych nie dalo sie zabezpieczyc
-             (polozenie, koncowa skala), przepisano tak, by nic nie stwierdzaly. -->
+             Po stronie TEKSTU regula "fakt w tekscie = warunek twardy" zostala przeprowadzona
+             dla slotow kroku 2, a fragmenty, ktorych nie dalo sie zabezpieczyc (polozenie, koncowa
+             skala), przepisano tak, by nic nie stwierdzaly. SPROSTOWANIE (S6): slot konsekwencji
+             z kroku 6 tej reguly poczatkowo NIE przeszedl (trzy zdania-obietnice, poprawione
+             2026-09-23) - przed wlaczeniem zlozonego listu przejrzec katalog jako zbior ZDAN. -->
         <useComposedLetter>false</useComposedLetter>
       </li>
 

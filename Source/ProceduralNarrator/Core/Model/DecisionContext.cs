@@ -85,6 +85,13 @@ namespace ProceduralNarrator.Core.Model
         public bool ExtremeCrisis;
 
         /// <summary>
+        /// Fokus lukow narracyjnych tej tury (krok 5): statusy faz i wartosci lukowe kandydatow.
+        /// Ustawia TurnPlanner (przeciazenie z lukami). null = kontekst bez warstwy lukow, ktory
+        /// zachowuje sie dokladnie jak w v6 - tak buduja go testy scoringu sprzed kroku 5.
+        /// </summary>
+        public ProceduralNarrator.Core.Arcs.ArcFocus ArcFocus;
+
+        /// <summary>
         /// Jedyny poprawny sposob zbudowania kontekstu: numer decyzji bierze sie WYLACZNIE
         /// z licznika historii, wiec dwa zrodla tej liczby nie moga sie rozjechac.
         ///

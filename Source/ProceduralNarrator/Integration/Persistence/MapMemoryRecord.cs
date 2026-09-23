@@ -26,6 +26,20 @@ namespace ProceduralNarrator.Integration.Persistence
         public int deliberateSilenceStreak;
         public List<string> lines = new List<string>();
 
+        /// <summary>
+        /// Ksiega lukow narracyjnych tej mapy (krok 5, wersja pamieci 2): linie ArcLedger.ToPersistableLines.
+        /// Zapis w wersji 1 nie ma tego wezla - wraca null, straznik nizej robi z tego pusta liste,
+        /// czyli luki startuja od zera (nie jest to utrata danych, bo w wersji 1 lukow nie bylo).
+        /// </summary>
+        public List<string> arcLines = new List<string>();
+
+        /// <summary>
+        /// Ksiega faktow blackboardu tej mapy (krok 6, wersja pamieci 3): linie FactLedger.ToPersistableLines,
+        /// razem z kolejka faktow czekajacych na rozstrzygniecie. OSOBNY wezel "fakty" - zapis sprzed
+        /// wersji 3 go nie ma, wraca null, straznik nizej robi z tego pusta liste.
+        /// </summary>
+        public List<string> factLines = new List<string>();
+
         public void ExposeData()
         {
             // forceSave JEST KONIECZNE przy obu licznikach.
@@ -61,6 +75,18 @@ namespace ProceduralNarrator.Integration.Persistence
             if (lines == null)
             {
                 lines = new List<string>();
+            }
+
+            Scribe_Collections.Look(ref arcLines, "luki", LookMode.Value);
+            if (arcLines == null)
+            {
+                arcLines = new List<string>();
+            }
+
+            Scribe_Collections.Look(ref factLines, "fakty", LookMode.Value);
+            if (factLines == null)
+            {
+                factLines = new List<string>();
             }
         }
     }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using ProceduralNarrator.Core.Arcs;
+using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Tension;
@@ -37,7 +39,21 @@ namespace ProceduralNarrator.Integration.Persistence
         /// kodowania linii w EventHistoryEntry.Encode(). Numer jest zapisywany i porownywany
         /// przy wczytaniu - rozjazd daje ostrzezenie, a nie ciche przemilczenie.
         /// </summary>
-        private const int MemoryFormatVersion = 1;
+        /// Wersja 2 (krok 5): wezel "luki" w rekordzie mapy - ksiega lukow narracyjnych. Zapis
+        /// w wersji 1 wczytuje sie bez straty: luki startuja puste, bo wtedy ich nie bylo.
+        /// Wersja 3 (krok 6): wezel "fakty" - ksiega faktow blackboardu razem z kolejka faktow
+        /// czekajacych na rozstrzygniecie wykonania. OSOBNY wezel (nie dopisek do "luki"), zeby
+        /// ewentualny blad kodeka jednej ksiegi nie kaskadowal na druga - decyzja autora przy
+        /// starcie kroku 6, bo pamiec v2 nie przeszla jeszcze w grze cyklu zapis-wczytanie.
+        /// Slad po zamknietych watkach (linie Z) jedzie w istniejacym wezle "luki" - nowy znacznik
+        /// linii nie zmienia liczby pol linii istniejacych, wiec nie wymagal nowego wezla.
+        private const int MemoryFormatVersion = 3;
+
+        /// <summary>Wersja, od ktorej zapis niesie ksiege lukow - do rozroznienia komunikatu przy wczytaniu.</summary>
+        private const int ArcsSinceVersion = 2;
+
+        /// <summary>Wersja, od ktorej zapis niesie ksiege faktow - do rozroznienia komunikatu przy wczytaniu.</summary>
+        private const int FactsSinceVersion = 3;
 
         /// <summary>
         /// Pamiec zdarzen narratora, OSOBNA DLA KAZDEJ MAPY (klucz: Map.uniqueID).
@@ -59,6 +75,19 @@ namespace ProceduralNarrator.Integration.Persistence
         /// wpis nie moze "ozyc" na nowej kolonii.
         /// </summary>
         private Dictionary<int, EventHistory> histories = new Dictionary<int, EventHistory>();
+
+        /// <summary>
+        /// Ksiegi LUKOW narracyjnych (krok 5), osobno dla kazdej mapy - z tego samego powodu co
+        /// historie: kazda kolonia prowadzi wlasne watki. Klucz Map.uniqueID.
+        /// </summary>
+        private Dictionary<int, ArcLedger> ledgers = new Dictionary<int, ArcLedger>();
+
+        /// <summary>
+        /// Ksiegi FAKTOW blackboardu (krok 6), osobno dla kazdej mapy - fakty sa faktami o kolonii
+        /// (decyzja autora: zakaz faktow globalnych). Klucz Map.uniqueID. Niezalezne od lukow:
+        /// istnieja takze wtedy, gdy warstwa lukow jest wylaczona albo uszkodzona.
+        /// </summary>
+        private Dictionary<int, FactLedger> facts = new Dictionary<int, FactLedger>();
 
         /// <summary>
         /// Bufor serializacji - WYLACZNIE do rozmowy ze Scribe'em, nigdy do odczytu w trakcie gry.
@@ -103,8 +132,13 @@ namespace ProceduralNarrator.Integration.Persistence
         /// <summary>Czy stan przyszedl z zapisu (true) czy to swieza gra (false). Tylko do logu.</summary>
         private bool wczytanoZZapisu;
 
-        /// <summary>Liczba linii pamieci odrzuconych przy wczytaniu. Tylko do logu.</summary>
+        /// <summary>Liczba linii pamieci odrzuconych przy wczytaniu (suma trzech ksiag). Tylko do logu.</summary>
         private int odrzuconychLinii;
+
+        /// <summary>To samo rozbite na ksiegi (S6) - do [PN-LOAD] i ostrzezenia.</summary>
+        private int odrzuconychHistorii;
+        private int odrzuconychLukow;
+        private int odrzuconychFaktow;
 
         private bool kanarekWypisany;
 
@@ -192,7 +226,7 @@ namespace ProceduralNarrator.Integration.Persistence
             PNLog.Reset("wymusProfil",
                         "profilPoprzedni=" + (string.IsNullOrEmpty(poprzedni) ? "?" : poprzedni)
                         + "; profilNowy=" + (string.IsNullOrEmpty(profileId) ? "?" : profileId)
-                        + "; mapy=" + OpisMap());
+                        + "; mapy=" + OpisMap() + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow());
         }
 
         /// <summary>Widok do akcji debugowych i diagnostyki. Nie mutowac przez niego pamieci.</summary>
@@ -227,6 +261,50 @@ namespace ProceduralNarrator.Integration.Persistence
             return h;
         }
 
+        /// <summary>Ksiega lukow dla danej mapy; tworzona przy pierwszym pytaniu o nia.</summary>
+        public ArcLedger LedgerFor(int mapUniqueId)
+        {
+            if (ledgers == null)
+            {
+                ledgers = new Dictionary<int, ArcLedger>();
+            }
+            ArcLedger l;
+            if (!ledgers.TryGetValue(mapUniqueId, out l))
+            {
+                l = new ArcLedger();
+                ledgers[mapUniqueId] = l;
+            }
+            return l;
+        }
+
+        /// <summary>Widok ksiag lukow - do akcji debugowych i odcisku eksperymentu. Nie mutowac.</summary>
+        public IEnumerable<KeyValuePair<int, ArcLedger>> AllLedgers
+        {
+            get { return ledgers ?? new Dictionary<int, ArcLedger>(); }
+        }
+
+        /// <summary>Ksiega faktow dla danej mapy; tworzona przy pierwszym pytaniu o nia.</summary>
+        public FactLedger FactsFor(int mapUniqueId)
+        {
+            if (facts == null)
+            {
+                facts = new Dictionary<int, FactLedger>();
+            }
+            FactLedger f;
+            if (!facts.TryGetValue(mapUniqueId, out f))
+            {
+                f = new FactLedger();
+                facts[mapUniqueId] = f;
+            }
+            return f;
+        }
+
+        /// <summary>Widok ksiag faktow - do akcji debugowych i odcisku eksperymentu. Nie mutowac.</summary>
+        public IEnumerable<KeyValuePair<int, FactLedger>> AllFacts
+        {
+            get { return facts ?? new Dictionary<int, FactLedger>(); }
+        }
+
         /// <summary>
         /// Kasuje CALA pamiec narratora. Uzywane przez akcje debugowa.
         ///
@@ -241,8 +319,13 @@ namespace ProceduralNarrator.Integration.Persistence
         {
             int map = histories == null ? 0 : histories.Count;
             // Znacznik PRZED kasowaniem, zeby niosl stan, ktory przepada (uid:decyzji).
-            PNLog.Reset("skasujPamiec", "map=" + map.ToString(CultureInfo.InvariantCulture) + "; mapy=" + OpisMap());
+            PNLog.Reset("skasujPamiec", "map=" + map.ToString(CultureInfo.InvariantCulture) + "; mapy=" + OpisMap()
+                                        + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow());
             histories = new Dictionary<int, EventHistory>();
+            ledgers = new Dictionary<int, ArcLedger>();
+            // Fakty RAZEM z reszta: skasowana ksiega lukow obok zachowanych faktow dawalaby pamiec
+            // wewnetrznie sprzeczna (fakt "po walce" bez historii tej walki).
+            facts = new Dictionary<int, FactLedger>();
             PNLog.Decision("PAMIEC NARRATORA SKASOWANA recznie (akcja debugowa). Zwolniono map: "
                            + map.ToString(CultureInfo.InvariantCulture)
                            + ". Swiezosc, kontrast i gestosc PASS licza sie od zera.");
@@ -267,6 +350,14 @@ namespace ProceduralNarrator.Integration.Persistence
             internal Dictionary<int, EventHistory> Original;
             internal string ProfileId;
             internal Dictionary<int, MapMemoryRecord> Frozen;
+
+            /// <summary>Ksiegi lukow gry (odlozone) i ich zamrozony kodek - ramie dostaje kopie, nie oryginal.</summary>
+            internal Dictionary<int, ArcLedger> OriginalLedgers;
+            internal Dictionary<int, List<string>> FrozenLedgers;
+
+            /// <summary>Ksiegi faktow gry (odlozone) i ich zamrozony kodek - jak przy lukach.</summary>
+            internal Dictionary<int, FactLedger> OriginalFacts;
+            internal Dictionary<int, List<string>> FrozenFacts;
         }
 
         private MemoryCheckpoint eksperyment;
@@ -287,8 +378,32 @@ namespace ProceduralNarrator.Integration.Persistence
             {
                 Original = histories ?? new Dictionary<int, EventHistory>(),
                 ProfileId = profileId,
-                Frozen = new Dictionary<int, MapMemoryRecord>()
+                Frozen = new Dictionary<int, MapMemoryRecord>(),
+                OriginalLedgers = ledgers ?? new Dictionary<int, ArcLedger>(),
+                FrozenLedgers = new Dictionary<int, List<string>>(),
+                OriginalFacts = facts ?? new Dictionary<int, FactLedger>(),
+                FrozenFacts = new Dictionary<int, List<string>>()
             };
+
+            // Luki mutuja sie w KAZDYM wywolaniu compa (obserwacja), nie tylko w decyzji - bez
+            // kopii ramie symulacji przesuwaloby prawdziwe watki gracza.
+            foreach (KeyValuePair<int, ArcLedger> para in c.OriginalLedgers)
+            {
+                if (para.Value != null)
+                {
+                    c.FrozenLedgers[para.Key] = para.Value.ToPersistableLines();
+                }
+            }
+
+            // Fakty tak samo: ramie zapisuje je po kazdym symulowanym zdarzeniu, a bez kopii
+            // zostawialoby w pamieci gracza slady zdarzen, ktorych w jego swiecie nie bylo.
+            foreach (KeyValuePair<int, FactLedger> para in c.OriginalFacts)
+            {
+                if (para.Value != null)
+                {
+                    c.FrozenFacts[para.Key] = para.Value.ToPersistableLines();
+                }
+            }
 
             foreach (KeyValuePair<int, EventHistory> para in c.Original)
             {
@@ -325,6 +440,31 @@ namespace ProceduralNarrator.Integration.Persistence
                 kopia[para.Key] = h;
             }
             histories = kopia;
+
+            var kopiaLukow = new Dictionary<int, ArcLedger>();
+            if (c.FrozenLedgers != null)
+            {
+                foreach (KeyValuePair<int, List<string>> para in c.FrozenLedgers)
+                {
+                    var l = new ArcLedger();
+                    odrzuconych += l.RestoreFromLines(para.Value);
+                    kopiaLukow[para.Key] = l;
+                }
+            }
+            ledgers = kopiaLukow;
+
+            var kopiaFaktow = new Dictionary<int, FactLedger>();
+            if (c.FrozenFacts != null)
+            {
+                foreach (KeyValuePair<int, List<string>> para in c.FrozenFacts)
+                {
+                    var f = new FactLedger();
+                    odrzuconych += f.RestoreFromLines(para.Value);
+                    kopiaFaktow[para.Key] = f;
+                }
+            }
+            facts = kopiaFaktow;
+
             profileId = string.IsNullOrEmpty(armProfileId) ? c.ProfileId : armProfileId;
             return odrzuconych;
         }
@@ -340,6 +480,8 @@ namespace ProceduralNarrator.Integration.Persistence
                 return;
             }
             histories = c.Original;
+            ledgers = c.OriginalLedgers ?? new Dictionary<int, ArcLedger>();
+            facts = c.OriginalFacts ?? new Dictionary<int, FactLedger>();
             profileId = c.ProfileId;
             eksperyment = null;
         }
@@ -425,24 +567,50 @@ namespace ProceduralNarrator.Integration.Persistence
             bool moznaSprzatac = mapy != null && mapy.Count > 0;
             int sierot = 0;
 
-            foreach (KeyValuePair<int, EventHistory> para in zrodlo)
+            // Mapy z historia LUB z ksiega lukow (krok 5): luk moze ruszyc w obserwacji, zanim
+            // mapa podejmie pierwsza decyzje, a historia moze istniec bez lukow.
+            Dictionary<int, ArcLedger> zrodloLukow = eksperyment != null ? eksperyment.OriginalLedgers : ledgers;
+            if (zrodloLukow == null)
             {
-                if (para.Value == null)
+                zrodloLukow = new Dictionary<int, ArcLedger>();
+            }
+            // Fakty (krok 6) tak samo: mapa moze miec ksiege faktow bez ksiegi lukow (luki wylaczone,
+            // wtedy LedgerFor nigdy nie jest wolane) - bez tej unii zostalaby uznana za pusta.
+            Dictionary<int, FactLedger> zrodloFaktow = eksperyment != null ? eksperyment.OriginalFacts : facts;
+            if (zrodloFaktow == null)
+            {
+                zrodloFaktow = new Dictionary<int, FactLedger>();
+            }
+            var klucze = new SortedSet<int>(zrodlo.Keys);
+            klucze.UnionWith(zrodloLukow.Keys);
+            klucze.UnionWith(zrodloFaktow.Keys);
+
+            foreach (int klucz in klucze)
+            {
+                EventHistory h;
+                zrodlo.TryGetValue(klucz, out h);
+                ArcLedger l;
+                zrodloLukow.TryGetValue(klucz, out l);
+                FactLedger f;
+                zrodloFaktow.TryGetValue(klucz, out f);
+                if (h == null && l == null && f == null)
                 {
                     continue;
                 }
 
-                if (moznaSprzatac && para.Key >= 0 && !MapaIstnieje(mapy, para.Key))
+                if (moznaSprzatac && klucz >= 0 && !MapaIstnieje(mapy, klucz))
                 {
                     sierot++;
                     continue;
                 }
 
                 MapMemoryRecord rekord = new MapMemoryRecord();
-                rekord.decisionCount = para.Value.DecisionCount;
-                rekord.deliberateSilenceStreak = para.Value.DeliberateSilenceStreak;
-                rekord.lines = para.Value.ToPersistableLines();
-                zapis[para.Key] = rekord;
+                rekord.decisionCount = h == null ? 0 : h.DecisionCount;
+                rekord.deliberateSilenceStreak = h == null ? 0 : h.DeliberateSilenceStreak;
+                rekord.lines = h == null ? new List<string>() : h.ToPersistableLines();
+                rekord.arcLines = l == null ? new List<string>() : l.ToPersistableLines();
+                rekord.factLines = f == null ? new List<string>() : f.ToPersistableLines();
+                zapis[klucz] = rekord;
             }
 
             if (sierot > 0)
@@ -455,7 +623,12 @@ namespace ProceduralNarrator.Integration.Persistence
         private void RestoreFromSaveBuffer()
         {
             histories = new Dictionary<int, EventHistory>();
+            ledgers = new Dictionary<int, ArcLedger>();
+            facts = new Dictionary<int, FactLedger>();
             odrzuconychLinii = 0;
+            odrzuconychHistorii = 0;
+            odrzuconychLukow = 0;
+            odrzuconychFaktow = 0;
             wczytanoZZapisu = true;
 
             if (zapis == null)
@@ -472,11 +645,31 @@ namespace ProceduralNarrator.Integration.Persistence
                 }
 
                 EventHistory h = new EventHistory();
-                odrzuconychLinii += h.RestoreFromLines(para.Value.decisionCount,
-                                                       para.Value.deliberateSilenceStreak,
-                                                       para.Value.lines);
+                odrzuconychHistorii += h.RestoreFromLines(para.Value.decisionCount,
+                                                          para.Value.deliberateSilenceStreak,
+                                                          para.Value.lines);
                 histories[para.Key] = h;
+
+                // Ksiega lukow: kodek tylko dekoduje; zgodnosc z katalogiem (nieznany luk albo faza
+                // po zmianie Defow) rozstrzyga ArcDirector.Reconcile przy pierwszym wywolaniu compa.
+                if (para.Value.arcLines != null && para.Value.arcLines.Count > 0)
+                {
+                    var l = new ArcLedger();
+                    odrzuconychLukow += l.RestoreFromLines(para.Value.arcLines);
+                    ledgers[para.Key] = l;
+                }
+
+                // Ksiega faktow (krok 6) - osobny wezel, osobny kodek. Zapis sprzed wersji 3 nie ma
+                // wezla, wiec lista jest pusta, a fakty startuja puste bez ani jednej odrzuconej linii.
+                if (para.Value.factLines != null && para.Value.factLines.Count > 0)
+                {
+                    var f = new FactLedger();
+                    odrzuconychFaktow += f.RestoreFromLines(para.Value.factLines);
+                    facts[para.Key] = f;
+                }
             }
+
+            odrzuconychLinii = odrzuconychHistorii + odrzuconychLukow + odrzuconychFaktow;
 
             // Bufor przestaje byc potrzebny natychmiast po odbudowie. Trzymanie go dalej
             // groziloby tym, ze ktos kiedys odczyta z niego nieaktualny stan.
@@ -539,6 +732,14 @@ namespace ProceduralNarrator.Integration.Persistence
             {
                 histories = new Dictionary<int, EventHistory>();
             }
+            if (ledgers == null)
+            {
+                ledgers = new Dictionary<int, ArcLedger>();
+            }
+            if (facts == null)
+            {
+                facts = new Dictionary<int, FactLedger>();
+            }
             if (zapis == null)
             {
                 zapis = new Dictionary<int, MapMemoryRecord>();
@@ -549,7 +750,24 @@ namespace ProceduralNarrator.Integration.Persistence
                 runId = Guid.NewGuid().ToString("N").Substring(0, 8);
             }
 
-            if (wczytanoZZapisu && memoryVersion != MemoryFormatVersion)
+            if (wczytanoZZapisu && memoryVersion > 0 && memoryVersion < ArcsSinceVersion)
+            {
+                // Zapis sprzed kroku 5: niczego nie pominieto - wezla "luki" po prostu nie bylo.
+                // Osobny komunikat, bo ogolny ("wpisy pominiete") sugerowalby utrate danych.
+                PNLog.Decision("Pamiec narratora z zapisu w wersji "
+                               + memoryVersion.ToString(CultureInfo.InvariantCulture)
+                               + " (sprzed lukow narracyjnych): historia wczytana, luki startuja puste.");
+            }
+            else if (wczytanoZZapisu && memoryVersion >= ArcsSinceVersion && memoryVersion < FactsSinceVersion)
+            {
+                // Zapis z kroku 5: historia i luki sa, wezla "fakty" nie bylo. Ta galaz MUSI stac
+                // PRZED galezia ogolna - inaczej zapis w wersji 2 dostalby falszywe ostrzezenie
+                // o pominietych wpisach, choc niczego nie pominieto.
+                PNLog.Decision("Pamiec narratora z zapisu w wersji "
+                               + memoryVersion.ToString(CultureInfo.InvariantCulture)
+                               + " (sprzed faktow blackboardu): historia i luki wczytane, fakty startuja puste.");
+            }
+            else if (wczytanoZZapisu && memoryVersion != MemoryFormatVersion)
             {
                 // NIE KASUJEMY pamieci przy rozjezdzie wersji. EventHistoryEntry.TryDecode
                 // odrzuca niepasujace linie POJEDYNCZO i nigdy nie rzuca, wiec proba wczytania
@@ -665,13 +883,17 @@ namespace ProceduralNarrator.Integration.Persistence
             }
 
             PNLog.Load(runId, zrodlo, EffectiveProfileId, profileId, histories.Count, wpisow, decyzji,
-                       odrzuconychLinii, memoryVersion, OpisMap());
+                       odrzuconychLinii, memoryVersion, OpisMap(), OpisLukow(), OpisFaktow(),
+                       odrzuconychHistorii, odrzuconychLukow, odrzuconychFaktow);
 
             if (odrzuconychLinii > 0)
             {
                 PNLog.Warn("Przy wczytaniu pamieci narratora odrzucono "
                            + odrzuconychLinii.ToString(CultureInfo.InvariantCulture)
-                           + " linii nie do sparsowania. Reszta pamieci zostala zachowana.");
+                           + " linii nie do sparsowania (historia " + odrzuconychHistorii.ToString(CultureInfo.InvariantCulture)
+                           + ", luki " + odrzuconychLukow.ToString(CultureInfo.InvariantCulture)
+                           + ", fakty " + odrzuconychFaktow.ToString(CultureInfo.InvariantCulture)
+                           + "). Reszta pamieci zostala zachowana.");
             }
         }
 
@@ -694,6 +916,79 @@ namespace ProceduralNarrator.Integration.Persistence
                 EventHistory h = histories[klucze[i]];
                 czesci.Add(klucze[i].ToString(CultureInfo.InvariantCulture) + ":"
                            + (h == null ? 0 : h.DecisionCount).ToString(CultureInfo.InvariantCulture));
+            }
+            return string.Join(",", czesci.ToArray());
+        }
+
+        /// <summary>
+        /// Otwarte luki per mapa: "uid:luk#nr:faza,..." (rosnaco po uid i numerze) - pole "luki"
+        /// linii [PN-LOAD] i [PN-RESET]. Analiza odtwarza z niego stan lukow w chwili wczytania
+        /// (rozwidlenie galezi dotyczy lukow tak samo jak historii).
+        /// </summary>
+        private string OpisLukow()
+        {
+            if (ledgers == null || ledgers.Count == 0)
+            {
+                return string.Empty;
+            }
+            var klucze = new List<int>(ledgers.Keys);
+            klucze.Sort();
+            var czesci = new List<string>();
+            foreach (int k in klucze)
+            {
+                ArcLedger l = ledgers[k];
+                if (l == null)
+                {
+                    continue;
+                }
+                var aktywne = new List<ArcInstance>(l.Active);
+                aktywne.Sort((a, b) => a.Number.CompareTo(b.Number));
+                foreach (ArcInstance a in aktywne)
+                {
+                    czesci.Add(k.ToString(CultureInfo.InvariantCulture) + ":" + a.ArcId + "#"
+                               + a.Number.ToString(CultureInfo.InvariantCulture) + ":" + a.PhaseId);
+                }
+            }
+            return string.Join(",", czesci.ToArray());
+        }
+
+        /// <summary>
+        /// Fakty per mapa: "uid:klucz=wartosc@dzienUstawienia/czasZycia,..." (rosnaco po uid, potem po
+        /// kluczu), plus "uid:kolejka@tick", gdy mapa ma fakty czekajace na rozstrzygniecie - pole
+        /// "fakty" linii [PN-LOAD] i [PN-RESET].
+        ///
+        /// Dzien USTAWIENIA i czas zycia, a nie wiek: analiza odtwarza z tego stan faktow w dowolnej
+        /// chwili po wczytaniu (wygasanie jest leniwe, wiec wygasle fakty tez sa w ksiedze - i tez
+        /// ida do opisu, bo inaczej odtworzony stan nie zgadzalby sie z zawartoscia zapisu).
+        /// </summary>
+        private string OpisFaktow()
+        {
+            if (facts == null || facts.Count == 0)
+            {
+                return string.Empty;
+            }
+            var klucze = new List<int>(facts.Keys);
+            klucze.Sort();
+            var czesci = new List<string>();
+            foreach (int k in klucze)
+            {
+                FactLedger f = facts[k];
+                if (f == null)
+                {
+                    continue;
+                }
+                string uid = k.ToString(CultureInfo.InvariantCulture);
+                foreach (Fact fakt in f.AllSorted())
+                {
+                    czesci.Add(uid + ":" + fakt.Key + "="
+                               + fakt.Value.ToString("G9", CultureInfo.InvariantCulture) + "@"
+                               + fakt.SetDay.ToString("G9", CultureInfo.InvariantCulture) + "/"
+                               + fakt.LifespanDays.ToString("G9", CultureInfo.InvariantCulture));
+                }
+                if (f.Pending != null)
+                {
+                    czesci.Add(uid + ":kolejka@" + f.Pending.Tick.ToString(CultureInfo.InvariantCulture));
+                }
             }
             return string.Join(",", czesci.ToArray());
         }

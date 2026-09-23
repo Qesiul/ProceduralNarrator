@@ -173,6 +173,30 @@ namespace ProceduralNarrator.Core.Model
         public float SelectionProbability;
 
         /// <summary>
+        /// Wartosc lukowa kandydata (krok 5): 1 - jego wykonanie przesunelo by aktywna faze luku,
+        /// 0 - nie; -1 - luk sie w tej turze wstrzymuje (brak sterujacej fazy albo nic w puli nie
+        /// pasuje) albo kandydat jest zawetowany. Nadaje ArcFocus.Apply w UtilityScorer.ScoreAll.
+        /// NIE wchodzi do Utility ani do Factors: dziala wylacznie jako premia w koncowym wyborze
+        /// (decyzja autora R4-1), wiec brama, prog, pasmo i faza 0 widza uzytecznosc v6.
+        /// </summary>
+        public float ArcValue = -1f;
+
+        /// <summary>Slad wartosci lukowej ("pasuje: luk:faza" albo powod braku) - do logu czytelnego.</summary>
+        public string ArcTrace;
+
+        /// <summary>
+        /// Premia lukowa W BIEZACEJ RUNDZIE: ArcValue * (best - progPasma). Ustawia SelectionPolicy
+        /// w etapie C6, zeruje przed kazda runda - jest wlasnoscia rundy, jak Rejected.
+        /// </summary>
+        public float ArcBonus;
+
+        /// <summary>Ocena w koncowym wyborze (etapy B1 i B2) = Utility + ArcBonus.</summary>
+        public float SelectionScore
+        {
+            get { return Utility + ArcBonus; }
+        }
+
+        /// <summary>
         /// Krotka etykieta do logu: "PASS" albo defName incydentu z klocka akcji.
         /// Odporna na stan niespojny (Event == null przy IsPass == false), bo log ma dzialac
         /// takze wtedy, gdy cos poszlo nie tak - to wlasnie wtedy jest najbardziej potrzebny.
@@ -234,6 +258,12 @@ namespace ProceduralNarrator.Core.Model
               .Append(" u=").Append(Utility.ToString("0.000", CultureInfo.InvariantCulture))
               .Append(" raw=").Append(RawUtility.ToString("0.000", CultureInfo.InvariantCulture))
               .Append(" p=").Append(SelectionProbability.ToString("0.000", CultureInfo.InvariantCulture));
+
+            if (ArcValue >= 0f)
+            {
+                sb.Append(" luk=").Append(ArcValue.ToString("0", CultureInfo.InvariantCulture))
+                  .Append(" premia=").Append(ArcBonus.ToString("0.000", CultureInfo.InvariantCulture));
+            }
 
             if (Vetoed)
             {

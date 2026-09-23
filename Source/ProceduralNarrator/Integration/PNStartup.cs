@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -131,6 +132,11 @@ namespace ProceduralNarrator.Integration
             AuditBlockAxes();
             AuditDecisionConfig();
             AuditProfiles();
+            AuditFactionCarriers();
+            AuditArcs();
+            AuditBlockDefFields();
+            AuditFactKeys();
+            AuditBudget();
 
             // Naglowek formatu danych badawczych wypisujemy raz, przed jakakolwiek decyzja.
             // Dzieki temu skrypt agregujacy z kroku 8 czyta kolejnosc kolumn z tego samego pliku,
@@ -268,6 +274,408 @@ namespace ProceduralNarrator.Integration
                 }
                 PNLog.Decision("  " + prof);
                 konfiguracjaDoDanych.Add("profil=" + def.defName + "; " + prof);
+            }
+        }
+
+        /// <summary>
+        /// Audyt katalogu LUKOW narracyjnych (krok 5).
+        ///
+        /// Trzy klasy cichej awarii, kazda z objawem "narrator dziala, tylko bez watkow":
+        ///   1. pusty katalog - wezel XML bez PELNEJ nazwy typu (ta sama pulapka co klocki i profile);
+        ///   2. luk odrzucony przez walidacje rdzenia (ArcCatalog.Build) - np. przejscie do
+        ///      nieistniejacej fazy; kazdy blad idzie osobno jako Error;
+        ///   3. rozjazd pol NarrativeArcDef i ArcDefinition - walidator offline czyta XML prosto do
+        ///      typu rdzenia, gra przez Def. Pole obecne tylko po jednej stronie znaczyloby, ze
+        ///      walidator testuje inne dane niz te, na ktorych dziala gra.
+        /// Poprawne luki trafiaja do [PN-CONFIG] (linia luk= na luk), zeby analiza danych znala
+        /// krawedzie automatow bez czytania XML.
+        /// </summary>
+        /// <summary>
+        /// Pola klocka rdzenia, ktore w Defie maja INNA nazwe - jedyne dopuszczone wyjatki od reguly
+        /// "ta sama nazwa bez wzgledu na wielkosc liter". Kazdy wpis musi odpowiadac przypisaniu
+        /// w BlockCatalogLoader.
+        ///
+        /// SPROSTOWANIE (pierwsze uruchomienie po S5, 2026-09-23): pierwsza wersja audytu znala tylko
+        /// wyjatek Id -> defName i przy kazdym starcie gry zglaszala BLAD "Block ma pola, ktorych nie
+        /// ma NarrativeBlockDef: Type" - falszywy alarm, bo Type pochodzi z wezla blockType. Tresc
+        /// docierala do rdzenia poprawnie; blad byl w samym audycie, a walidator offline go nie
+        /// widzial, bo nie kompiluje warstwy integracji.
+        /// </summary>
+        private static readonly Dictionary<string, string> PrzemianowanePolaKlocka = new Dictionary<string, string>
+        {
+            { "Id", "defName" },
+            { "Type", "blockType" }
+        };
+
+        /// <summary>
+        /// Czy KAZDE pole klocka rdzenia ma odpowiednik w Defie. BlockCatalogLoader przepisuje pola
+        /// RECZNIE, wiec pole dodane do Block i zapomniane w Defie (albo w przepisywaniu) znika po
+        /// cichu: w grze klocek dziala z wartoscia domyslna, a walidator offline - czytajacy XML
+        /// wlasnym loaderem - niczego nie zauwaza. Dla lukow taki straznik istnieje od kroku 5
+        /// (AuditArcs); tutaj jest jego odpowiednik dla klockow.
+        ///
+        /// Porownanie idzie po nazwach bez wzgledu na wielkosc liter, bo konwencje sa rozne:
+        /// rdzen pisze PascalCase (FactsOnExecute), a wezly XML camelCase (factsOnExecute).
+        /// Pola o INNEJ nazwie w Defie sa wypisane jawnie w PrzemianowanePolaKlocka.
+        /// </summary>
+        private static void AuditBlockDefFields()
+        {
+            var poleDefa = new HashSet<string>(typeof(NarrativeBlockDef)
+                .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+
+            var brakujace = new List<string>();
+            foreach (var f in typeof(Core.Model.Block).GetFields(System.Reflection.BindingFlags.Public
+                                                                 | System.Reflection.BindingFlags.Instance))
+            {
+                string nazwaWDefie;
+                if (!PrzemianowanePolaKlocka.TryGetValue(f.Name, out nazwaWDefie))
+                {
+                    nazwaWDefie = f.Name;
+                }
+                if (!poleDefa.Contains(nazwaWDefie))
+                {
+                    brakujace.Add(f.Name);
+                }
+            }
+
+            if (brakujace.Count > 0)
+            {
+                PNLog.Error("Rozjazd typow klockow: Block ma pola, ktorych nie ma NarrativeBlockDef: "
+                            + string.Join(", ", brakujace.ToArray())
+                            + ". Tresc z XML nie dotrze do rdzenia, a objawem bedzie wartosc domyslna, "
+                            + "nie blad.");
+            }
+        }
+
+        /// <summary>
+        /// Klucze faktow: czy kazdy klucz ZAPISYWANY przez katalog jest poprawny i czy kazdy klucz
+        /// CZYTANY przez warunek ma w ogole pisarza.
+        ///
+        /// Bez tego literowka jest niewykrywalna: klucz zapisany "ruinyOtwarte" i czytany
+        /// "ruinyOtwarta" daje warunek nigdy niespelniony, zero bledow w logu i dzialajacego
+        /// narratora, ktory po prostu nigdy nie uzyje jednego klocka. To ta sama klasa awarii co
+        /// rozjazd payloadu akcji (AuditActionPayloads).
+        /// </summary>
+        private static void AuditFactKeys()
+        {
+            List<Core.Model.Block> klocki;
+            Core.Composition.CompatibilityGraph graf;
+            BlockCatalogLoader.Load(out klocki, out graf);
+            if (klocki == null || klocki.Count == 0)
+            {
+                return;
+            }
+
+            var pisane = new HashSet<string>(StringComparer.Ordinal);
+            var zle = new List<string>();
+            foreach (Core.Model.Block b in klocki)
+            {
+                foreach (Core.Blackboard.FactWrite w in b.FactsOnExecute)
+                {
+                    if (w == null || !Core.Blackboard.FactLedger.IsValidKey(w.key))
+                    {
+                        zle.Add(b.Id + ":" + (w == null ? "null" : w.key ?? "brak klucza"));
+                        continue;
+                    }
+                    pisane.Add(w.key);
+                }
+            }
+            if (zle.Count > 0)
+            {
+                PNLog.Error("Klocki deklaruja fakty o niepoprawnym kluczu (dozwolone: litery, cyfry, "
+                            + "kropka, podkreslenie, myslnik, do 64 znakow, pierwszy znak litera albo cyfra): "
+                            + string.Join(", ", zle.ToArray()));
+            }
+
+            // PISARZE JEDNEGO KLUCZA MUSZA SIE ZGADZAC (S6): kazde Set/Add zapisuje czas zycia OSTATNIEGO
+            // pisarza, a Set zeruje licznik - a o tym, ktory klocek byl ostatni, decyduje losowanie
+            // w remisie konsekwencji. Walidator pilnuje tego samego offline (TEST 1c).
+            var deklaracje = new List<KeyValuePair<string, Core.Blackboard.FactWrite>>();
+            foreach (Core.Model.Block b in klocki)
+            {
+                foreach (Core.Blackboard.FactWrite w in b.FactsOnExecute)
+                {
+                    if (w != null && Core.Blackboard.FactLedger.IsValidKey(w.key))
+                    {
+                        deklaracje.Add(new KeyValuePair<string, Core.Blackboard.FactWrite>(b.Id, w));
+                    }
+                }
+            }
+            var niezgodni = deklaracje.GroupBy(d => d.Value.key, StringComparer.Ordinal)
+                .Where(g => g.Select(d => d.Value.accumulate).Distinct().Count() > 1
+                            || g.Select(d => d.Value.lifespanDays).Distinct().Count() > 1)
+                .Select(g => g.Key + " (" + string.Join(", ", g.Select(d => d.Key + ":" + (d.Value.accumulate ? "Add" : "Set") + "/"
+                             + d.Value.lifespanDays.ToString("0.##", CultureInfo.InvariantCulture)).ToArray()) + ")")
+                .ToList();
+            if (niezgodni.Count > 0)
+            {
+                PNLog.Error("Pisarze tego samego klucza faktu roznia sie trybem albo czasem zycia (ostatni wygrywa, "
+                            + "a o kolejnosci decyduje losowanie): " + string.Join("; ", niezgodni.ToArray()));
+            }
+            var krotkie = deklaracje.Where(d => !Core.Blackboard.FactLedger.IsUsableLifespan(d.Value.lifespanDays))
+                                    .Select(d => d.Key + ":" + d.Value.key + "/" + d.Value.lifespanDays.ToString("0.###", CultureInfo.InvariantCulture))
+                                    .ToList();
+            if (krotkie.Count > 0)
+            {
+                PNLog.Error("Fakty o czasie zycia krotszym niz dzien (a wiekszym od zera) nie beda nigdy widoczne - kolejka "
+                            + "stosuje je w NASTEPNYM wywolaniu compa: " + string.Join(", ", krotkie.ToArray()));
+            }
+
+            // Slad po zdarzeniu nie ma prawa zmieniac sily zdarzenia (Blocks_Consequences.xml, regula 1).
+            // Walidator czyta JAWNA liste plikow, a gra - kazdy plik w Defs, wiec klocek konsekwencji
+            // z intensywnoscia w nowym pliku przeszedlby offline bez slowa (przeglad S6).
+            var silne = klocki.Where(b => b.Type == BlockType.Consequence && b.Intensity != IntensityLevel.Normal)
+                              .Select(b => b.Id + "=" + b.Intensity).ToList();
+            if (silne.Count > 0)
+            {
+                PNLog.Error("Klocki konsekwencji z wkladem intensywnosci (musi byc Normal - slad nie zmienia sily "
+                            + "zdarzenia ani punktow zagrozenia): " + string.Join(", ", silne.ToArray()));
+            }
+
+            // Klucze czytane przez warunki - kazdy typ warunku niesie je we wlasnym polu, wiec
+            // zbieramy je refleksja po polu "key", zamiast wyliczac typy warunkow po nazwie.
+            var czytane = new HashSet<string>(StringComparer.Ordinal);
+            var zleKluczeWarunkow = new List<string>();
+            foreach (Core.Model.Block b in klocki)
+            {
+                ZbierzKluczeWarunkow(b.Conditions, czytane, zleKluczeWarunkow, b.Id);
+                ZbierzKluczeWarunkow(b.Preferences, czytane, zleKluczeWarunkow, b.Id);
+            }
+            if (zleKluczeWarunkow.Count > 0)
+            {
+                // Pusty klucz byl dawniej pomijany po cichu: Cond_Fakt bez <key> jest zawsze niespelniony,
+                // a z required=false - ZAWSZE spelniony. Warunki startu lukow sprawdza ArcCatalog.Build.
+                PNLog.Error("Warunki klockow z niepoprawnym kluczem faktu: " + string.Join(", ", zleKluczeWarunkow.ToArray()));
+            }
+            List<string> problemyLukow;
+            Core.Arcs.ArcCatalog katalogLukow = ArcCatalogLoader.Load(out problemyLukow);
+
+            // Warunki watkow w KLOCKACH wskazuja luk po id - literowka dawala warunek nigdy niezmienny.
+            // (W warunkach startu lukow pilnuje tego ArcCatalog.Build.)
+            var znaneLuki = new HashSet<string>(katalogLukow == null ? Enumerable.Empty<string>() : katalogLukow.Arcs.Select(a => a.defName),
+                                                StringComparer.Ordinal);
+            var zleLuki = new List<string>();
+            foreach (Core.Model.Block b in klocki)
+            {
+                foreach (NarrativeCondition w in (b.Conditions ?? new List<NarrativeCondition>()).Concat(b.Preferences ?? new List<NarrativeCondition>()))
+                {
+                    string luk = w is Cond_WatekOtwarty ? ((Cond_WatekOtwarty)w).arc
+                               : w is Cond_WatekZamkniety ? ((Cond_WatekZamkniety)w).arc : null;
+                    if ((w is Cond_WatekOtwarty || w is Cond_WatekZamkniety) && (luk == null || !znaneLuki.Contains(luk)))
+                    {
+                        zleLuki.Add(b.Id + ":" + (luk ?? "(brak)"));
+                    }
+                }
+            }
+            if (zleLuki.Count > 0)
+            {
+                PNLog.Error("Warunki watkow w klockach wskazuja luk spoza katalogu: " + string.Join(", ", zleLuki.ToArray()));
+            }
+            if (katalogLukow != null)
+            {
+                foreach (Core.Arcs.ArcDefinition luk in katalogLukow.Arcs)
+                {
+                    ZbierzKluczeWarunkow(luk.startConditions, czytane);
+                }
+            }
+
+            var bezPisarza = czytane.Where(k => !pisane.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+            if (bezPisarza.Count > 0)
+            {
+                PNLog.Error("Warunki czytaja fakty, ktorych nikt nie zapisuje (literowka albo brakujaca "
+                            + "konsekwencja): " + string.Join(", ", bezPisarza.ToArray()));
+            }
+
+            var bezCzytelnika = pisane.Where(k => !czytane.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+            if (bezCzytelnika.Count > 0)
+            {
+                // Tylko ostrzezenie: fakt bez czytelnika jest na razie martwy, ale nie jest bledem -
+                // moze czekac na tresc dopisywana w nastepnej rundzie.
+                PNLog.Warn("Fakty zapisywane, ale przez nikogo nieczytane: "
+                           + string.Join(", ", bezCzytelnika.ToArray()));
+            }
+        }
+
+        private static void ZbierzKluczeWarunkow(List<Core.Conditions.NarrativeCondition> warunki, HashSet<string> cel)
+        {
+            ZbierzKluczeWarunkow(warunki, cel, null, null);
+        }
+
+        private static void ZbierzKluczeWarunkow(List<Core.Conditions.NarrativeCondition> warunki, HashSet<string> cel,
+                                                 List<string> zle, string wlasciciel)
+        {
+            if (warunki == null)
+            {
+                return;
+            }
+            foreach (Core.Conditions.NarrativeCondition w in warunki)
+            {
+                if (w == null)
+                {
+                    continue;
+                }
+                var pole = w.GetType().GetField("key", System.Reflection.BindingFlags.Public
+                                                       | System.Reflection.BindingFlags.Instance);
+                if (pole == null || pole.FieldType != typeof(string))
+                {
+                    continue;
+                }
+                var klucz = pole.GetValue(w) as string;
+                if (zle != null && !Core.Blackboard.FactLedger.IsValidKey(klucz))
+                {
+                    zle.Add((wlasciciel ?? "?") + ":" + w.GetType().Name + ":" + (klucz ?? "(brak)"));
+                }
+                if (!string.IsNullOrEmpty(klucz))
+                {
+                    cel.Add(klucz);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Czy budzet ocen wystarcza na PELNA enumeracje (S6): K = candidateBudget / liczba akcji ma byc
+        /// nie mniejsze niz maksimum wariantow na akcje. Walidator pilnuje tego na liscie plikow, a gra
+        /// czyta kazdy plik w Defs - dosypka tresci w nowym pliku przekroczylaby granice bez slowa
+        /// i wlaczyla losowanie w pierwszym przebiegu generatora. Liczone tak jak w walidatorze
+        /// (snapshot null, budzet bez limitu), wiec ostrzezenie jest ostrozne: w grze warunki twarde
+        /// tylko zmniejszaja przestrzen.
+        /// </summary>
+        private static void AuditBudget()
+        {
+            List<Core.Model.Block> klocki;
+            Core.Composition.CompatibilityGraph graf;
+            BlockCatalogLoader.Load(out klocki, out graf);
+            StorytellerDef narrator = DefDatabase<StorytellerDef>.GetNamedSilentFail("PN_GenerativeNarrator");
+            StorytellerCompProperties_Generative props = narrator == null || narrator.comps == null
+                ? null
+                : narrator.comps.OfType<StorytellerCompProperties_Generative>().FirstOrDefault();
+            if (klocki == null || klocki.Count == 0 || graf == null || props == null)
+            {
+                return;
+            }
+            int akcji = klocki.Count(b => b.Type == BlockType.Action);
+            if (akcji == 0)
+            {
+                return;
+            }
+            var generator = new Core.Composition.CandidateGenerator(new Core.Composition.EventComposer(klocki, graf));
+            Core.Composition.CandidateSet wszystko = generator.Generate(new EventRecipe(), null, new Core.Util.SeededRandom(7), 1000000);
+            int maksimum = wszystko.PerAction.Count == 0 ? 0 : wszystko.PerAction.Max(p => p.VariantsSeen);
+            int k = props.candidateBudget / akcji;
+            if (maksimum > k)
+            {
+                PNLog.Warn("Budzet ocen nie wystarcza na pelna enumeracje: K = " + props.candidateBudget.ToString(CultureInfo.InvariantCulture)
+                           + " / " + akcji.ToString(CultureInfo.InvariantCulture) + " akcji = " + k.ToString(CultureInfo.InvariantCulture)
+                           + ", a najwieksza akcja ma " + maksimum.ToString(CultureInfo.InvariantCulture)
+                           + " wariantow - pierwszy przebieg generatora zacznie losowac. Podnies candidateBudget.");
+            }
+        }
+
+        private static void AuditArcs()
+        {
+            var brakujace = new List<string>();
+            var poleDefa = new HashSet<string>(typeof(NarrativeArcDef)
+                .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Select(f => f.Name));
+            foreach (var f in typeof(Core.Arcs.ArcDefinition).GetFields(System.Reflection.BindingFlags.Public
+                                                                        | System.Reflection.BindingFlags.Instance))
+            {
+                if (!poleDefa.Contains(f.Name))
+                {
+                    brakujace.Add(f.Name);
+                }
+            }
+            if (brakujace.Count > 0)
+            {
+                PNLog.Error("Rozjazd typow lukow: ArcDefinition ma pola, ktorych nie ma NarrativeArcDef: "
+                            + string.Join(", ", brakujace.ToArray())
+                            + ". Walidator offline czyta XML do ArcDefinition, gra przez Def - testy "
+                            + "sprawdzalyby inne dane niz te w grze.");
+            }
+
+            List<NarrativeArcDef> defs = DefDatabase<NarrativeArcDef>.AllDefsListForReading;
+            if (defs.NullOrEmpty())
+            {
+                PNLog.Error(
+                    "KATALOG LUKOW PUSTY - zero NarrativeArcDef w DefDatabase. Narrator bedzie dzialal "
+                    + "bez watkow wieloturowych, a z zewnatrz wygladal na sprawny. Sprawdz: "
+                    + "(1) czy istnieje Defs/Arcs/Arcs_Core.xml; "
+                    + "(2) czy wezly uzywaja PELNEJ nazwy typu, czyli "
+                    + "<ProceduralNarrator.Integration.Defs.NarrativeArcDef>; "
+                    + "(3) czy straznicy w Class= maja pelna nazwe (ProceduralNarrator.Core.Arcs.Guard_*); "
+                    + "(4) czy gra zostala uruchomiona PONOWNIE po zmianie plikow.");
+                konfiguracjaDoDanych.Add("luki=-; poprawnych=0; odrzuconych=0");
+                return;
+            }
+
+            List<string> problemy;
+            Core.Arcs.ArcCatalog katalog = ArcCatalogLoader.Load(out problemy);
+            foreach (string p in problemy)
+            {
+                PNLog.Error("Luk odrzucony przez walidacje: " + p);
+            }
+
+            // Tag wymagany przez oczekiwanie, ktorego nie ma zaden klocek akcji, robi z fazy
+            // martwa litere: luk nigdy jej nie przejdzie, a limit czasu zamaskuje to jako
+            // "wygaszony". Zglaszamy to przy starcie, a nie po stu dniach gry.
+            var tagiAkcji = new HashSet<string>(DefDatabase<NarrativeBlockDef>.AllDefsListForReading
+                .Where(b => b.blockType == BlockType.Action && b.tags != null)
+                .SelectMany(b => b.tags));
+            foreach (Core.Arcs.ArcDefinition a in katalog.Arcs)
+            {
+                foreach (Core.Arcs.ArcPhase f in a.phases)
+                {
+                    foreach (Core.Arcs.ArcExpectation e in f.expectations)
+                    {
+                        if (!string.IsNullOrEmpty(e.requiredTag) && !tagiAkcji.Contains(e.requiredTag))
+                        {
+                            PNLog.Warn("Luk " + a.defName + ", faza " + f.id + ": tag '" + e.requiredTag
+                                       + "' nie wystepuje na ZADNYM klocku akcji - ta alternatywa nigdy nie zajdzie.");
+                        }
+                    }
+                }
+            }
+
+            PNLog.Decision("Luki narracyjne: " + katalog.Count.ToString(CultureInfo.InvariantCulture)
+                           + " poprawnych z " + defs.Count.ToString(CultureInfo.InvariantCulture) + ": "
+                           + string.Join(", ", katalog.Arcs.Select(a => a.defName).ToArray()));
+            konfiguracjaDoDanych.Add("luki=" + (katalog.Count == 0 ? "-" : string.Join(",", katalog.Arcs.Select(a => a.defName).ToArray()))
+                                     + "; poprawnych=" + katalog.Count.ToString(CultureInfo.InvariantCulture)
+                                     + "; odrzuconych=" + (defs.Count - katalog.Count).ToString(CultureInfo.InvariantCulture));
+            foreach (Core.Arcs.ArcDefinition a in katalog.Arcs)
+            {
+                string opis = Core.Arcs.ArcCatalog.Describe(a);
+                PNLog.Decision("  " + opis);
+                konfiguracjaDoDanych.Add(opis);
+            }
+        }
+
+        /// <summary>
+        /// Deklaracja carriesFaction jest dozwolona WYLACZNIE na klocku akcji, ktorego incydent
+        /// obsluguje IncidentWorker_RaidEnemy (albo typ pochodny). Sprawdzenie typu workera, nie
+        /// nazwy incydentu: z trzynastu naszych incydentow tylko ten worker honoruje
+        /// parms.faction (dekompilacja 1.5.4063), a ustawiona frakcja w innym workerze bylaby
+        /// ignorowana po cichu - luk obiecywalby w komunikacie ciaglosc, ktorej gra nie daje.
+        /// </summary>
+        private static void AuditFactionCarriers()
+        {
+            foreach (NarrativeBlockDef b in DefDatabase<NarrativeBlockDef>.AllDefsListForReading.Where(x => x.carriesFaction))
+            {
+                if (b.blockType != BlockType.Action)
+                {
+                    PNLog.Error("Klocek " + b.defName + " deklaruje carriesFaction, a nie jest klockiem akcji - "
+                                + "pole czyta wylacznie akcja.");
+                    continue;
+                }
+                IncidentDef inc = string.IsNullOrEmpty(b.payload) ? null : DefDatabase<IncidentDef>.GetNamedSilentFail(b.payload);
+                if (inc == null || inc.workerClass == null
+                    || !typeof(IncidentWorker_RaidEnemy).IsAssignableFrom(inc.workerClass))
+                {
+                    PNLog.Error("Klocek " + b.defName + " deklaruje carriesFaction, ale jego incydent ("
+                                + (inc == null ? "brak" : inc.defName + ", worker " + (inc.workerClass == null ? "?" : inc.workerClass.Name))
+                                + ") nie jest obslugiwany przez IncidentWorker_RaidEnemy - frakcja bylaby ignorowana po cichu.");
+                }
             }
         }
 

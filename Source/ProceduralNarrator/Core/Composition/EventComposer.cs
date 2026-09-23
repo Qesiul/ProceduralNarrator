@@ -33,7 +33,7 @@ namespace ProceduralNarrator.Core.Composition
     public class EventComposer
     {
         private static readonly BlockType[] RequiredSlots = { BlockType.Actor, BlockType.Action, BlockType.Target };
-        private static readonly BlockType[] OptionalSlots = { BlockType.Trigger, BlockType.Modifier };
+        private static readonly BlockType[] OptionalSlots = { BlockType.Trigger, BlockType.Modifier, BlockType.Consequence };
 
         /// <summary>
         /// Kolejnosc, w jakiej ENUMERACJA schodzi po slotach - inna niz narracyjna i inna niz
@@ -45,12 +45,13 @@ namespace ProceduralNarrator.Core.Composition
         /// jest korzeniem drzewa, a nie jednym z jego poziomow.
         ///
         /// Dlugosc tej tablicy jest JEDYNYM zrodlem liczby poziomow drzewa (uzywana wszedzie
-        /// zamiast literalu 4). Krok 6 dolozy slot Consequence: wtedy wystarczy dopisac go tutaj
-        /// i uzupelnic IsOptional oraz SignatureOrder - reszta przelotu jest od dlugosci zalezna.
+        /// zamiast literalu). NOWY SLOT wymaga CZTERECH miejsc, nie trzech: ta tablica, IsOptional,
+        /// SignatureOrder ORAZ lista OptionalSlots w TryCompose - krok 6 pominal ostatnie przy slocie
+        /// Consequence i TryCompose odrzucal wszystkie kompozycje bez konsekwencji (znalezione w S4).
         /// </summary>
         private static readonly BlockType[] EnumOrder =
         {
-            BlockType.Actor, BlockType.Target, BlockType.Trigger, BlockType.Modifier
+            BlockType.Actor, BlockType.Target, BlockType.Trigger, BlockType.Modifier, BlockType.Consequence
         };
 
         /// <summary>
@@ -60,7 +61,8 @@ namespace ProceduralNarrator.Core.Composition
         /// </summary>
         private static readonly BlockType[] SignatureOrder =
         {
-            BlockType.Trigger, BlockType.Actor, BlockType.Action, BlockType.Target, BlockType.Modifier
+            BlockType.Trigger, BlockType.Actor, BlockType.Action, BlockType.Target, BlockType.Modifier,
+            BlockType.Consequence
         };
 
         /// <summary>
@@ -71,13 +73,17 @@ namespace ProceduralNarrator.Core.Composition
         /// tego typu, zgodnych z grafem i przechodzacych twarde warunki, jest pusty. To jest
         /// dokladnie semantyka TryCompose potwierdzona w grze w kroku 2.
         ///
-        /// Liczby na dzisiejszym katalogu (policzone recznie i zweryfikowane enumeracja):
-        ///     false -> 84 kombinacje,  maksimum na akcje 16 (PN_Akcja_Zrzut)
-        ///     true  -> 216 kombinacji, maksimum na akcje 36 (PN_Akcja_Zrzut)
-        /// Przy 216 i budzecie 400 wychodzi K = 33 &lt; 36, wiec pierwszy przebieg juz TNIE
-        /// najbogatsza akcje i decyzja przestaje byc w 100% enumeracyjna - traci sie wlasnosc,
-        /// ze dzisiejszy ranking nie zuzywa ANI JEDNEGO losowania. Regresja migracji schematu
-        /// (32 przed = 32 po) tez opiera sie na tej definicji "kombinacji".
+        /// SPROSTOWANIE (krok 6, 2026-09-22): liczby ponizej byly NIEAKTUALNE. Pochodzily sprzed
+        /// zakazania krawedzi PN_Aktor_Natura x PN_Akcja_Zrzut, ktore scielo najbogatsza akcje
+        /// z 16 wariantow do 8, a cala przestrzen z 84 do 80 przy 13 akcjach. Zmierzone dzis
+        /// enumeracja w walidatorze: maksimum na akcje 8, lacznie 80.
+        ///
+        /// Wnioskiem, ktory z tego plynie, jest granica pelnej enumeracji: trzyma sie ona dopoki
+        /// K = budzet / liczba_akcji jest >= maksimum wariantow na akcje. Przy budzecie 400
+        /// i 13 akcjach K = 30, wiec przy maksimum 8 zapas jest ponad trzykrotny. Wlasciwa liczba
+        /// nie jest jednak przepisywana do zadnego komentarza - pilnuje jej ASERCJA walidatora
+        /// liczaca maksimum z prawdziwego katalogu (TEST 1, "budzet z XML"), bo wlasnie ten
+        /// komentarz pokazal, ze liczba bez asercji starzeje sie po cichu.
         ///
         /// Kontrargument do rozwazenia w kroku 4, zapisany zeby nie zaginal: modyfikatory NIE sa
         /// kosmetyczne - PN_Mod_Noc ma intensity High (+1), PN_Mod_Slabo Low (-1), wiec "bez
@@ -94,7 +100,8 @@ namespace ProceduralNarrator.Core.Composition
         /// LISCI w jednym przelocie. Po jego przekroczeniu przelot jest przerywany, a wynik
         /// oznaczany flaga Truncated.
         ///
-        /// Wartosc jest o trzy rzedy wielkosci wyzsza od dzisiejszego maksimum (16) CELOWO.
+        /// Wartosc jest o trzy rzedy wielkosci wyzsza od dzisiejszego maksimum wariantow na akcje
+        /// (kilkanascie-kilkadziesiat; aktualna liczbe pilnuje asercja budzetu w TEST 1) CELOWO.
         /// Cap ustawiony zbyt nisko niepostrzezenie zamienilby jednostajne probkowanie
         /// w zwracanie kanonicznego prefiksu - czyli dokladnie to, czego wymaganie zabrania.
         /// To ma byc zawor, nigdy narzedzie sterowania budzetem; budzetem steruje limit `max`.
@@ -469,7 +476,8 @@ namespace ProceduralNarrator.Core.Composition
                 int level = SlotIndex(block.Type);
                 if (level < 0)
                 {
-                    // Action (korzen) i Consequence (krok 6) nie sa poziomami tego drzewa.
+                    // Action jest korzeniem, nie poziomem drzewa. (Consequence OD kroku 6 JEST poziomem -
+                    // ostatnim, opcjonalnym; dawny komentarz twierdzil inaczej.)
                     continue;
                 }
                 if (!actionRow[i])
@@ -489,11 +497,12 @@ namespace ProceduralNarrator.Core.Composition
         /// dopiero po sprawdzeniu zgodnosci ze wszystkimi juz wybranymi, a nie po zbudowaniu
         /// pelnego iloczynu i odsianiu na koncu.
         ///
-        /// Ta roznica jest dzis NIEWIDOCZNA i to jest jej najwieksze ryzyko: wszystkie 52
-        /// krawedzie grafu wychodza z klockow akcji, wiec przestrzen jest przypadkiem prostokatna
-        /// i naiwny iloczyn dalby te same 84. Pierwsza krawedz miedzy klockami nie-akcji
-        /// (aktor-modyfikator, wyzwalacz-cel) ujawni blad dopiero wtedy, gdy nikt juz nie bedzie
-        /// patrzyl na ten kod - dlatego test ze sztuczna krawedzia Natura-Noc musi istniec od razu.
+        /// Przed krokiem 6 ta roznica byla NIEWIDOCZNA: wszystkie krawedzie grafu wychodzily
+        /// z klockow akcji, wiec przestrzen byla przypadkiem prostokatna i naiwny iloczyn dawal ten
+        /// sam wynik. Od kroku 6 krawedzie deklaruja takze klocki konsekwencji (zakazy par
+        /// akcja-konsekwencja), a pierwsza krawedz miedzy klockami nie-akcji (aktor-modyfikator,
+        /// wyzwalacz-cel) ujawnilaby blad dopiero wtedy, gdy nikt juz nie patrzy na ten kod -
+        /// dlatego test ze sztuczna krawedzia Natura-Noc istnieje od razu.
         /// </summary>
         private void Visit(int level, EnumerationState state)
         {
@@ -584,7 +593,8 @@ namespace ProceduralNarrator.Core.Composition
 
         /// <summary>
         /// Sygnatura wariantu - JEDYNY klucz kandydata (sortowanie, deduplikacja, remisy, log).
-        /// Format: trigId|actorId|actionId|targetId|modId, klocek nieobecny jako "-".
+        /// Format (od kroku 6, SZESC segmentow): trigId|actorId|actionId|targetId|modId|consId,
+        /// klocek nieobecny jako "-".
         ///
         /// Metoda nie zaklada, ze lista jest posortowana - klocek kazdego slotu jest wyszukiwany
         /// po typie. Dzieki temu ten sam kod obsluguje krotke z enumeracji i liste z TryCompose,
@@ -724,11 +734,11 @@ namespace ProceduralNarrator.Core.Composition
             return -1;
         }
 
-        /// <summary>Czy slot na tym poziomie wolno zostawic pusty (wyzwalacz i modyfikator).</summary>
+        /// <summary>Czy slot na tym poziomie wolno zostawic pusty (wyzwalacz, modyfikator, konsekwencja).</summary>
         private static bool IsOptional(int level)
         {
             BlockType type = EnumOrder[level];
-            return type == BlockType.Trigger || type == BlockType.Modifier;
+            return type == BlockType.Trigger || type == BlockType.Modifier || type == BlockType.Consequence;
         }
 
         private static int SlotOrder(BlockType type)
@@ -740,7 +750,8 @@ namespace ProceduralNarrator.Core.Composition
                 case BlockType.Action: return 2;
                 case BlockType.Target: return 3;
                 case BlockType.Modifier: return 4;
-                default: return 5;
+                case BlockType.Consequence: return 5;
+                default: return 6;
             }
         }
 

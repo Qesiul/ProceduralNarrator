@@ -108,9 +108,27 @@ namespace ProceduralNarrator.Integration.Incidents
         public static IncidentParms Apply(IncidentParms parms, ComposedEvent zdarzenie,
                                           bool uzyjZlozonegoListu)
         {
+            return Apply(parms, zdarzenie, uzyjZlozonegoListu, null);
+        }
+
+        /// <summary>
+        /// Jak wyzej, plus FRAKCJA SPRAWCY (krok 5, ciaglosc frakcji luku Wendeta). Ustawiana
+        /// wylacznie dla kandydata, ktorego luk dopasowal przez oczekiwanie sameFaction i tylko
+        /// przy frakcji, ktora przechodzi PELNY waniliowy filtr zrodla napadu (FactionBinding) -
+        /// bo ustawiona frakcja omija sprawdzenie kandydatow w PawnsArrive.CanFireNowSub.
+        /// ZMIENIA WYKONALNOSC, wiec wchodzi do ExecutionKey ponizej.
+        /// </summary>
+        public static IncidentParms Apply(IncidentParms parms, ComposedEvent zdarzenie,
+                                          bool uzyjZlozonegoListu, Faction frakcja)
+        {
             if (parms == null || zdarzenie == null)
             {
                 return parms;
+            }
+
+            if (frakcja != null)
+            {
+                parms.faction = frakcja;
             }
 
             // INTENSYWNOSC -> PUNKTY. Jedyne tlumaczenie, ktore dziala dla calego katalogu.
@@ -166,12 +184,24 @@ namespace ProceduralNarrator.Integration.Incidents
         /// </summary>
         public static string ExecutionKey(ComposedEvent zdarzenie)
         {
+            return ExecutionKey(zdarzenie, null);
+        }
+
+        /// <summary>
+        /// Klucz z FRAKCJA (krok 5): parms.faction zmienia sciezke CanFireNowSub napadu (z frakcja
+        /// "true" od razu, bez niej - sprawdzenie kandydatow), wiec dwa warianty rozniace sie tylko
+        /// wiazaniem frakcji NIE sa dla gry nieodroznialne. Bez frakcji klucz jest identyczny jak
+        /// przed krokiem 5 - dane i odlozenia v6 zostaja porownywalne.
+        /// </summary>
+        public static string ExecutionKey(ComposedEvent zdarzenie, string frakcjaId)
+        {
             if (zdarzenie == null)
             {
                 return null;
             }
             return (zdarzenie.ActionPayload ?? "?") + "|"
-                   + ((int)zdarzenie.Intensity).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                   + ((int)zdarzenie.Intensity).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + (string.IsNullOrEmpty(frakcjaId) ? string.Empty : "|F" + frakcjaId);
         }
 
         /// <summary>

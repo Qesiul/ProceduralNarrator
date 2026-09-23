@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+    KLOCKI KONSEKWENCJI (krok 6) - szosty slot kompozycji.
+
+    Czym sie roznia od pozostalych slotow: nie opisuja tego, CO sie dzieje, tylko to, CO ZOSTAJE
+    po zdarzeniu. Ich jedyna mechanika to <factsOnExecute> - fakty dopisywane do pamieci narratora
+    po POTWIERDZONYM wykonaniu zdarzenia. Fakt zapisany po decyzji, ktorej gra nie wykonala, bylby
+    klamstwem w pamieci, a na klamstwie stanelyby kolejne warunki.
+
+    TRZY REGULY, KTORYCH TE KLOCKI MUSZA PRZESTRZEGAC:
+
+    1. ZERO WKLADU INTENSYWNOSCI. Intensywnosc sumuje sie ze WSZYSTKICH slotow i tlumaczy na punkty
+       zagrozenia, wiec konsekwencja o intensity innym niz Normal po cichu przesuwalaby trudnosc
+       i sito punktow. Slad po zdarzeniu nie ma prawa zmieniac sily zdarzenia. Pilnuje asercja.
+
+    2. BEZ OSI. Theme/Valence/Scale deklaruje WYLACZNIE klocek akcji (umowa danych z kroku 2).
+
+    3. KRAWEDZIE GRAFU DEKLAROWANE TUTAJ, a nie przy akcjach. To odstepstwo od konwencji
+       ("reguly jednego wydarzenia w jednym miejscu"), ale zgodne z jej POWODEM: regula jednego
+       SLADU jest tutaj, zamiast rozsypywac sie po trzynastu klockach akcji. Graf jest symetryczny,
+       wiec kierunek deklaracji nie ma znaczenia mechanicznego.
+       PULAPKA (przeglad S6): graf to "brak krawedzi = zgoda", wiec NOWA AKCJA, o ktorej ten plik
+       nie wie, jest zgodna ze WSZYSTKIMI konsekwencjami ("karawana kupiecka... zostaja slady walki"
+       i licznik walk dla Wendety). Walidator trzyma jawna tabele "akcja -> dozwolone konsekwencje"
+       (TestsComposition.DozwoloneKonsekwencje) - nowa akcja bez wpisu w niej to blad.
+
+    4. TEKST NIE OBIECUJE, CZEGO GRA NIE GWARANTUJE (regula "fakt w tekscie = warunek twardy").
+       Klocek konsekwencji sklada sie z KAZDA zgodna akcja, wiec jego zdanie musi byc prawdziwe dla
+       kazdej z nich. Przeglad S6 znalazl trzy zdania-obietnice (niebo "dlugo" po dwugodzinnej burzy,
+       "slady walki" po Amoku, ktory bywa sie uspokaja, wrak po kapsule, ktora w 1.5 znika) - teksty
+       mowia dzis o PAMIECI kolonii albo sa warunkowe (decyzja autora 2026-09-23).
+
+    KIEDY FAKT JEST WIDOCZNY (decyzja autora, 2026-09-23): warunki widza swiat z POCZATKU TURY.
+    Fakt zdarzenia trafia do pamieci na poczatku NASTEPNEGO wywolania compa, po obsludze lukow,
+    wiec slad zdarzenia NIE jest widoczny dla luku, ktory to samo zdarzenie otwiera. Progi
+    w warunkach licza zdarzenia WCZESNIEJSZE: "walka.byla >= 1" przy otwarciu luku napadem
+    znaczy "przynajmniej jedna walka PRZED tym napadem".
+
+    CZYTELNICY FAKTOW (decyzja autora, krok 6): wylacznie warunki startu lukow w Defs/Arcs.
+    Fakt bramkujacy zwykla akcje zmienialby liczbe dostepnych akcji, czyli podzial budzetu
+    K = B/m oraz pule, na ktorej liczy sie brama PASS - czyli zaburzalby tempo przed
+    nierozstrzygnieta kalibracja krzywej.
+  -->
+
+  <!-- ============================ PO WALCE ============================ -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_SladWalki</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Tego dnia kolonia predko nie zapomni.</textFragment>
+    <factsOnExecute>
+      <li>
+        <key>walka.byla</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>20</lifespanDays>
+      </li>
+    </factsOnExecute>
+    <!-- "Walka" = kazde STARCIE, takze ze zwierzetami (Szal, Amok, Rojenie) - decyzja autora 2026-09-23
+         po przegladzie S6: Wendeta moze otworzyc sie pierwszym napadem po walkach ze zwierzetami.
+         Tekst mowi o pamieci, bo walki nie gwarantuje zadna z tych akcji (stado bywa odchodzi,
+         zwierze w amoku bywa sie uspokaja). -->
+    <!-- Licznik, nie flaga - ale LICZNIK SERII, nie okno 20 dni: kazda walka odswieza dzien, wiec
+         fakt wygasa dopiero po 20 dniach bez walki, a do tego czasu wartosc rosnie (w symulatorze
+         2026-09-23 doszla do 13 przy 2 walkach w ostatnich 20 dniach). Wendeta pyta o prog >= 1,
+         czyli "ostatnia walka mniej niz 20 dni temu" - dla niej to jest dokladnie to samo co okno.
+         Prog wyzszy niz 1 znaczylby "tyle walk w serii bez przerwy dluzszej niz 20 dni". -->
+    <incompatibleWith>
+      <li>PN_Akcja_Wedrowiec</li>
+      <li>PN_Akcja_Zrzut</li>
+      <li>PN_Akcja_Okup</li>
+      <li>PN_Akcja_Uchodzcy</li>
+      <li>PN_Akcja_Dzikus</li>
+      <li>PN_Akcja_Ambrozja</li>
+      <li>PN_Akcja_Meteoryt</li>
+      <li>PN_Akcja_Burza</li>
+      <li>PN_Akcja_Emanator</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Trofea</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Jesli dojdzie do starcia, moze po nim zostac cos do zebrania.</textFragment>
+    <!-- DWA FAKTY (decyzja autora, 2026-09-23). Po walce zawsze zostaje SladWalki albo Trofea,
+         a wybor miedzy nimi jest losowaniem w remisie uzytecznosci. Gdyby walka.byla zapisywal
+         tylko SladWalki, licznik liczylby okolo polowy walk i luk Wendeta zalezalby od rzutu
+         moneta. Trofea dopisuja wiec TAKZE walka.byla - licznik znaczy "liczba walk". -->
+    <!-- Tekst jest WARUNKOWY ("jesli", "moze") - regula "fakt w tekscie = warunek twardy".
+         SPROSTOWANIE (S6): dawne "zostaje cos do zebrania" uzasadniano tym, ze "w kazdym z tych
+         zdarzen zostaja ciala albo sprzet" - nieprawda: zwierze w amoku bywa sie uspokaja bez walki
+         (Manhunter, nie ManhunterPermanent), a stado w szale moze odejsc z mapy. -->
+    <factsOnExecute>
+      <li>
+        <key>lupy.zebrane</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>20</lifespanDays>
+      </li>
+      <li>
+        <key>walka.byla</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>20</lifespanDays>
+      </li>
+    </factsOnExecute>
+    <incompatibleWith>
+      <li>PN_Akcja_Wedrowiec</li>
+      <li>PN_Akcja_Zrzut</li>
+      <li>PN_Akcja_Okup</li>
+      <li>PN_Akcja_Uchodzcy</li>
+      <li>PN_Akcja_Dzikus</li>
+      <li>PN_Akcja_Ambrozja</li>
+      <li>PN_Akcja_Meteoryt</li>
+      <li>PN_Akcja_Burza</li>
+      <li>PN_Akcja_Emanator</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================ PO PRZYBYSZU ============================ -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_NowyCzlowiek</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>W kolonii pojawia sie ktos nowy.</textFragment>
+    <factsOnExecute>
+      <li>
+        <key>ludzie.przybyli</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
+    <incompatibleWith>
+      <li>PN_Akcja_Napad</li>
+      <li>PN_Akcja_Szal</li>
+      <li>PN_Akcja_Rojenie</li>
+      <li>PN_Akcja_Zrzut</li>
+      <li>PN_Akcja_Okup</li>
+      <li>PN_Akcja_Ambrozja</li>
+      <li>PN_Akcja_Meteoryt</li>
+      <li>PN_Akcja_Burza</li>
+      <li>PN_Akcja_Emanator</li>
+      <li>PN_Akcja_Amok</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Plotki</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Wraz z przybyszem docieraja wiesci z zewnatrz.</textFragment>
+    <factsOnExecute>
+      <li>
+        <key>wiesci.zrodlo</key>
+        <value>1</value>
+        <lifespanDays>25</lifespanDays>
+      </li>
+    </factsOnExecute>
+    <!-- Flaga, nie licznik: "czy mamy swieze wiesci" jest pytaniem zero-jedynkowym, a kazdy
+         kolejny przybysz ma je ODSWIEZAC, nie sumowac. Set odswieza dzien ustawienia. -->
+    <incompatibleWith>
+      <li>PN_Akcja_Napad</li>
+      <li>PN_Akcja_Szal</li>
+      <li>PN_Akcja_Rojenie</li>
+      <li>PN_Akcja_Zrzut</li>
+      <li>PN_Akcja_Okup</li>
+      <li>PN_Akcja_Ambrozja</li>
+      <li>PN_Akcja_Meteoryt</li>
+      <li>PN_Akcja_Burza</li>
+      <li>PN_Akcja_Emanator</li>
+      <li>PN_Akcja_Amok</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================ PO TYM, CO SPADLO ============================ -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Wrak</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Na ziemi zostaje to, co spadlo.</textFragment>
+    <factsOnExecute>
+      <li>
+        <key>wrak.lezy</key>
+        <value>1</value>
+        <lifespanDays>15</lifespanDays>
+      </li>
+    </factsOnExecute>
+    <incompatibleWith>
+      <!-- S6 wrak-uchodzcy: w 1.5 RefugeePodCrash to zadanie (QuestPart_DropPods, leaveSlag=false) -
+           kapsula znika bez wraku, wiec "zostaje to, co spadlo" i fakt wrak.lezy bylyby falszem. -->
+      <li>PN_Akcja_Uchodzcy</li>
+      <li>PN_Akcja_Napad</li>
+      <li>PN_Akcja_Szal</li>
+      <li>PN_Akcja_Rojenie</li>
+      <li>PN_Akcja_Wedrowiec</li>
+      <li>PN_Akcja_Okup</li>
+      <li>PN_Akcja_Dzikus</li>
+      <li>PN_Akcja_Ambrozja</li>
+      <li>PN_Akcja_Burza</li>
+      <li>PN_Akcja_Emanator</li>
+      <li>PN_Akcja_Amok</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================ PO ZNAKU NA NIEBIE ============================ -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_ZnakNaNiebie</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Kolonia dlugo bedzie pamietac, co przyszlo z nieba.</textFragment>
+    <!-- Zdanie o PAMIECI, nie o niebie (S6): burza trwa ok. 2 h gry, a emanator w ogole nie zmienia
+         nieba - dawne "niebo dlugo nie wraca do normy" bylo obietnica bez pokrycia. -->
+    <factsOnExecute>
+      <li>
+        <key>niebo.znak</key>
+        <value>1</value>
+        <lifespanDays>40</lifespanDays>
+      </li>
+    </factsOnExecute>
+    <!-- Czas zycia 40 dni jest dobrany do luku Znaki z nieba: jego odstep po zamknieciu to 40 dni,
+         wiec fakt przezywa dokladnie tyle, ile trwa pamiec o poprzednim przebiegu watku. -->
+    <incompatibleWith>
+      <li>PN_Akcja_Napad</li>
+      <li>PN_Akcja_Szal</li>
+      <li>PN_Akcja_Rojenie</li>
+      <li>PN_Akcja_Wedrowiec</li>
+      <li>PN_Akcja_Zrzut</li>
+      <li>PN_Akcja_Okup</li>
+      <li>PN_Akcja_Uchodzcy</li>
+      <li>PN_Akcja_Dzikus</li>
+      <li>PN_Akcja_Ambrozja</li>
+      <li>PN_Akcja_Meteoryt</li>
+      <li>PN_Akcja_Amok</li>
+    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+</Defs>

@@ -213,6 +213,13 @@ namespace ProceduralNarrator.Core.Decision
         public float BandThreshold;
 
         /// <summary>
+        /// Ilu kandydatow W PASMIE rundy pierwszej mialo wartosc lukowa 1 (krok 5); -1, gdy luk
+        /// sie w tej turze wstrzymal (kolumna lukWPasmie pusta). Metryka ograniczenia fazy 0:
+        /// dopasowany wariant akcji o innej mocy niz czolo bywa w turze odlozony.
+        /// </summary>
+        public int ArcMatchedInBand = -1;
+
+        /// <summary>
         /// Ranking z PELNEJ puli tury wraz z PASS. Kandydaci odrzuceni pozniej przez silnik
         /// zostaja w nim jako te same referencje, wiec ich RejectionStage.EngineRefused i pelne
         /// rozbicie na czynniki NIE GINIE po usunieciu z puli roboczej.
@@ -571,6 +578,34 @@ namespace ProceduralNarrator.Core.Decision
             //     runda pierwsza = 1 (brama) + 1 (akcja) + 1 (wariant) = 3
             //     runda kolejna  = 0 (brama zamrozona) + 1 + 1          = 2
             //     cala tura      = 1 + 2 * liczba rund
+            // PREMIA LUKOWA (krok 5, decyzja autora R4-1) - liczona DOPIERO TUTAJ, po bramie, progu
+            // i pasmie, ktore czytaja Utility v6. Luk nie zmienia wiec decyzji "dzialac czy milczec"
+            // ani zbioru dopuszczonych - przechyla tylko wybor MIEDZY nimi (etapy B1 i B2).
+            // Wielkosc WYPROWADZONA z pasma, nie strojona: best - progPasma = (1 - nearBestFraction)
+            // * best, wiec pasujacy kandydat z dna pasma remisuje z liderem. Nie zalezy od wag
+            // profilu, wiec dziala jednakowo w kazdej osobowosci (decyzja nr 11). Premia jest
+            // wlasnoscia RUNDY: zerowana dla calej listy, nadawana tylko w puli pasma.
+            float premiaLuku = best - progPasma;
+            bool lukStosowany = false;
+            int lukowychWPasmie = 0;
+            for (int i = 0; i < lista.Count; i++)
+            {
+                lista[i].ArcBonus = 0f;
+                if (lista[i].ArcValue >= 0f)
+                {
+                    lukStosowany = true;
+                }
+            }
+            for (int i = 0; i < pulaZdarzen.Count; i++)
+            {
+                ScoredCandidate k = pulaZdarzen[i];
+                if (k.ArcValue > 0f)
+                {
+                    k.ArcBonus = premiaLuku * k.ArcValue;
+                    lukowychWPasmie++;
+                }
+            }
+
             List<ActionGroup> grupy = ActionWeighting.Group(pulaZdarzen);
             double[] pZdarzen = new double[pulaZdarzen.Count];
             int idxZdarzenia = -1;
@@ -623,7 +658,7 @@ namespace ProceduralNarrator.Core.Decision
                     var uWariantow = new double[warianty.Count];
                     for (int v = 0; v < warianty.Count; v++)
                     {
-                        uWariantow[v] = warianty[v].Utility;
+                        uWariantow[v] = warianty[v].SelectionScore;
                     }
 
                     double[] wagiW = ScoreMath.SoftmaxWeights(uWariantow, parameters.softmaxTemperature);
@@ -653,7 +688,7 @@ namespace ProceduralNarrator.Core.Decision
                         var u = new double[grupa.Variants.Count];
                         for (int v = 0; v < grupa.Variants.Count; v++)
                         {
-                            u[v] = grupa.Variants[v].Utility;
+                            u[v] = grupa.Variants[v].SelectionScore;
                         }
                         pW = ScoreMath.ProbabilitiesFromThresholds(
                                  ScoreMath.CumulativeThresholds(
@@ -762,6 +797,7 @@ namespace ProceduralNarrator.Core.Decision
                 BestUtility = best,
                 BandThreshold = progPasma,
                 Ranking = ranking,
+                ArcMatchedInBand = lukStosowany ? lukowychWPasmie : -1,
             };
 
             decyzja.Winner = zwyciezca;
@@ -779,6 +815,7 @@ namespace ProceduralNarrator.Core.Decision
             decyzja.GatePassProbability = brama.PassProbability;
             decyzja.Gate = brama;
             decyzja.TurnStats = tura;
+            decyzja.ArcMatchedInBand = tura.ArcMatchedInBand;
 
             // ---- C10. Powod PASS-a ----
             // Kolejnosc sprawdzania jest istotna: od przyczyny najbardziej zewnetrznej do najbardziej
@@ -829,6 +866,8 @@ namespace ProceduralNarrator.Core.Decision
                 .Append(" odrzSilnik=").Append(odrzuconychPrzezSilnik.ToString(CultureInfo.InvariantCulture))
                 .Append(" odlozonych=").Append(odlozonych.ToString(CultureInfo.InvariantCulture))
                 .Append(" akcjiWPasmie=").Append(grupy.Count.ToString(CultureInfo.InvariantCulture))
+                .Append(" lukowychWPasmie=").Append(lukStosowany ? lukowychWPasmie.ToString(CultureInfo.InvariantCulture) : "-")
+                .Append(" premiaLuku=").Append(premiaLuku.ToString("0.000", CultureInfo.InvariantCulture))
                 .Append(" progPasma=").Append(progPasma.ToString("0.000", CultureInfo.InvariantCulture))
                 .Append(" T=").Append(parameters.softmaxTemperature.ToString("0.0##", CultureInfo.InvariantCulture))
                 .Append(" Tbramy=").Append(parameters.gateTemperature.ToString("0.0##", CultureInfo.InvariantCulture))
