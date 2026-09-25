@@ -191,9 +191,23 @@ namespace ProceduralNarrator.Core.Model
         public float ArcBonus;
 
         /// <summary>Ocena w koncowym wyborze (etapy B1 i B2) = Utility + ArcBonus.</summary>
+        /// <summary>
+        /// STYL GRACZA (krok 7): czy fokus stylu ocenil kandydata w tej turze (styl aktywny, kandydat
+        /// niezawetowany), jego wartosc stylu v w [-1, 1] i slad. Wartosc nie wchodzi do Utility.
+        /// </summary>
+        public bool StyleApplied;
+        public float StyleValue;
+        public string StyleTrace;
+
+        /// <summary>
+        /// Premia stylu RUNDY: (best - pasmo) * StyleValue, nadawana tylko w puli pasma (SelectionPolicy C6),
+        /// tak jak ArcBonus. Moze byc ujemna (gra na slabe strony obniza zdarzenia z mocnej strony).
+        /// </summary>
+        public float StyleBonus;
+
         public float SelectionScore
         {
-            get { return Utility + ArcBonus; }
+            get { return Utility + ArcBonus + StyleBonus; }
         }
 
         /// <summary>
@@ -263,6 +277,12 @@ namespace ProceduralNarrator.Core.Model
             {
                 sb.Append(" luk=").Append(ArcValue.ToString("0", CultureInfo.InvariantCulture))
                   .Append(" premia=").Append(ArcBonus.ToString("0.000", CultureInfo.InvariantCulture));
+            }
+
+            if (StyleApplied)
+            {
+                sb.Append(" styl=").Append(StyleValue.ToString("0.000", CultureInfo.InvariantCulture))
+                  .Append(" premiaStylu=").Append(StyleBonus.ToString("0.000", CultureInfo.InvariantCulture));
             }
 
             if (Vetoed)

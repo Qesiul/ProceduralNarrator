@@ -6,6 +6,7 @@ using System.Text;
 using LudeonTK;
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.PlayerModel;
 using ProceduralNarrator.Integration.Defs;
 using ProceduralNarrator.Integration.Persistence;
 using ProceduralNarrator.Integration.Storyteller;
@@ -68,7 +69,12 @@ namespace ProceduralNarrator.Integration.Experiments
                 new DebugMenuOption("biezacy profil + ramie kontrolne, 100 dni", DebugMenuOptionMode.Action,
                                     delegate { Uruchom(100, false); }),
                 new DebugMenuOption("WSZYSTKIE profile + ramie kontrolne, 100 dni", DebugMenuOptionMode.Action,
-                                    delegate { Uruchom(100, true); })
+                                    delegate { Uruchom(100, true); }),
+                // Krok 7: syntetyczni gracze (decyzja autora nr 17) - 7 ramion x 60 dni = 420 dni-ramion.
+                new DebugMenuOption("biezacy profil + STYL (gracze W/G/E/R, bez stylu S), 60 dni", DebugMenuOptionMode.Action,
+                                    delegate { Uruchom(60, false, true); }),
+                new DebugMenuOption("biezacy profil + STYL (gracze W/G/E/R, bez stylu S), 100 dni", DebugMenuOptionMode.Action,
+                                    delegate { Uruchom(100, false, true); })
             };
             Find.WindowStack.Add(new Dialog_DebugOptionListLister(opcje));
         }
@@ -92,9 +98,71 @@ namespace ProceduralNarrator.Integration.Experiments
             /// efekt DRUGIEGO RZEDU (tempo, udzial PASS).
             /// </summary>
             public bool BezLukow;
+
+            /// <summary>
+            /// Styl ramienia (krok 7): null i BezStylu=false = styl z obserwacji gry (kopia ksiegi); StylNarzucony =
+            /// syntetyczny gracz z prototypu XML; BezStylu = warstwa stylu nieobecna (ramie S).
+            /// </summary>
+            public StyleReading StylNarzucony;
+            public bool BezStylu;
+            public string OpisStylu = "gry";
         }
 
         private static void Uruchom(int dni, bool wszystkieProfile)
+        {
+            Uruchom(dni, wszystkieProfile, false);
+        }
+
+        /// <summary>
+        /// Prototypy JEDNOCECHOWE z XML dla ramion syntetycznych graczy: dokladnie jedna wspolrzedna &gt; 0.5
+        /// (Wojownik, Gospodarz, Osadnik, Czujny przy katalogu z decyzji 22), pierwszy pasujacy w kolejnosci
+        /// XML dla kazdej cechy. Odczyt narzucony ma dni = pojemnosc kolejki (styl aktywny) i wszystkie cechy
+        /// znane - profil wzgledny, mocne strony i etykiete liczy ta sama sciezka co w grze (FromVector).
+        /// </summary>
+        private static List<KeyValuePair<StyleDimension, StylePrototype>> PrototypyJednocechowe(PlayerStyleParams p)
+        {
+            var wynik = new List<KeyValuePair<StyleDimension, StylePrototype>>();
+            for (int d = 0; d < StyleDimensions.Count; d++)
+            {
+                StylePrototype znaleziony = null;
+                foreach (StylePrototype pr in p.prototypes ?? new List<StylePrototype>())
+                {
+                    if (pr == null)
+                    {
+                        continue;
+                    }
+                    int ponad = 0;
+                    for (int k = 0; k < StyleDimensions.Count; k++)
+                    {
+                        if (pr.Get((StyleDimension)k) > 0.5f) ponad++;
+                    }
+                    if (ponad == 1 && pr.Get((StyleDimension)d) > 0.5f)
+                    {
+                        znaleziony = pr;
+                        break;
+                    }
+                }
+                if (znaleziony != null)
+                {
+                    wynik.Add(new KeyValuePair<StyleDimension, StylePrototype>((StyleDimension)d, znaleziony));
+                }
+            }
+            return wynik;
+        }
+
+        private static StyleReading OdczytNarzucony(StylePrototype pr, PlayerStyleParams p)
+        {
+            var z = new float[StyleDimensions.Count];
+            var znane = new bool[StyleDimensions.Count];
+            for (int d = 0; d < StyleDimensions.Count; d++)
+            {
+                z[d] = pr.Get((StyleDimension)d);
+                znane[d] = true;
+            }
+            return PlayerStyleModel.FromVector(z, znane, Math.Max(p.capacityDays, p.warmupDays), p);
+        }
+
+        private static void Uruchom(int dni, bool wszystkieProfile, bool trybStylu)
         {
             if (running)
             {
@@ -150,6 +218,36 @@ namespace ProceduralNarrator.Integration.Experiments
             StorytellerComp_Generative.Bezpieczniki bezpiecznikiGry = comp.OdczytajBezpieczniki();
             var wylaczeniaWarstw = new List<string>();
 
+            // STYL (krok 7) PRZED zrzutem stanu (przeglad S8): wyjatek tutaj nie moze zostawic eksperymentu w polowie
+            // (running = true, podmieniona pamiec, milczacy obserwator). Styl gry i obecnosc warstwy - ta sama odpowiedz
+            // co w turze (StylGry), a nie sama ksiega z pominieciem wlacznika i bezpiecznikow.
+            PlayerStyleParams parametryStylu = pamiec.StyleParams;
+            StyleReading stylGry = comp.StylGry();
+            bool stylGryAktywny = stylGry != null && stylGry.Active;
+            var ramionaStylu = new List<Ramie>();
+            if (trybStylu)
+            {
+                if (!comp.WarstwaStyluObecna)
+                {
+                    PNLog.Error("Tryb STYL niemozliwy: warstwa stylu gracza jest nieobecna (styl wylaczony w XML albo spalony "
+                                + "bezpiecznik odczytu - przyczyna wyzej w logu). Ramiona W/G/E/R bylyby identyczne z ramieniem S.");
+                    return;
+                }
+                foreach (KeyValuePair<StyleDimension, StylePrototype> para in PrototypyJednocechowe(parametryStylu))
+                {
+                    StyleReading odczyt = OdczytNarzucony(para.Value, parametryStylu);
+                    ramionaStylu.Add(new Ramie
+                    {
+                        Etykieta = LiteraCechy(para.Key) + "-" + profile[0],
+                        Profil = profile[0],
+                        StylNarzucony = odczyt,
+                        OpisStylu = para.Value.label + "(" + string.Join("/", Enumerable.Range(0, StyleDimensions.Count)
+                            .Select(d => para.Value.Get((StyleDimension)d).ToString("0.00", CultureInfo.InvariantCulture)).ToArray()) + ")"
+                    });
+                }
+                ramionaStylu.Add(new Ramie { Etykieta = "S-" + profile[0], Profil = profile[0], BezStylu = true, OpisStylu = "wylaczony" });
+            }
+
             string problem;
             GameStateCheckpoint cp = GameStateCheckpoint.Capture(comp, pamiec, cele, out problem);
             if (cp == null)
@@ -179,8 +277,16 @@ namespace ProceduralNarrator.Integration.Experiments
                 ramiona.Add(new Ramie { Etykieta = (i + 1).ToString(CultureInfo.InvariantCulture) + "-" + profile[i],
                                         Profil = profile[i] });
             }
-            // Ramie "bez lukow" PRZED kontrolnym: kanarek izolacji porownuje ramie 1 z OSTATNIM.
-            ramiona.Add(new Ramie { Etykieta = "B-" + profile[0], Profil = profile[0], BezLukow = true });
+            // Tryb STYL (krok 7): syntetyczni gracze i ramie bez stylu ZAMIAST ramienia bez lukow (zbudowane przed zrzutem).
+            if (trybStylu)
+            {
+                ramiona.AddRange(ramionaStylu);
+            }
+            else
+            {
+                // Ramie "bez lukow" PRZED kontrolnym: kanarek izolacji porownuje ramie 1 z OSTATNIM.
+                ramiona.Add(new Ramie { Etykieta = "B-" + profile[0], Profil = profile[0], BezLukow = true });
+            }
             ramiona.Add(new Ramie { Etykieta = "K-" + profile[0], Profil = profile[0] });
 
             var bledyIzolacji = new List<string>();
@@ -209,7 +315,10 @@ namespace ProceduralNarrator.Integration.Experiments
                     comp.UstawBezpieczniki(bezpiecznikiGry);
                     int decyzjiPrzed = SumaDecyzji(pamiec);
                     comp.ArcsDisabledForArm = ramie.BezLukow;
-                    PNLog.BeginArm(ramie.Etykieta, "profil=" + ramie.Profil + (ramie.BezLukow ? "; luki=wylaczone" : string.Empty));
+                    comp.ArmImposedStyle = ramie.StylNarzucony;
+                    comp.StyleDisabledForArm = ramie.BezStylu;
+                    PNLog.BeginArm(ramie.Etykieta, "profil=" + ramie.Profil + (ramie.BezLukow ? "; luki=wylaczone" : string.Empty)
+                                                   + "; styl=" + ramie.OpisStylu);
 
                     for (int j = 0; j < interwalow; j++)
                     {
@@ -267,10 +376,12 @@ namespace ProceduralNarrator.Integration.Experiments
                     ramie.OdciskPamieci = OdciskPamieci(pamiec);
                     ramie.Kompletne = true;
                     StorytellerComp_Generative.Bezpieczniki poRamieniu = comp.OdczytajBezpieczniki();
-                    if (poRamieniu.Luki != bezpiecznikiGry.Luki || poRamieniu.Fakty != bezpiecznikiGry.Fakty)
+                    if (poRamieniu.Luki != bezpiecznikiGry.Luki || poRamieniu.Fakty != bezpiecznikiGry.Fakty
+                        || poRamieniu.Styl != bezpiecznikiGry.Styl)
                     {
                         wylaczeniaWarstw.Add(ramie.Etykieta + ":" + (poRamieniu.Luki != bezpiecznikiGry.Luki ? "luki" : "")
-                                             + (poRamieniu.Fakty != bezpiecznikiGry.Fakty ? "fakty" : ""));
+                                             + (poRamieniu.Fakty != bezpiecznikiGry.Fakty ? "fakty" : "")
+                                             + (poRamieniu.Styl != bezpiecznikiGry.Styl ? "styl" : ""));
                     }
                 }
             }
@@ -282,6 +393,8 @@ namespace ProceduralNarrator.Integration.Experiments
             finally
             {
                 comp.ArcsDisabledForArm = false;
+                comp.ArmImposedStyle = null;
+                comp.StyleDisabledForArm = false;
                 List<string> bledyPrzywracania = cp.RestoreAll();
                 comp.UstawBezpieczniki(bezpiecznikiGry);
                 running = false;
@@ -297,6 +410,18 @@ namespace ProceduralNarrator.Integration.Experiments
                                       && pierwsze.Decyzji == kontrolne.Decyzji
                                       && string.Equals(pierwsze.OdciskPamieci, kontrolne.OdciskPamieci, StringComparison.Ordinal);
 
+                // KANAREK STYLU (krok 7): gdy styl gry w t0 jest NIEAKTYWNY (rozgrzewka), ramie 1 liczy
+                // z fokusem bez wartosci, wiec jego decyzje musza byc identyczne z ramieniem S. Gdy styl
+                // jest aktywny, roznica jest oczekiwana - "nd". Poza trybem STYL tez "nd".
+                Ramie ramieS = ramiona.FirstOrDefault(r => r.BezStylu);
+                string stylS = "nd";
+                if (trybStylu && !stylGryAktywny && ramieS != null && pierwsze.Kompletne && ramieS.Kompletne)
+                {
+                    stylS = pierwsze.Wypalone.SequenceEqual(ramieS.Wypalone) && pierwsze.Decyzji == ramieS.Decyzji
+                            && string.Equals(pierwsze.OdciskPamieci, ramieS.OdciskPamieci, StringComparison.Ordinal)
+                        ? "zgodne" : "ROZNE";
+                }
+
                 // TRZY stany kontroli, nie dwa: "brak" (ktores ramie przerwane - nie ma czego
                 // porownac) nie moze zlac sie z "ROZNA" (przeciek stanu miedzy ramionami).
                 string status = przerwanie != null ? "przerwany" : "kompletny";
@@ -305,7 +430,9 @@ namespace ProceduralNarrator.Integration.Experiments
                                     + "; bledyPrzywracania=" + bledyPrzywracania.Count.ToString(CultureInfo.InvariantCulture)
                                     + "; bledyIzolacji=" + bledyIzolacji.Count.ToString(CultureInfo.InvariantCulture)
                                     + "; pamiecGry=" + pamiecGry
-                                    + "; wylaczeniaWarstw=" + (wylaczeniaWarstw.Count == 0 ? "-" : string.Join(",", wylaczeniaWarstw.ToArray())));
+                                    + "; wylaczeniaWarstw=" + (wylaczeniaWarstw.Count == 0 ? "-" : string.Join(",", wylaczeniaWarstw.ToArray()))
+                                    + "; stylGryAktywny=" + (stylGryAktywny ? "true" : "false")
+                                    + "; stylS=" + stylS);
 
                 // Raport do Verse.Log - PO EndExperiment, wiec idzie do zwyklego logu.
                 PNLog.Decision(Raport(idEksperymentu, dni, ramiona, kontrolaPoliczona, kontrolaZgodna, przerwanie,
@@ -331,6 +458,12 @@ namespace ProceduralNarrator.Integration.Experiments
                     PNLog.Error("Eksperyment: pamiec narratora PO przywroceniu rozni sie od pamieci PRZED eksperymentem - "
                                 + "przeciek symulacji do prawdziwej gry. NIE ZAPISUJ gry; wczytaj zapis sprzed eksperymentu.");
                 }
+                if (stylS == "ROZNE")
+                {
+                    PNLog.Error("Eksperyment: styl gry byl NIEAKTYWNY, a ramie 1 rozni sie od ramienia bez stylu (S) - "
+                                + "warstwa stylu zmienia decyzje mimo rozgrzewki. Sprawdz StyleFocus (wartosc stylu przy "
+                                + "nieaktywnym odczycie) i mocne strony w snapshocie.");
+                }
                 if (przerwanie == null && !kontrolaZgodna)
                 {
                     PNLog.Error("Eksperyment: RAMIE KONTROLNE rozni sie od ramienia 1 przy identycznym wejsciu - "
@@ -338,6 +471,12 @@ namespace ProceduralNarrator.Integration.Experiments
                                 + "profili z tego eksperymentu sa NIEWIARYGODNE.");
                 }
             }
+        }
+
+        /// <summary>Litera ramienia syntetycznego gracza = pierwsza litera nazwy cechy (W, G, E, R).</summary>
+        private static string LiteraCechy(StyleDimension d)
+        {
+            return StyleDimensions.Name(d).Substring(0, 1);
         }
 
         private static int SumaDecyzji(NarratorMemoryComponent pamiec)
@@ -383,6 +522,9 @@ namespace ProceduralNarrator.Integration.Experiments
                 sb.Append("L").Append(para.Key.ToString(CultureInfo.InvariantCulture)).Append('|')
                   .Append(string.Join("#", para.Value.ToPersistableLines().ToArray())).Append('\n');
             }
+            // Ksiega stylu (krok 7): ramie jej nie mutuje (obserwator nie dziala w symulatorze), ale kopia
+            // idzie przez kodek - odcisk lapie strate przy odbudowie i przeciek do pamieci gry.
+            sb.Append("S|").Append(string.Join("#", pamiec.Style.ToPersistableLines().ToArray())).Append('\n');
             // Ksiegi faktow (krok 6) razem z kolejka - ramie kontrolne musi zostawic w pamieci
             // dokladnie te same slady co ramie 1, inaczej kanarek izolacji jest slepy na fakty.
             foreach (KeyValuePair<int, Core.Blackboard.FactLedger> para in pamiec.AllFacts.OrderBy(p => p.Key))
@@ -419,6 +561,7 @@ namespace ProceduralNarrator.Integration.Experiments
                   .Append(" interwalow=").Append(r.Interwalow.ToString(CultureInfo.InvariantCulture))
                   .Append(r.Kompletne ? string.Empty : " (NIEKOMPLETNE)")
                   .Append(r.BezLukow ? " [BEZ LUKOW]" : string.Empty)
+                  .Append(r.BezStylu ? " [BEZ STYLU]" : (r.StylNarzucony != null ? " [STYL " + r.OpisStylu + "]" : string.Empty))
                   .Append(" | ");
                 sb.Append(string.Join(", ", r.PoIncydencie.OrderByDescending(p => p.Value)
                                               .Select(p => p.Key + " " + p.Value.ToString(CultureInfo.InvariantCulture))

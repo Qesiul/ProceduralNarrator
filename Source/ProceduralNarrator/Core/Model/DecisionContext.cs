@@ -92,6 +92,13 @@ namespace ProceduralNarrator.Core.Model
         public ProceduralNarrator.Core.Arcs.ArcFocus ArcFocus;
 
         /// <summary>
+        /// Fokus STYLU GRACZA tej tury (krok 7): odczyt stylu i kierunek d dla intencji PO regule kryzysu.
+        /// Ustawia TurnPlanner (przeciazenie ze stylem). null = warstwa stylu nieobecna (ramie S, styl
+        /// wylaczony, testy sprzed kroku 7) - wtedy decyzje sa identyczne jak w v8.
+        /// </summary>
+        public ProceduralNarrator.Core.PlayerModel.StyleFocus StyleFocus;
+
+        /// <summary>
         /// Jedyny poprawny sposob zbudowania kontekstu: numer decyzji bierze sie WYLACZNIE
         /// z licznika historii, wiec dwa zrodla tej liczby nie moga sie rozjechac.
         ///

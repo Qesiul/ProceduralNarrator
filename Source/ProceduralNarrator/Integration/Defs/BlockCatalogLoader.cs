@@ -14,6 +14,17 @@ namespace ProceduralNarrator.Integration.Defs
     {
         public static void Load(out List<Block> blocks, out CompatibilityGraph graph)
         {
+            List<string> problemyWariantow;
+            Load(out blocks, out graph, out problemyWariantow);
+        }
+
+        /// <summary>
+        /// Jak wyzej, plus opisy wariantow tekstu odrzuconych przez walidacje (krok 8). Walidacja
+        /// dziala przy KAZDYM wczytaniu - comp nigdy nie dostaje wariantu, ktory audyt by odrzucil;
+        /// ta przeciazona wersja tylko oddaje opisy audytowi startowemu do logu.
+        /// </summary>
+        public static void Load(out List<Block> blocks, out CompatibilityGraph graph, out List<string> problemyWariantow)
+        {
             blocks = new List<Block>();
             graph = new CompatibilityGraph();
 
@@ -31,8 +42,15 @@ namespace ProceduralNarrator.Integration.Defs
                     Intensity = def.intensity,
                     Payload = def.payload,
                     TextFragment = def.textFragment,
-                    CarriesFaction = def.carriesFaction
+                    CarriesFaction = def.carriesFaction,
+                    ScalesWithPoints = def.scalesWithPoints
                 };
+                // Kopia LISTY (nie wariantow): walidacja wariantow (TextComposer.Validate) usuwa
+                // niepoprawne z listy klocka i nie moze przy tym zmieniac Defa wspoldzielonego w procesie.
+                if (def.textVariants != null)
+                {
+                    block.TextVariants.AddRange(def.textVariants);
+                }
 
                 if (def.tags != null)
                 {
@@ -57,6 +75,12 @@ namespace ProceduralNarrator.Integration.Defs
                     block.FactsOnExecute.AddRange(def.factsOnExecute);
                 }
 
+                // Kopia, nie referencja: Def zyje przez caly proces i jest wspoldzielony miedzy rozgrywkami.
+                if (def.styleWeights != null)
+                {
+                    block.StyleWeights = def.styleWeights.Clone();
+                }
+
                 blocks.Add(block);
 
                 if (def.incompatibleWith != null)
@@ -67,6 +91,9 @@ namespace ProceduralNarrator.Integration.Defs
                     }
                 }
             }
+
+            // Warianty tekstu (krok 8): niepoprawne odpadaja TU, zanim ktokolwiek je zobaczy.
+            problemyWariantow = TextComposer.Validate(blocks);
         }
     }
 }

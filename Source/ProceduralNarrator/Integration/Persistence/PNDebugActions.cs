@@ -209,6 +209,137 @@ namespace ProceduralNarrator.Integration.Persistence
             PNLog.Decision(sb.ToString());
         }
 
+        /// <summary>
+        /// Stan STYLU GRACZA (krok 7). Styl jest ukryty przed graczem (decyzja autora nr 16), wiec to
+        /// jedyny podglad poza logami: cechy (Z), profil wzgledny (c), mocne strony, etykieta i druga
+        /// z marginesem, kierunek d dla trzech rytmow przy biezacym profilu, pomiary z okna, dzien w toku
+        /// i stan obserwacji (otwarte epizody, bazy rekordow, oferty i dzicy ludzie w toku). Do sprawdzenia
+        /// zapisu-wczytania w srodku doby: dzien w toku, epizod i bazy maja przetrwac.
+        /// </summary>
+        [DebugAction("Procedural Narrator", "PN: styl gracza", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void StylGracza()
+        {
+            NarratorMemoryComponent pamiec = Pamiec;
+            if (pamiec == null)
+            {
+                PNLog.Error("Brak NarratorMemoryComponent - styl gracza nie ma gdzie zyc.");
+                return;
+            }
+            Core.PlayerModel.PlayerStyleParams p = pamiec.StyleParams;
+            Core.PlayerModel.PlayerStyleLedger l = pamiec.Style;
+            Core.PlayerModel.StyleReading r = Core.PlayerModel.PlayerStyleModel.Evaluate(l, p);
+            float o = pamiec.ActiveProfile().StyleOrientation;
+
+            var sb = new StringBuilder(1400);
+            sb.Append("STYL GRACZA | runId=").Append(pamiec.RunId)
+              .Append(" | ").Append(p.enabled ? "wlaczony" : "WYLACZONY w XML")
+              .Append(pamiec.StyleBroken ? " | BEZPIECZNIK SPALONY (obserwator rzucil wyjatek - patrz log)" : string.Empty)
+              .Append(" | zainicjowany=").Append(l.Initialized ? "tak" : "nie")
+              .Append(" | dzien w toku ").Append(l.CurrentDay.ToString(CultureInfo.InvariantCulture))
+              .Append(" | kolejka ").Append(l.Days.Count.ToString(CultureInfo.InvariantCulture))
+              .Append('/').Append(p.capacityDays.ToString(CultureInfo.InvariantCulture)).Append(" dni");
+            if (l.Days.Count > 0)
+            {
+                sb.Append(" (").Append(l.Days[0].Day.ToString(CultureInfo.InvariantCulture)).Append("..")
+                  .Append(l.Days[l.Days.Count - 1].Day.ToString(CultureInfo.InvariantCulture)).Append(')');
+            }
+            sb.Append(" | ").Append(r.Active
+                ? "AKTYWNY"
+                : "rozgrzewka: jeszcze " + (p.warmupDays - r.Days).ToString(CultureInfo.InvariantCulture) + " dni");
+
+            for (int d = 0; d < Core.PlayerModel.StyleDimensions.Count; d++)
+            {
+                sb.AppendLine();
+                sb.Append("  ").Append(Core.PlayerModel.StyleDimensions.Name((Core.PlayerModel.StyleDimension)d)).Append(": ");
+                if (!r.Known[d])
+                {
+                    sb.Append("nieznana").Append(float.IsNaN(r.Z[d])
+                        ? string.Empty
+                        : " (Z z okna " + r.Z[d].ToString("0.000", CultureInfo.InvariantCulture) + ", styl nieaktywny)");
+                    continue;
+                }
+                sb.Append("Z=").Append(r.Z[d].ToString("0.000", CultureInfo.InvariantCulture))
+                  .Append(" c=").Append(r.C[d].ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture))
+                  .Append(r.Strong[d] ? "  MOCNA STRONA" : string.Empty);
+            }
+            sb.AppendLine();
+            sb.Append("  etykieta: ").Append(r.Active && !string.IsNullOrEmpty(r.Label) ? r.Label : "-");
+            if (r.Active && !string.IsNullOrEmpty(r.SecondLabel))
+            {
+                sb.Append(" (druga: ").Append(r.SecondLabel).Append(", margines ")
+                  .Append(r.Margin.ToString("0.000", CultureInfo.InvariantCulture)).Append(')');
+            }
+            sb.Append(" | mocne: ").Append(r.Active ? r.StrongData() : "-");
+            sb.AppendLine();
+            sb.Append("  kierunek d (orientacja profilu ").Append(o.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture)).Append("): oddech ")
+              .Append(Core.PlayerModel.StyleDirection.Compute(o, Intent.Breathe, p).ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture))
+              .Append(", utrzymanie ")
+              .Append(Core.PlayerModel.StyleDirection.Compute(o, Intent.Hold, p).ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture))
+              .Append(", eskalacja ")
+              .Append(Core.PlayerModel.StyleDirection.Compute(o, Intent.Escalate, p).ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture))
+              .Append(" (+ = gra na mocne strony, - = na slabe)");
+
+            sb.AppendLine();
+            sb.Append("  pomiary z okna:");
+            for (int i = 0; i < Core.PlayerModel.StyleSignals.Count; i++)
+            {
+                sb.Append(' ').Append(Core.PlayerModel.StyleSignals.Name((Core.PlayerModel.StyleSignal)i)).Append('=')
+                  .Append(r.SignalKnown[i]
+                      ? r.SignalX[i].ToString("0.###", CultureInfo.InvariantCulture) + "/z" + r.SignalZ[i].ToString("0.00", CultureInfo.InvariantCulture)
+                      : "?");
+            }
+            sb.AppendLine();
+            sb.Append("  w oknie: epizodow zagrozen ").Append(r.EpisodesInWindow.ToString(CultureInfo.InvariantCulture))
+              .Append(", ofert rozstrzygnietych ").Append(r.OffersInWindow.ToString(CultureInfo.InvariantCulture))
+              .Append(", schwytanych ").Append(r.CapturesInWindow.ToString(CultureInfo.InvariantCulture));
+            if (l.Partial != null)
+            {
+                sb.AppendLine();
+                sb.Append("  dzien w toku (licznik/mianownik):");
+                for (int i = 0; i < Core.PlayerModel.StyleSignals.Count; i++)
+                {
+                    sb.Append(' ').Append(Core.PlayerModel.StyleSignals.Name((Core.PlayerModel.StyleSignal)i)).Append('=')
+                      .Append(l.Partial.Num[i].ToString(CultureInfo.InvariantCulture)).Append('/')
+                      .Append(l.Partial.Den[i].ToString(CultureInfo.InvariantCulture));
+                }
+            }
+            sb.AppendLine();
+            sb.Append("  obserwacja: baz rekordow ").Append(l.Baselines.Count.ToString(CultureInfo.InvariantCulture))
+              .Append(", otwartych epizodow ").Append(l.Episodes.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (KeyValuePair<int, Core.PlayerModel.ThreatEpisode> e in l.Episodes)
+            {
+                sb.Append(" [mapa ").Append(e.Key.ToString(CultureInfo.InvariantCulture))
+                  .Append(" od ticku ").Append(e.Value.StartTick.ToString(CultureInfo.InvariantCulture))
+                  .Append(", probek ").Append(e.Value.ThreatSamples.ToString(CultureInfo.InvariantCulture))
+                  .Append(", cichych ").Append(e.Value.QuietSamples.ToString(CultureInfo.InvariantCulture)).Append(']');
+            }
+            sb.Append(", ofert w toku ").Append(l.PendingOffers.Count.ToString(CultureInfo.InvariantCulture))
+              .Append(" (znak wodny ").Append(l.MaxOfferId.ToString(CultureInfo.InvariantCulture)).Append(')')
+              .Append(", dzikich ludzi sledzonych ").Append(l.WildMen.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (KeyValuePair<int, int> w in l.WildMen)
+            {
+                sb.Append(' ').Append(w.Key.ToString(CultureInfo.InvariantCulture)).Append("@dzien")
+                  .Append(w.Value.ToString(CultureInfo.InvariantCulture));
+            }
+            PNLog.Decision(sb.ToString());
+        }
+
+        /// <summary>
+        /// Kasuje ksiege stylu gracza - obserwacja i rozgrzewka od nowa (do sprawdzania rozgrzewki).
+        /// Pamieci narratora nie rusza; "PN: skasuj pamiec" z kolei nie rusza stylu.
+        /// </summary>
+        [DebugAction("Procedural Narrator", "PN: skasuj styl gracza", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void SkasujStylGracza()
+        {
+            NarratorMemoryComponent pamiec = Pamiec;
+            if (pamiec == null)
+            {
+                PNLog.Error("Brak NarratorMemoryComponent w biezacej grze - nie ma czego kasowac.");
+                return;
+            }
+            pamiec.ClearStyle();
+        }
+
         [DebugAction("Procedural Narrator", "PN: skasuj pamiec", allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void SkasujPamiec()
         {

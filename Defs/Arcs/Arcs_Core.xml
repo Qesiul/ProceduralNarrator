@@ -4,7 +4,9 @@
   <!-- ===================================================================================
        LUKI NARRACYJNE (krok 5, koncepcja 5.4) - automaty skonczone prowadzace watki przez
        fazy Zasiew -> Eskalacja -> Kulminacja -> Rozwiazanie. Katalog startowy = decyzja autora
-       (2026-09-22): Wendeta, Gniew natury, Znaki z nieba, Scigani.
+       (2026-09-22): Wendeta, Gniew natury, Znaki z nieba, Scigani. Od kroku 7 (2026-09-24) takze
+       cztery luki pod STYL GRACZA (na koncu pliku): Slawa twierdzy, Dostatek, Ziemia obiecana,
+       Niespokojne noce.
 
        JAK DZIALA LUK (skrot; pelny opis: Core/Arcs, dziennik "Krok 5 - plan i decyzje autora"):
        - Otwiera sie ROZPOZNANIEM: wykonane zdarzenie pasuje do Zasiewu, warunki startu
@@ -388,6 +390,409 @@
           </li>
         </expectations>
         <message>Do kolonii przybywa ktos, kto chce do niej dolaczyc.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- ===================================================================================
+       LUKI POD STYL GRACZA (krok 7, decyzje autora nr 14, 15 i 18; teksty zatwierdzone 2026-09-24).
+       Kazdy otwiera sie TYLKO wtedy, gdy jego cecha jest MOCNA STRONA gracza (Cond_StylMocnaStrona:
+       profil wzgledny, c >= prog). Warunek stylu czytaja WYLACZNIE warunki startu - jak fakty z kroku 6.
+       Styl jest aktywny dopiero po rozgrzewce (15 dni), wiec te luki nie otworza sie wczesniej.
+       Wspolne: Cond_HostileFaction (kulminacja przez napad musi byc mozliwa), Cond_MinDaysPassed 11,
+       odstep 30 dni, strata kolonisty w Eskalacji/Kulminacji -> Rozwiazanie ("Kolonia liczy straty.").
+       Priorytet dziala w DWOCH sytuacjach: w obrebie grupy rozstrzyga, ktory luk otworzy WSPOLNE zdarzenie
+       zasiewu, a gdy wolne jest tylko jedno z 2 miejsc - ktora grupa je zajmie. Luki pod styl maja priorytet
+       wyzszy niz zwykle luki z tej samej grupy (decyzja zgloszona autorowi przy planie). Zasada prawdy tekstu
+       jak wyzej: bez przyczyn, miejsc i superlatywow; teksty opisuja zdarzenie, nie stan kolonii (przeglad S8).
+       =================================================================================== -->
+
+  <!-- SLAWA TWIERDZY (Walka): narastajace proby sily, na koniec ktos chce dolaczyc do obroncow.
+       Grupa "frakcja" z Wendeta, priorytet 12 > 10: u gracza, ktorego mocna strona jest Walka,
+       napad otwiera Slawe, a nie Wendete. -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_SlawaTwierdzy</defName>
+    <label>slawa twierdzy</label>
+    <priority>12</priority>
+    <exclusionGroup>frakcja</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_StylMocnaStrona">
+        <dimension>Walka</dimension>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Raid</li></themes>
+            <valences><li>Negative</li></valences>
+          </li>
+        </expectations>
+        <message>O obroncach kolonii zaczyna sie mowic w okolicy.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+            <requiredTag>militarny</requiredTag>
+          </li>
+        </expectations>
+        <message>Ktos znowu wystawia obroncow kolonii na probe.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+            <!-- Prog mocy (przeglad S8, jak w Wendecie): "ciezka proba" jest wtedy prawda. Superlatyw "najciezsza"
+                 usuniety - napadow z zadan wanilii narrator nie widzi, a kulminacja bywala slabsza od zasiewu. -->
+            <minIntensity>High</minIntensity>
+            <requiredTag>militarny</requiredTag>
+          </li>
+        </expectations>
+        <message>Obroncow kolonii czeka ciezka proba.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Social</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Ktos prosi o miejsce wsrod obroncow kolonii.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- DOSTATEK (Gospodarka): dobre czasy, zagrozony dobytek, napastnicy, powrot dostatku.
+       Grupa "niebo" ze Znakami z nieba (przeglad S8, decyzja autora): ten sam zrzut albo meteoryt otwieral oba luki
+       naraz, a burza przesuwala oba (podwojne komunikaty, oba miejsca zajete). Teraz dziala najwyzej jeden; przy
+       wspolnym darze wygrywa Dostatek (priorytet 6 > 5). -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_Dostatek</defName>
+    <label>dostatek</label>
+    <priority>6</priority>
+    <exclusionGroup>niebo</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_StylMocnaStrona">
+        <dimension>Gospodarka</dimension>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Economic</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Do kolonii trafia dobro.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+          </li>
+        </expectations>
+        <message>Dobytek kolonii jest zagrozony.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Raid</li></themes>
+            <valences><li>Negative</li></valences>
+          </li>
+        </expectations>
+        <message>Tym razem kolonii zagrazaja napastnicy.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Economic</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Do kolonii znowu trafia dobro.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- ZIEMIA OBIECANA (Ekspansja): przybysze, kolejni przybysze, klopoty, nagroda.
+       Grupa "ludzie" ze Scigonymi, priorytet 9 > 8. Eskalacja bez messageType = zdarzenie neutralne. -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_ZiemiaObiecana</defName>
+    <label>ziemia obiecana</label>
+    <priority>9</priority>
+    <exclusionGroup>ludzie</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_StylMocnaStrona">
+        <dimension>Ekspansja</dimension>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Social</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Wiesc o goscinnej kolonii niesie sie po okolicy.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Social</li></themes>
+            <valences><li>Neutral</li></valences>
+          </li>
+        </expectations>
+        <message>Do kolonii trafiaja kolejni przybysze.</message>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>2</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Raid</li><li>Military</li></themes>
+            <valences><li>Negative</li></valences>
+          </li>
+        </expectations>
+        <message>Po przybyszach przychodza klopoty.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Economic</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Goscinnosc kolonii nie idzie na marne.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- NIESPOKOJNE NOCE (Reaktywnosc): szybka fala naglych zagrozen, fazy krotkie (1-8 dni).
+       Grupa "natura" z Gniewem natury, priorytet 7 > 5. Zasiew Moderate (Gniew natury otwiera Minor),
+       wiec oba nie konkuruja o to samo zdarzenie otwierajace. -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_NiespokojneNoce</defName>
+    <label>niespokojne noce</label>
+    <priority>7</priority>
+    <exclusionGroup>natura</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_StylMocnaStrona">
+        <dimension>Reaktywnosc</dimension>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+          </li>
+        </expectations>
+        <message>Kolonia uczy sie spac czujnie.</message>
+      </li>
+      <li>
+        <id>Eskalacja</id>
+        <kind>Escalation</kind>
+        <minDaysAfterPrevious>1</minDaysAfterPrevious>
+        <maxDays>8</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+          </li>
+        </expectations>
+        <message>Zagrozenie znowu przychodzi znienacka.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>1</minDaysAfterPrevious>
+        <maxDays>8</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+          </li>
+        </expectations>
+        <message>Kolonia staje przed ciezka proba czujnosci.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>8</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Po niespokojnych dniach przychodzi cos dobrego.</message>
         <messageType>PositiveEvent</messageType>
       </li>
     </phases>

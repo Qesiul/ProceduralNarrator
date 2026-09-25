@@ -60,6 +60,20 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Czy jest noc (poza godzinami 6-18).</summary>
         public bool IsNight;
 
+        /// <summary>
+        /// Czy pora roku na mapie jest znosna dla ludzi (MapTemperature.SeasonAcceptableFor(Human): temperatura
+        /// sezonowa w przedziale komfortu rasy). Tego wymaga IncidentWorker_WildManWandersIn.CanFireNowSub - bez
+        /// warunku twardego dziki czlowiek odmawial sezonowo w 90 ze 119 odmow symulatora (krok 8, dlug 6).
+        /// Domyslnie true: snapshot bez mapy (testy kompozycji) nie ma pory roku, ktora mogla by wykluczyc akcje.
+        /// </summary>
+        public bool SeasonAcceptableForHumans = true;
+
+        /// <summary>
+        /// Skazone powietrze na mapie: opad toksyczny albo toksyczna mgla (Biotech). Przy nim
+        /// IncidentWorker_WildManWandersIn.CanFireNowSub tez odmawia (przeglad S10, dlug 6). Domyslnie false.
+        /// </summary>
+        public bool ToxicAirActive;
+
         /// <summary>Liczba dzikich zwierzat na mapie.</summary>
         public int WildAnimalCount;
 
@@ -204,6 +218,14 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Wiek tematow w TURACH: ";Temat=N;", gdzie -1 znaczy "poza horyzontem pamieci".</summary>
         public string TurnsSinceThemes = string.Empty;
 
+        /// <summary>
+        /// Mocne strony STYLU GRACZA (krok 7) w postaci kanonicznej ";Walka;Ekspansja;" - pusto, gdy styl
+        /// nieaktywny (rozgrzewka), wylaczony albo gdy mocnych stron brak. Czyta WYLACZNIE
+        /// Cond_StylMocnaStrona w warunkach startu lukow (jak fakty: warunek twardy w klocku zmienialby m,
+        /// a przez to K = B/m i pule bramy PASS).
+        /// </summary>
+        public string StyleStrongSides = string.Empty;
+
         public override string ToString()
         {
             return "dzien=" + DaysPassed
@@ -223,7 +245,8 @@ namespace ProceduralNarrator.Core.Model
                    + " zagrozenie=" + Danger
                    + " punkty=" + ThreatPoints.ToString("0", CultureInfo.InvariantCulture)
                    + " watki=" + (string.IsNullOrEmpty(Threads) ? "-" : Threads)
-                   + " fakty=" + (string.IsNullOrEmpty(Facts) ? "-" : Facts);
+                   + " fakty=" + (string.IsNullOrEmpty(Facts) ? "-" : Facts)
+                   + " stylMocne=" + (string.IsNullOrEmpty(StyleStrongSides) ? "-" : StyleStrongSides);
         }
     }
 }

@@ -59,6 +59,9 @@
   -->
   <ProceduralNarrator.Integration.Defs.NarratorProfileDef>
     <defName>PN_Profil_Powsciagliwy</defName>
+    <!-- Styl gracza (krok 7, decyzja autora nr 13): +1 = gra na MOCNE strony gracza. Kierunek
+         d = 0.3*orientacja + 0.7*rytm: oddech +1.0, utrzymanie +0.3, eskalacja -0.4. -->
+    <styleOrientation>1</styleOrientation>
     <label>powsciagliwy</label>
     <description>Daje kolonii odetchnac wczesnie i dlugo. Rzadko uznaje cisze za nude.</description>
     <selectionWeight>1.0</selectionWeight>
@@ -99,6 +102,8 @@
   -->
   <ProceduralNarrator.Integration.Defs.NarratorProfileDef>
     <defName>PN_Profil_Zrownowazony</defName>
+    <!-- Styl gracza: 0 = kierunek wyznacza sam rytm: oddech +0.7, utrzymanie 0, eskalacja -0.7. -->
+    <styleOrientation>0</styleOrientation>
     <label>zrownowazony</label>
     <description>Trzyma rowna miare miedzy naciskiem a oddechem.</description>
     <selectionWeight>1.0</selectionWeight>
@@ -133,6 +138,8 @@
   -->
   <ProceduralNarrator.Integration.Defs.NarratorProfileDef>
     <defName>PN_Profil_Napastliwy</defName>
+    <!-- Styl gracza: -1 = gra na SLABE strony gracza: oddech +0.4, utrzymanie -0.3, eskalacja -1.0. -->
+    <styleOrientation>-1</styleOrientation>
     <label>napastliwy</label>
     <description>Krotko pamieta spokoj i szybko wraca do naciskania.</description>
     <selectionWeight>1.0</selectionWeight>

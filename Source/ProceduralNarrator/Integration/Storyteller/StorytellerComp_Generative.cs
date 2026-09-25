@@ -6,6 +6,7 @@ using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.PlayerModel;
 using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
 using ProceduralNarrator.Integration.Arcs;
@@ -136,6 +137,16 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// <summary>Tick, ktorego dotyczy rejestrWerdyktow. Zmiana ticku czysci rejestr.</summary>
         private int rejestrTick = -1;
 
+        /// <summary>
+        /// Izolacja naszych pytan CanFireNow od cache'u gry (krok 8, dlug 8, decyzja K8-3): stan cache'u
+        /// sprzed naszego pierwszego pytania o incydent, przywracany po naszym TryFire albo przy ciszy.
+        /// Rejestr werdyktow powyzej zostaje - pilnuje naszych WLASNYCH tur w jednym ticku.
+        /// </summary>
+        private readonly VerdictCacheGuard strazCache = new VerdictCacheGuard();
+
+        /// <summary>Workery, ktorych cache trzeba przywrocic (klucz = defName incydentu).</summary>
+        private readonly Dictionary<string, IncidentWorker> pracownicyCache = new Dictionary<string, IncidentWorker>();
+
         // ---------------------------------------------------------------- STRAZNIK ZEGARA GRY
         // Wykrywa wywolania MakeIntervalIncidents spoza zegara gry - czyli z waniliowych narzedzi
         // debugowych (Future incidents i pokrewne). Szczegoly przy CzyWywolanieZewnetrzne.
@@ -171,6 +182,9 @@ namespace ProceduralNarrator.Integration.Storyteller
         {
             public bool Luki;
             public bool Fakty;
+
+            /// <summary>Odczyt stylu gracza w turze (krok 7). Obserwator ma wlasny bezpiecznik w komponencie pamieci.</summary>
+            public bool Styl;
         }
 
         /// <summary>
@@ -180,19 +194,24 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// </summary>
         internal Bezpieczniki OdczytajBezpieczniki()
         {
-            return new Bezpieczniki { Luki = arcsBroken, Fakty = faktyBroken };
+            return new Bezpieczniki { Luki = arcsBroken, Fakty = faktyBroken, Styl = stylBroken };
         }
 
         internal void UstawBezpieczniki(Bezpieczniki b)
         {
             arcsBroken = b.Luki;
             faktyBroken = b.Fakty;
+            stylBroken = b.Styl;
         }
 
         internal void ResetTickState()
         {
             rejestrWerdyktow.Clear();
             rejestrTick = -1;
+            // Krok 8 (przeglad S10): resztki straznika cache'u z przerwanej tury (np. wyjatek w ramieniu
+            // symulatora) PORZUCAMY - ich tick juz minal, a zapis nadpisalby stan biezacego ticku.
+            strazCache.Discard();
+            pracownicyCache.Clear();
             straznikKlatka = -1;
             straznikTick = int.MinValue;
             klatkaZewnetrzna = -1;
@@ -240,6 +259,93 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// i zdejmuje wylacznie FutureIncidentsExperiment.
         /// </summary>
         internal bool ArcsDisabledForArm;
+
+        // ---------------------------------------------------------------- STYL GRACZA (krok 7)
+
+        /// <summary>
+        /// Orientacja stylu z profilu narratora (o we wzorze d = 0.3*o + 0.7*r). Publikowana RAZEM
+        /// z krzywa i scorerem w EnsureProfileRuntime - kierunek stylu nie moze pochodzic z innego
+        /// profilu niz wagi i krzywa tej samej tury.
+        /// </summary>
+        private float orientacjaStylu;
+
+        /// <summary>Odczyt stylu rzucil wyjatek - warstwa stylu wylaczona do wczytania zapisu (raport raz).</summary>
+        private bool stylBroken;
+
+        /// <summary>
+        /// Ramie symulatora "bez stylu" (S): warstwa stylu nieobecna w turze (odczyt null, kolumny puste,
+        /// mocne strony puste). Ustawia i zdejmuje wylacznie FutureIncidentsExperiment.
+        /// </summary>
+        internal bool StyleDisabledForArm;
+
+        /// <summary>
+        /// Ramie symulatora z NARZUCONYM stylem (syntetyczny gracz W/G/E/R): ten odczyt zamiast ksiegi gry.
+        /// null = styl z obserwacji. Ustawia i zdejmuje wylacznie FutureIncidentsExperiment.
+        /// </summary>
+        internal StyleReading ArmImposedStyle;
+
+        /// <summary>
+        /// Odczyt stylu gracza na te ture albo null, gdy warstwy stylu nie ma: styl wylaczony w XML,
+        /// spalony bezpiecznik (compa albo obserwatora), ramie S symulatora, brak komponentu pamieci.
+        /// null znaczy "warstwa nieobecna" (kolumny puste), a nie "gracz bez mocnych stron".
+        /// </summary>
+        private StyleReading StylTury()
+        {
+            if (StyleDisabledForArm || !WarstwaStyluObecna)
+            {
+                return null;
+            }
+            if (ArmImposedStyle != null)
+            {
+                return ArmImposedStyle;
+            }
+            return StylGry();
+        }
+
+        /// <summary>Warstwa stylu dziala w tym compie: blok wlaczony w XML i bez spalonego bezpiecznika odczytu.</summary>
+        internal bool WarstwaStyluObecna
+        {
+            get { return Props.playerStyle != null && Props.playerStyle.enabled && !stylBroken; }
+        }
+
+        /// <summary>
+        /// Styl GRY (z ksiegi obserwatora) albo null, gdy warstwy nie ma albo obserwator ma spalony bezpiecznik - ta sama
+        /// odpowiedz, ktora dostaje tura poza ramionami symulatora. Symulator liczy z niej flage stylGryAktywny
+        /// (przeglad S8 kroku 7: wczesniej liczyl ja z samej ksiegi, z pominieciem bezpiecznikow i wlacznika).
+        /// </summary>
+        internal StyleReading StylGry()
+        {
+            if (!WarstwaStyluObecna)
+            {
+                return null;
+            }
+            NarratorMemoryComponent pamiec = Current.Game == null ? null : Current.Game.GetComponent<NarratorMemoryComponent>();
+            if (pamiec == null || pamiec.StyleBroken)
+            {
+                return null;
+            }
+            try
+            {
+                return PlayerStyleModel.Evaluate(pamiec.Style, Props.playerStyle);
+            }
+            catch (Exception e)
+            {
+                WylaczStyl("odczyt stylu w turze", e);
+                return null;
+            }
+        }
+
+        private void WylaczStyl(string gdzie, Exception e)
+        {
+            if (stylBroken)
+            {
+                return;
+            }
+            stylBroken = true;
+            PNLog.Error("WARSTWA STYLU GRACZA rzucila wyjatek (" + gdzie + ") i jest WYLACZONA do wczytania zapisu "
+                        + "albo zmiany narratora (comp powstaje wtedy od nowa). Narrator dziala dalej bez stylu; "
+                        + "kolumny stylu beda puste, luki pod styl sie nie otworza.\n" + e);
+        }
 
         private bool LukiAktywne
         {
@@ -327,6 +433,12 @@ namespace ProceduralNarrator.Integration.Storyteller
             // wiec ranking jest wewnetrznie spojny i da sie go w calosci odtworzyc z logu.
             WorldSnapshot snapshot = WorldSnapshotBuilder.Build(map, history, ksiega, fakty, gameDay);
 
+            // STYL GRACZA (krok 7): odczyt RAZ na ture, mocne strony do snapshotu PRZED planowaniem - warunki
+            // startu lukow widza styl wylacznie przez snapshot (jak fakty), a linia P zapamietuje go
+            // z tego snapshotu dla sciezki spoznionej. Wyjatek w odczycie wylacza warstwe (bezpiecznik).
+            StyleReading styl = StylTury();
+            snapshot.StyleStrongSides = styl == null ? string.Empty : styl.StrongCanonical();
+
             // WARSTWA PLANOWANIA: napiecie -> intencja + docelowa moc -> regula kryzysu skrajnego
             // -> kontekst decyzji. Caly lancuch zyje w Core (TurnPlanner), wiec walidator offline
             // sprawdza go od snapshotu do DecisionContext.ExtremeCrisis - tutaj tylko jedno
@@ -334,8 +446,11 @@ namespace ProceduralNarrator.Integration.Storyteller
             // Uzytecznosc frakcji do wiazania (krok 5, S5): pelny waniliowy filtr zrodla napadu przy
             // punktach tury razy mnoznik mocy kandydata - te same punkty bazowe co sito ponizej.
             IFactionUsability uzytecznoscFrakcji = new FactionUsability(map, snapshot.ThreatPoints);
+            // Styl (krok 7): fokus z intencji PO regule kryzysu, liczony w Core (TurnPlanner) - styl==null
+            // daje fokus pusty, czyli ture bez warstwy stylu.
             TurnPlan plan = TurnPlanner.Plan(tensionModel, Props.crisis, history, snapshot, gameDay,
-                                             ksiega == null ? null : arcDirector, ksiega, uzytecznoscFrakcji);
+                                             ksiega == null ? null : arcDirector, ksiega, uzytecznoscFrakcji,
+                                             styl, orientacjaStylu, Props.playerStyle);
             TensionReading napiecie = plan.Tension;
             CrisisReading kryzys = plan.Crisis;
             IntentDecision zamiar = plan.Intent;
@@ -348,6 +463,8 @@ namespace ProceduralNarrator.Integration.Storyteller
             var czytelne = new List<string>(24);
             czytelne.Add("Krzywa dramaturgiczna: " + napiecie.Trace + " -> " + zamiar.Trace
                          + (kryzys.Extreme ? string.Empty : " | " + kryzys.Trace));
+            // Fokus opisuje odczyt i kierunek d naraz (StyleFocus.Describe) - jedna linia na ture.
+            czytelne.Add("Styl gracza: " + (context.StyleFocus == null ? "warstwa nieobecna" : context.StyleFocus.Describe()));
 
             IRandomSource rngGen = new SeededRandom(tick);
             IRandomSource rngSel = new SeededRandom(unchecked(tick + SelectionSeedSalt));
@@ -482,9 +599,10 @@ namespace ProceduralNarrator.Integration.Storyteller
                 // FRAKCJA LUKU (krok 5): tylko dla kandydata dopasowanego przez oczekiwanie
                 // sameFaction, przy frakcji uzytecznej dla jego mocy (ArcFocus.FactionToBind).
                 string frakcjaLukuId = context.ArcFocus == null ? null : context.ArcFocus.FactionToBind(zdarzenie);
-                Faction frakcjaLuku = ArcObservationBuilder.ResolveFaction(frakcjaLukuId);
+                // Krok 8 (dlug 9): klucz wykonania i parametry z JEDNEJ specyfikacji.
+                ExecutionSpec specyfikacja = ExecutionSpec.From(zdarzenie, frakcjaLukuId);
                 IncidentParms kandydackieParms = IncidentParmsBuilder.Apply(
-                    GenerateParms(kandydacki.category, target), zdarzenie, Props.useComposedLetter, frakcjaLuku);
+                    GenerateParms(kandydacki.category, target), specyfikacja);
 
                 // PYTAMY SILNIK TYLKO WTEDY, GDY RDZEN O TO PROSI.
                 //
@@ -514,31 +632,41 @@ namespace ProceduralNarrator.Integration.Storyteller
                     // zweryfikowana. Wszystkie trzynascie naszych CanFireNowSub jest mapozalezne.
                     //
                     // Rejestr zyje na compie, a nie w turze, bo problem jest miedzyturowy.
-                    string zakres = zdarzenie.ActionPayload ?? "?";
-                    string odciskPytania = zakres + "@" + (target == null ? "?" : target.GetHashCode()
-                                               .ToString(CultureInfo.InvariantCulture))
-                                           + "#" + IncidentParmsBuilder.ExecutionKey(zdarzenie, frakcjaLukuId);
-
-                    if (rejestrTick != tick)
+                    //
+                    // KROK 8 (przeglad S10): przy dzialajacej IZOLACJI cache'u rejestr jest zbedny - kazde nasze
+                    // pytanie liczy werdykt od nowa dla swoich parametrow (ZapytajIzolowanie uniewaznia cache),
+                    // a stan sprzed tury wraca po niej. Rejestr odbieralby drugiej kolonii werdykty i konczyl
+                    // jej ture cisza techniczna. Zostaje jako obrona, gdy izolacja jest niedostepna (inna wersja gry).
+                    if (!IncidentCacheAccess.Available)
                     {
-                        rejestrTick = tick;
-                        rejestrWerdyktow.Clear();
+                        string zakres = zdarzenie.ActionPayload ?? "?";
+                        string odciskPytania = zakres + "@" + (target == null ? "?" : target.GetHashCode()
+                                                   .ToString(CultureInfo.InvariantCulture))
+                                               + "#" + specyfikacja.Key;
+
+                        if (rejestrTick != tick)
+                        {
+                            rejestrTick = tick;
+                            rejestrWerdyktow.Clear();
+                        }
+
+                        string poprzedniOdcisk;
+                        if (rejestrWerdyktow.TryGetValue(zakres, out poprzedniOdcisk)
+                            && string.CompareOrdinal(poprzedniOdcisk, odciskPytania) != 0)
+                        {
+                            // O ten payload pytano juz w tym ticku, przy innym celu albo innych
+                            // parametrach. Silnik odda TAMTA odpowiedz. Nie podajemy jej dalej.
+                            powod = kandydacki.defName + ": werdykt niedostepny (pytano w tym ticku o "
+                                    + poprzedniOdcisk + ")";
+                            return AcceptorVerdict.Unanswerable;
+                        }
+
+                        rejestrWerdyktow[zakres] = odciskPytania;
                     }
 
-                    string poprzedniOdcisk;
-                    if (rejestrWerdyktow.TryGetValue(zakres, out poprzedniOdcisk)
-                        && string.CompareOrdinal(poprzedniOdcisk, odciskPytania) != 0)
-                    {
-                        // O ten payload pytano juz w tym ticku, przy innym celu albo innych
-                        // parametrach. Silnik odda TAMTA odpowiedz. Nie podajemy jej dalej.
-                        powod = kandydacki.defName + ": werdykt niedostepny (pytano w tym ticku o "
-                                + poprzedniOdcisk + ")";
-                        return AcceptorVerdict.Unanswerable;
-                    }
-
-                    rejestrWerdyktow[zakres] = odciskPytania;
-
-                    if (!kandydacki.Worker.CanFireNow(kandydackieParms))
+                    // Krok 8 (dlug 8): pytanie IZOLOWANE od cache'u gry - liczone dla naszych parametrow,
+                    // a stan sprzed pytania wraca po naszym TryFire (PrzywrocCache).
+                    if (!ZapytajIzolowanie(kandydacki, kandydackieParms, map))
                     {
                         powod = kandydacki.defName + ": CanFireNow=false";
                         return AcceptorVerdict.RefusedByGame;
@@ -571,6 +699,10 @@ namespace ProceduralNarrator.Integration.Storyteller
                     if (kandydat == null || kandydat.Event == null) return null;
                     return kandydat.Event.ActionPayload;
                 };
+
+            // Resztki poprzedniej tury przerwanej wyjatkiem (krok 8, dlug 8) - zanim zapytamy od nowa. EndTurn z
+            // biezacym tickiem je PORZUCI (tick przerwanej tury juz minal) - zapis nadpisalby stan tego ticku.
+            PrzywrocCache();
 
             TurnResult tura = turnRunner.Run(context, pula, pass, rngSel,
                                              scorer.LastPassDensity, akceptor,
@@ -660,6 +792,8 @@ namespace ProceduralNarrator.Integration.Storyteller
                 // kryzysem skrajnym; cisza techniczna i cisza w kryzysie zostawiaja licznik bez
                 // zmiany. DecisionCount rosnie zawsze, wiec starzenie swiezosci jest nietkniete.
                 history.RecordPass(gameDay, tick, tura.DeliberateSilence);
+                // Cisza: nasze pytania (faza 0) nie moga zostac w cache'u gry (krok 8, dlug 8).
+                PrzywrocCache();
                 yield break;
             }
 
@@ -711,10 +845,155 @@ namespace ProceduralNarrator.Integration.Storyteller
             ZakolejkujFakty(map, fakty, decyzja.Winner.Event, tick, gameDay, context.DecisionIndex,
                             incydent.defName, ostatniPrzed);
 
+            // MIGAWKA LISTOW (krok 8, K8-4): wszystko, co przybedzie miedzy nia a wznowieniem iteratora,
+            // pochodzi z TryFire naszego zdarzenia. W symulatorze listow nie ma - migawki nie robimy.
+            LetterSnapshot migawkaListow = null;
+            if (Props.useComposedLetter && !PNLog.InExperiment)
+            {
+                try
+                {
+                    migawkaListow = LetterSnapshot.Take(map);
+                }
+                catch (Exception e)
+                {
+                    PNLog.Warn("Migawka listow nie powiodla sie (" + e.GetType().Name + ": " + e.Message
+                               + ") - opis nie zostanie dopisany do tego listu.");
+                }
+            }
+
+            // LOG ODPALEN (krok 8, K8-2): obserwator w komponencie pamieci oznaczy to odpalenie pn=1.
+            // Przed yield - sciezka spozniona (iterator niewznowiony) tez dostaje poprawny znacznik.
+            if (!PNLog.InExperiment && Current.Game != null && map != null)
+            {
+                NarratorMemoryComponent pamiecOdpalen = Current.Game.GetComponent<NarratorMemoryComponent>();
+                if (pamiecOdpalen != null)
+                {
+                    pamiecOdpalen.ZarejestrujWlasneOdpalenie(tick, map.uniqueID, incydent.defName);
+                }
+            }
+
             yield return new FiringIncident(incydent, this, parms);
 
             PotwierdzWykonanie(map, ksiega, history, snapshot, incydent, parms, ostatniPrzed, tick,
-                               context.DecisionIndex, decyzja.Winner);
+                               context.DecisionIndex, decyzja.Winner, migawkaListow);
+
+            // Nasz TryFire juz byl (korzystal z NASZEGO werdyktu) - teraz cache wraca do stanu sprzed nas.
+            PrzywrocCache();
+        }
+
+        /// <summary>
+        /// CanFireNow z izolacja cache'u gry (krok 8, dlug 8). Przy pierwszym pytaniu o incydent w turze
+        /// zapamietuje stan cache'u i go uniewaznia (werdykt liczony dla NASZYCH parametrow); kolizja - w cache'u
+        /// byl juz werdykt z tego ticku od kogos innego - daje linie [PN-CACHE]. Bez dostepu do pol (inna wersja
+        /// gry) pyta jak przed krokiem 8.
+        /// </summary>
+        private bool ZapytajIzolowanie(IncidentDef def, IncidentParms parms, Map map)
+        {
+            IncidentWorker w = def.Worker;
+            if (!IncidentCacheAccess.Available || Find.TickManager == null)
+            {
+                return w.CanFireNow(parms);
+            }
+            int teraz = Find.TickManager.TicksGame;
+            VerdictCacheState przed = IncidentCacheAccess.Read(w);
+            bool kolizja;
+            IncidentCacheAccess.Write(w, strazCache.BeforeQuery(def.defName, teraz, przed, out kolizja));
+            pracownicyCache[def.defName] = w;
+            bool wynik = w.CanFireNow(parms);
+            if (kolizja)
+            {
+                PNLog.Cache(teraz, map == null ? -1 : map.uniqueID, def.defName, przed.Result, wynik);
+            }
+            return wynik;
+        }
+
+        /// <summary>
+        /// Przywraca cache gry sprzed naszych pytan (krok 8, dlug 8). Wolane po naszym TryFire (po wznowieniu
+        /// iteratora), przy ciszy i na poczatku kazdej tury. Resztki tury przerwanej wyjatkiem sa PORZUCANE, nie
+        /// zapisywane (przeglad S10): ich tick juz minal, cache z minionego ticku i tak jest martwy, a zapis
+        /// nadpisalby werdykt, ktory ktos policzyl w biezacym ticku.
+        /// </summary>
+        private void PrzywrocCache()
+        {
+            if (strazCache.PendingCount == 0)
+            {
+                return;
+            }
+            try
+            {
+                // EndTurn(teraz): stan przywracamy TYLKO w ticku naszej tury - resztki z ticku minionego sa
+                // porzucane (przeglad S10), bo zapis nadpisalby cudzy werdykt biezacego ticku.
+                int teraz = Find.TickManager == null ? VerdictCacheGuard.InvalidTick : Find.TickManager.TicksGame;
+                foreach (KeyValuePair<string, VerdictCacheState> kv in strazCache.EndTurn(teraz))
+                {
+                    IncidentWorker w;
+                    if (pracownicyCache.TryGetValue(kv.Key, out w))
+                    {
+                        IncidentCacheAccess.Write(w, kv.Value);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                PNLog.Warn("Przywrocenie cache'u CanFireNow nie powiodlo sie (" + e.GetType().Name + ": " + e.Message
+                           + ") - w tym ticku kolejni pytajacy moga zobaczyc nasz werdykt.");
+            }
+            pracownicyCache.Clear();
+        }
+
+        /// <summary>
+        /// Tekst listu i jego dopisanie (krok 8, K8-4 i K8-6). Tekst liczony dla zdarzenia wykonanego
+        /// i symulowanego (slad wariantow to dane badawcze), dopisywany tylko w grze. Nigdy nie rzuca:
+        /// blad tutaj nie moze zatrzymac potwierdzenia wykonania, lukow ani faktow.
+        /// </summary>
+        private string ZlozList(Map map, WorldSnapshot snapshot, ExecStatus status, string frakcjaId,
+                                int decyzjaNr, ScoredCandidate zwyciezca, LetterSnapshot migawka,
+                                out int nowychListow, out string warianty, out string tekst)
+        {
+            nowychListow = 0;
+            warianty = "-";
+            tekst = null;
+            if (status != ExecStatus.Executed && status != ExecStatus.Simulated)
+            {
+                return LetterAnnotator.Niewykonane;
+            }
+            try
+            {
+                Faction f = ArcObservationBuilder.ResolveFaction(frakcjaId);
+                string nazwaFrakcji = f == null ? null : f.Name;
+                tekst = TextComposer.Compose(zwyciezca == null ? null : zwyciezca.Event, snapshot, nazwaFrakcji,
+                                             ZiarnoTekstu(map, decyzjaNr), out warianty);
+                if (status == ExecStatus.Simulated)
+                {
+                    return LetterAnnotator.Symulacja;
+                }
+                if (!Props.useComposedLetter)
+                {
+                    return LetterAnnotator.Wylaczony;
+                }
+                return LetterAnnotator.Annotate(migawka, map, tekst, out nowychListow);
+            }
+            catch (Exception e)
+            {
+                PNLog.Warn("Dopisanie opisu do listu nie powiodlo sie (" + e.GetType().Name + ": " + e.Message + ").");
+                // Przeglad S10: przy bledzie slad wariantow nie niesie informacji o liscie - "-" (niezmiennik 44).
+                warianty = "-";
+                tekst = null;
+                return "blad";
+            }
+        }
+
+        /// <summary>
+        /// Ziarno wyboru wariantow tekstu: rozgrywka (runId), mapa i numer decyzji - bez RNG gry, wiec
+        /// dopisanie tekstu nie zmienia przebiegu rozgrywki, a ramiona symulatora z ta sama decyzja
+        /// dostaja ten sam tekst.
+        /// </summary>
+        private static int ZiarnoTekstu(Map map, int decyzjaNr)
+        {
+            NarratorMemoryComponent pamiec = Current.Game == null ? null : Current.Game.GetComponent<NarratorMemoryComponent>();
+            string runId = pamiec == null ? string.Empty : (pamiec.RunId ?? string.Empty);
+            return Gen.HashCombineInt(GenText.StableStringHash(runId),
+                                      Gen.HashCombineInt(decyzjaNr, map == null ? -1 : map.uniqueID));
         }
 
         /// <summary>lastFireTicks[def] tej mapy albo -1, gdy incydent nigdy nie odpalal.</summary>
@@ -736,12 +1015,23 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// </summary>
         private void PotwierdzWykonanie(Map map, ArcLedger ksiega, EventHistory history, WorldSnapshot snapshot,
                                         IncidentDef incydent, IncidentParms parms, int ostatniPrzed, int tick,
-                                        int decyzjaNr, ScoredCandidate zwyciezca)
+                                        int decyzjaNr, ScoredCandidate zwyciezca, LetterSnapshot migawkaListow)
         {
             try
             {
                 int ostatniPo = OstatnieOdpalenie(map, incydent);
                 ExecStatus status = ExecutionConfirmation.Classify(ostatniPrzed, ostatniPo, tick, PNLog.InExperiment);
+
+                // Log odpalen (krok 8, przeglad S10): niewykonane zdarzenie nie moze oznaczyc pn=1 cudzego odpalenia
+                // tego samego incydentu w tym ticku. Niejednoznaczne zostaje zarejestrowane (nie da sie rozstrzygnac).
+                if (status == ExecStatus.NotExecuted && map != null && incydent != null && Current.Game != null)
+                {
+                    NarratorMemoryComponent pamiecOdpalen = Current.Game.GetComponent<NarratorMemoryComponent>();
+                    if (pamiecOdpalen != null)
+                    {
+                        pamiecOdpalen.WyrejestrujWlasneOdpalenie(tick, map.uniqueID, incydent.defName);
+                    }
+                }
 
                 // Faktyczna frakcja zdarzenia: nasz obiekt parms PO TryExecute (worker napadu
                 // rozwiazuje ja w miejscu). Pewniejsze niz StoryState.lastRaidFaction, ktore
@@ -762,9 +1052,16 @@ namespace ProceduralNarrator.Integration.Storyteller
                     zrodloFrakcji = frakcja == null ? "-" : "emulacja";
                 }
 
+                // LIST GRACZA (krok 8): po klasyfikacji i frakcji, przed lukami - ZlozList nie rzuca.
+                int nowychListow;
+                string warianty, tekstListu;
+                string stanListu = ZlozList(map, snapshot, status, frakcja, decyzjaNr, zwyciezca, migawkaListow,
+                                            out nowychListow, out warianty, out tekstListu);
+
                 PNLog.Exec(map == null ? -1 : map.uniqueID, decyzjaNr, incydent == null ? null : incydent.defName,
                            zwyciezca == null ? null : zwyciezca.SortKey, ExecutionConfirmation.Label(status),
-                           ostatniPrzed, ostatniPo, frakcja, zwiazana, tick, zrodloFrakcji, tick);
+                           ostatniPrzed, ostatniPo, frakcja, zwiazana, tick, zrodloFrakcji, tick,
+                           stanListu, nowychListow, warianty, tekstListu);
 
                 // Fakty (krok 6): ten sam werdykt co luki, ale WLASNY try/catch wewnatrz metody -
                 // wyjatek po stronie faktow nie moze wylaczyc lukow, a luki wylaczone nie moga
@@ -841,9 +1138,11 @@ namespace ProceduralNarrator.Integration.Storyteller
                     IncidentDef def = DefDatabase<IncidentDef>.GetNamedSilentFail(czekajace.IncidentDefName);
                     int teraz = OstatnieOdpalenie(map, def);
                     ExecStatus st = ExecutionConfirmation.ClassifyLate(teraz, czekajace);
+                    // List (krok 8): gracz juz go widzial - nie dopisujemy (list=pozno).
                     PNLog.Exec(map.uniqueID, czekajace.DecisionIndex, czekajace.IncidentDefName, null,
                                ExecutionConfirmation.Label(st), czekajace.LastFireBefore, teraz, null,
-                               czekajace.Event == null ? null : czekajace.Event.FactionId, tick, "-", czekajace.Tick);
+                               czekajace.Event == null ? null : czekajace.Event.FactionId, tick, "-", czekajace.Tick,
+                               LetterAnnotator.Pozno, 0, "-", null);
                     ArcEventView ev = czekajace.Event ?? new ArcEventView();
                     ev.FactionId = null;
                     ksiega.Pending = null;
@@ -1414,9 +1713,12 @@ namespace ProceduralNarrator.Integration.Storyteller
             var nowyScorer = new UtilityScorer(BuildEventFactors(), profil.Weights,
                                                UtilityScorer.BuildPassFactors(Props.pass), Props.pass,
                                                Props.vetoContextFitBelow);
+            // Orientacja stylu (krok 7) nalezy do profilu - publikowana razem z krzywa i wagami.
+            float nowaOrientacja = profil.StyleOrientation;
 
             tensionModel = nowyModel;
             scorer = nowyScorer;
+            orientacjaStylu = nowaOrientacja;
             activeProfileId = chcianyId;
 
             // Walidacja i opis sa TUTAJ, bezposrednio po konstrukcji, i to nie jest kwestia

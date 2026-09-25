@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Conditions;
+using ProceduralNarrator.Core.PlayerModel;
 
 namespace ProceduralNarrator.Core.Model
 {
@@ -69,6 +70,19 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Fragment opisu narracyjnego wnoszony przez ten klocek.</summary>
         public string TextFragment;
 
+        /// <summary>
+        /// Warianty tekstu zalezne od kontekstu (krok 8, decyzja autora K8-6). Czyta wylacznie
+        /// TextComposer przy skladaniu listu gracza; scoring, graf i sygnatura kandydata ich nie widza.
+        /// </summary>
+        public List<TextVariant> TextVariants = new List<TextVariant>();
+
+        /// <summary>
+        /// Czy incydent tego klocka AKCJI skaluje sie punktami zagrozenia (krok 8). Deklaracja danych -
+        /// audyt startowy porownuje ja z IncidentDef.pointsScaleable; walidator pilnuje, ze deklaruje ja
+        /// wylacznie klocek akcji. Czyta wariant tekstu z requiresPointsScaling.
+        /// </summary>
+        public bool ScalesWithPoints;
+
         /// <summary>Bramki spojnosci - klocek jest niedostepny, gdy ktorakolwiek nie przejdzie.</summary>
         public List<NarrativeCondition> Conditions = new List<NarrativeCondition>();
 
@@ -84,6 +98,13 @@ namespace ProceduralNarrator.Core.Model
         /// dyscyplina w danych.
         /// </summary>
         public List<FactWrite> FactsOnExecute = new List<FactWrite>();
+
+        /// <summary>
+        /// Czego dotyczy zdarzenie w jezyku cech stylu gracza (krok 7, decyzja autora nr 20). Deklaruje
+        /// WYLACZNIE klocek akcji - tak jak osie; u innych klockow zostaja zera (pilnuje walidator
+        /// i audyt startowy). Czyta StyleFocus.
+        /// </summary>
+        public StyleWeights StyleWeights = new StyleWeights();
 
         public bool HasTag(string tag)
         {

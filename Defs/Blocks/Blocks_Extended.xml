@@ -82,6 +82,7 @@
     <intensity>Normal</intensity>
     <tags><li>militarny</li><li>szantaz</li></tags>
     <payload>RansomDemand</payload>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
     <textFragment>zada okupu za porwanego czlonka kolonii.</textFragment>
     <!-- REGULA "fakt w tekscie = warunek TWARDY". Fragment stwierdza, ze ktos ZOSTAL PORWANY -
          to sprawdzalny fakt o stanie swiata, wiec musi go pilnowac warunek, nie preferencja.
@@ -124,7 +125,18 @@
     <intensity>Low</intensity>
     <tags><li>spoleczny</li><li>kapsula</li></tags>
     <payload>RefugeePodCrash</payload>
-    <textFragment>spada z nieba w kapsule ratunkowej i prosi o azyl.</textFragment>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>spada z nieba w kapsule ratunkowej.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>rozbija sie w kapsule ratunkowej.</text>
+      </li>
+    </textVariants>
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
         <from>12</from>
@@ -148,7 +160,26 @@
     <intensity>Low</intensity>
     <tags><li>spoleczny</li><li>dzicz</li></tags>
     <payload>WildManWandersIn</payload>
-    <textFragment>wychodzi z dziczy i zaczyna krecic sie przy osadzie.</textFragment>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>wychodzi z dziczy i kreci sie po okolicy.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wychodzi z dziczy i wloczy sie po okolicy.</text>
+      </li>
+    </textVariants>
+    <!-- Krok 8 (dlug 6): gra wpuszcza dzikiego czlowieka tylko w porze roku znosnej dla ludzi
+         (IncidentWorker_WildManWandersIn.CanFireNowSub). Bez tego warunku akcja odmawiala sezonowo
+         w 90 ze 119 odmow symulatora i nie wygrala ani razu. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_SeasonAcceptableForHumans" />
+      <!-- Przeglad S10 (dlug 6): gra odmawia takze przy opadzie toksycznym i toksycznej mgle. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ToxicAir" />
+    </conditions>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
       <li>PN_Aktor_Dzikie</li>
@@ -174,6 +205,7 @@
     <intensity>Low</intensity>
     <tags><li>zasoby</li><li>uzywka</li></tags>
     <payload>AmbrosiaSprout</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
     <textFragment>sprawia, ze w okolicy wysypuje sie ambrozja.</textFragment>
     <incompatibleWith>
       <li>PN_Aktor_Piraci</li>
@@ -199,7 +231,10 @@
     <intensity>Normal</intensity>
     <tags><li>zasoby</li><li>niebo</li></tags>
     <payload>MeteoriteImpact</payload>
-    <textFragment>zrzuca na teren kolonii meteoryt pelen kruszcu.</textFragment>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>zrzuca w okolicy meteoryt.</textFragment>
     <!-- Uboga kolonia bardziej sie ucieszy -->
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
@@ -225,7 +260,25 @@
     <!-- "niebo": wspolny tag lukow PN_Luk_ZnakiZNieba (krok 5). Tag nie wplywa na scoring ani tekst. -->
     <tags><li>pogoda</li><li>ogien</li><li>niebo</li></tags>
     <payload>Flashstorm</payload>
-    <textFragment>rozpetuje nad osada burze z piorunami.</textFragment>
+    <styleWeights><gospodarka>1</gospodarka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>rozpetuje w okolicy burze z piorunami.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>noc</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Night" />
+        </conditions>
+        <text>rozpetuje w okolicy nocna burze z piorunami.</text>
+      </li>
+      <li>
+        <id>z1</id>
+        <text>sciaga w okolice burze z piorunami.</text>
+      </li>
+    </textVariants>
     <!-- Burza ogniowa grozniejsza w suchym lecie -->
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
@@ -250,7 +303,9 @@
     <intensity>High</intensity>
     <tags><li>psychika</li><li>wrak</li><li>niebo</li></tags>
     <payload>PsychicEmanatorShipPartCrash</payload>
-    <textFragment>strzaska sie o grunt, a z wraku zaczyna saczyc sie psychiczny szum.</textFragment>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <textFragment>roztrzaskuje sie o grunt, a z wraku zaczyna saczyc sie psychiczny szum.</textFragment>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
         <min>20</min>
@@ -336,6 +391,7 @@
     <intensity>Low</intensity>
     <tags><li>zwierzeta</li></tags>
     <payload>AnimalInsanitySingle</payload>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <!-- Tekst nie mowi ILU zwierzat dotyczy ani GDZIE sie to dzieje. Oba przemilczenia sa
          celowe. Liczba: waniliowy worker wybiera DOKLADNIE JEDNO zwierze, wiec liczba mnoga
          bylaby falszem - ale podmiotem zdania jest klocek aktora ("Dzika zwierzyna"), wiec
@@ -343,6 +399,14 @@
          z CALEJ mapy i to ono jest celem kamery w liscie, wiec obiecanie polozenia byloby
          niesprawdzalne - ta sama regula co przy slocie Target. -->
     <textFragment>traci rozum i rzuca sie na kazdego, kogo napotka.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>traci rozum i atakuje kazdego, kogo napotka.</text>
+      </li>
+    </textVariants>
     <conditions>
       <!-- ODWZOROWANIE WORKERA, nie luzniejsze "sa jakies zwierzeta".
            IncidentWorker_AnimalInsanitySingle wymaga zwierzecia niemutanckiego, o combatPower

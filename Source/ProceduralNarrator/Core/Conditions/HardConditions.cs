@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.PlayerModel;
 
 namespace ProceduralNarrator.Core.Conditions
 {
@@ -258,6 +259,46 @@ namespace ProceduralNarrator.Core.Conditions
     }
 
     /// <summary>
+    /// Pora roku znosna dla ludzi (krok 8, dlug 6) - odwzorowanie warunku z
+    /// IncidentWorker_WildManWandersIn.CanFireNowSub (map.mapTemperature.SeasonAcceptableFor(ThingDefOf.Human),
+    /// dekompilacja 1.5.4063), jak Cond_MountainRoof odwzorowuje wymog Rojenia. Bez niego akcja przegrywala
+    /// sezonowo w silniku, kosztujac pytanie do gry w kazdej turze i nigdy nie wygrywajac.
+    /// </summary>
+    public class Cond_SeasonAcceptableForHumans : NarrativeCondition
+    {
+        public bool wantAcceptable = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.SeasonAcceptableForHumans == wantAcceptable;
+        }
+
+        public override string Describe()
+        {
+            return wantAcceptable ? "pora roku znosna dla ludzi" : "pora roku nieznosna dla ludzi";
+        }
+    }
+
+    /// <summary>
+    /// Skazone powietrze (przeglad S10, dlug 6): domyslnie WYMAGA czystego powietrza - odwzorowanie odmow
+    /// IncidentWorker_WildManWandersIn.CanFireNowSub przy opadzie toksycznym i toksycznej mgle.
+    /// </summary>
+    public class Cond_ToxicAir : NarrativeCondition
+    {
+        public bool wantToxic = false;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.ToxicAirActive == wantToxic;
+        }
+
+        public override string Describe()
+        {
+            return wantToxic ? "powietrze skazone" : "powietrze czyste";
+        }
+    }
+
+    /// <summary>
     /// Wymaga, by od ostatniego WYDARZENIA narratora uplynelo co najmniej tyle dni gry.
     /// Decyzje PASS sie nie licza - cisza nie przerywa spokoju, tylko go przedluza.
     ///
@@ -291,6 +332,37 @@ namespace ProceduralNarrator.Core.Conditions
     /// Obecnosc, a nie wartosc: zero jest poprawna wartoscia faktu, wiec sprawdzanie "czy jest"
     /// porownaniem z zerem odpowiadaloby falszywie dla licznika, ktory wlasnie wyzerowano.
     /// </summary>
+    /// <summary>
+    /// STYL GRACZA (krok 7, decyzja autora nr 14): cecha jest MOCNA STRONA gracza (profil wzgledny,
+    /// c &gt;= prog). Dozwolony WYLACZNIE w startConditions lukow - w warunkach klocka zmienialby liczbe
+    /// dostepnych akcji m, a przez to K = B/m i pule bramy PASS (pilnuja walidator i audyt startowy).
+    ///
+    /// Cecha jako TEKST, nie enum: parser Defow przy blednej wartosci enuma podstawia cicho wartosc
+    /// domyslna (Walka). Nieznana cecha to blad katalogu (ArcCatalog.Build odrzuca caly luk).
+    /// </summary>
+    public class Cond_StylMocnaStrona : NarrativeCondition
+    {
+        public string dimension;
+        public bool required = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            StyleDimension d;
+            if (!StyleDimensions.TryParse(dimension, out d))
+            {
+                return false;
+            }
+            bool jest = !string.IsNullOrEmpty(s.StyleStrongSides)
+                        && s.StyleStrongSides.IndexOf(";" + dimension + ";", StringComparison.Ordinal) >= 0;
+            return jest == required;
+        }
+
+        public override string Describe()
+        {
+            return (required ? "mocna strona gracza: " : "nie mocna strona gracza: ") + (dimension ?? "?");
+        }
+    }
+
     public class Cond_Fakt : NarrativeCondition
     {
         public string key;

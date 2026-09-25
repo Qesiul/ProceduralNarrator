@@ -113,7 +113,8 @@ namespace ProceduralNarrator.Integration.Arcs
     }
 
     /// <summary>
-    /// Kanarek losowosci: czy obserwacja lukow nie ruszyla generatora gry (Verse.Rand).
+    /// Kanarek losowosci: czy obserwacja lukow (i od kroku 7 obserwator stylu gracza) nie ruszyla
+    /// generatora gry (Verse.Rand). Jeden raport na sesje dla obu.
     /// Czyta prywatny licznik Rand.iterations (dekompilacja 1.5.4063) refleksja PRZED i PO
     /// obserwacji. Rozjazd = jeden blad na sesje i wylaczenie kanarka (nie wylacza lukow).
     /// Gdy pole nie istnieje (inna wersja gry), kanarek milknie - bez bledu.
@@ -145,9 +146,10 @@ namespace ProceduralNarrator.Integration.Arcs
             if (after != before)
             {
                 zgloszono = true;
-                PNLog.Error("Obserwacja lukow ZUZYLA Verse.Rand (" + where + ", iteracji "
+                PNLog.Error("Obserwacja bez losowosci ZUZYLA Verse.Rand (" + where + ", iteracji "
                             + (after - before).ToString(CultureInfo.InvariantCulture)
-                            + ") - wywolanie co 1000 tickow przesuwa generator gry. Sprawdz ArcObservationBuilder.");
+                            + ") - kazde wywolanie przesuwa generator gry. Sprawdz ArcObservationBuilder "
+                            + "albo PlayerStyleObserver.");
             }
         }
     }

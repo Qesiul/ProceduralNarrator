@@ -107,7 +107,17 @@ namespace ProceduralNarrator.Core.Arcs
     public sealed class PendingExecution
     {
         public const string LineTag = "P";
-        public const int FieldCount = 18;
+
+        /// <summary>Znacznik "styl zapamietany, mocnych stron brak" w 19. polu linii P.</summary>
+        public const string StyleEmptyToken = ";";
+        public const int FieldCount = 19;
+
+        /// <summary>
+        /// Dlugosc linii z S6 kroku 6 (pamiec decyzji bez stylu gracza). Nadal PRZYJMOWANA przy odczycie;
+        /// brakuje wtedy tylko pamieci stylu (HasDecisionStyle == false) i sciezka spozniona bierze
+        /// mocne strony stylu z T+1000 (znane ograniczenie starych zapisow).
+        /// </summary>
+        public const int S6FieldCount = 18;
 
         /// <summary>
         /// Dlugosc linii sprzed S6 kroku 6 (bez pamieci decyzji). Nadal PRZYJMOWANA przy odczycie -
@@ -142,6 +152,13 @@ namespace ProceduralNarrator.Core.Arcs
         public float DecisionDaysSinceLastEvent;
         public int DecisionDaysPassed;
 
+        /// <summary>
+        /// Mocne strony STYLU GRACZA z chwili decyzji (krok 7): miedzy decyzja a T+1000 moze sie zamknac
+        /// doba i styl sie zmienic, a warunki startu lukow maja widziec swiat z poczatku tury.
+        /// </summary>
+        public bool HasDecisionStyle;
+        public string DecisionStyleStrongSides;
+
         /// <summary>Zapamietuje pola historii ze snapshotu decyzji (ten sam obiekt, ktory widza warunki).</summary>
         public void CaptureDecisionMemory(WorldSnapshot decyzji)
         {
@@ -154,6 +171,8 @@ namespace ProceduralNarrator.Core.Arcs
             DecisionTurnsSinceThemes = decyzji.TurnsSinceThemes ?? string.Empty;
             DecisionDaysSinceLastEvent = decyzji.DaysSinceLastEvent;
             DecisionDaysPassed = decyzji.DaysPassed;
+            HasDecisionStyle = true;
+            DecisionStyleStrongSides = decyzji.StyleStrongSides ?? string.Empty;
         }
 
         /// <summary>
@@ -169,6 +188,10 @@ namespace ProceduralNarrator.Core.Arcs
             spozniony.TurnsSinceThemes = DecisionTurnsSinceThemes ?? string.Empty;
             spozniony.DaysSinceLastEvent = DecisionDaysSinceLastEvent;
             spozniony.DaysPassed = DecisionDaysPassed;
+            if (HasDecisionStyle)
+            {
+                spozniony.StyleStrongSides = DecisionStyleStrongSides ?? string.Empty;
+            }
             return true;
         }
 
@@ -196,7 +219,11 @@ namespace ProceduralNarrator.Core.Arcs
                 // Pamiec decyzji: "-" we WSZYSTKICH trzech polach = brak pamieci (HasDecisionMemory false).
                 HasDecisionMemory ? ArcInstance.Escape(DecisionTurnsSinceThemes) : ArcInstance.EmptyToken,
                 HasDecisionMemory ? DecisionDaysSinceLastEvent.ToString("G9", CultureInfo.InvariantCulture) : ArcInstance.EmptyToken,
-                HasDecisionMemory ? DecisionDaysPassed.ToString(CultureInfo.InvariantCulture) : ArcInstance.EmptyToken
+                HasDecisionMemory ? DecisionDaysPassed.ToString(CultureInfo.InvariantCulture) : ArcInstance.EmptyToken,
+                // Styl gracza (krok 7): "-" = brak pamieci stylu, ";" = styl zapamietany, mocnych stron brak
+                // (postac kanoniczna pustego zbioru to "", ktorej Escape nie odroznilby od braku).
+                !HasDecisionStyle ? ArcInstance.EmptyToken
+                    : (string.IsNullOrEmpty(DecisionStyleStrongSides) ? StyleEmptyToken : DecisionStyleStrongSides)
             });
         }
 
@@ -208,7 +235,7 @@ namespace ProceduralNarrator.Core.Arcs
                 return false;
             }
             string[] f = line.Split(ArcInstance.FieldSeparator);
-            if ((f.Length != FieldCount && f.Length != LegacyFieldCount) || f[0] != LineTag)
+            if ((f.Length != FieldCount && f.Length != S6FieldCount && f.Length != LegacyFieldCount) || f[0] != LineTag)
             {
                 return false;
             }
@@ -228,7 +255,7 @@ namespace ProceduralNarrator.Core.Arcs
             bool pamiec = false;
             float dniOdZdarzenia = 0f;
             int dniGry = 0;
-            if (f.Length == FieldCount && !(f[16] == ArcInstance.EmptyToken && f[17] == ArcInstance.EmptyToken))
+            if (f.Length >= S6FieldCount && !(f[16] == ArcInstance.EmptyToken && f[17] == ArcInstance.EmptyToken))
             {
                 // Pamiec zapisana: oba pola liczbowe MUSZA sie odczytac. Polowiczna pamiec to
                 // uszkodzona linia, a nie "brak pamieci" - odrzucamy cala, jak kazde zle pole.
@@ -237,6 +264,25 @@ namespace ProceduralNarrator.Core.Arcs
                     return false;
                 }
                 pamiec = true;
+            }
+            bool styl = false;
+            string mocne = null;
+            if (f.Length == FieldCount && f[18] != ArcInstance.EmptyToken)
+            {
+                // Pamiec stylu: ";" (pusty zbior) albo postac kanoniczna ";X;...;". Inny ksztalt = uszkodzenie.
+                if (f[18] == StyleEmptyToken)
+                {
+                    mocne = string.Empty;
+                }
+                else if (f[18].Length > 2 && f[18][0] == ';' && f[18][f[18].Length - 1] == ';')
+                {
+                    mocne = f[18];
+                }
+                else
+                {
+                    return false;
+                }
+                styl = true;
             }
             var e = new ArcEventView
             {
@@ -271,7 +317,9 @@ namespace ProceduralNarrator.Core.Arcs
                 HasDecisionMemory = pamiec,
                 DecisionTurnsSinceThemes = pamiec ? (ArcInstance.Unescape(f[15]) ?? string.Empty) : null,
                 DecisionDaysSinceLastEvent = dniOdZdarzenia,
-                DecisionDaysPassed = dniGry
+                DecisionDaysPassed = dniGry,
+                HasDecisionStyle = styl,
+                DecisionStyleStrongSides = mocne
             };
             return true;
         }

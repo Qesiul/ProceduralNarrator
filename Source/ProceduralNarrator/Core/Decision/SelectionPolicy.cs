@@ -220,6 +220,12 @@ namespace ProceduralNarrator.Core.Decision
         public int ArcMatchedInBand = -1;
 
         /// <summary>
+        /// Ilu kandydatow W PASMIE rundy pierwszej mialo niezerowa wartosc stylu (krok 7); -1, gdy styl
+        /// nie dzialal w tej turze (kolumna stylWPasmie pusta).
+        /// </summary>
+        public int StyleNonZeroInBand = -1;
+
+        /// <summary>
         /// Ranking z PELNEJ puli tury wraz z PASS. Kandydaci odrzuceni pozniej przez silnik
         /// zostaja w nim jako te same referencje, wiec ich RejectionStage.EngineRefused i pelne
         /// rozbicie na czynniki NIE GINIE po usunieciu z puli roboczej.
@@ -606,6 +612,34 @@ namespace ProceduralNarrator.Core.Decision
                 }
             }
 
+            // PREMIA STYLU GRACZA (krok 7, decyzje autora nr 3 i 12) - ta sama wielkosc bazowa co premia
+            // lukowa (best - progPasma), razy wartosc stylu v w [-1, 1]. Tak samo: po bramie, progu
+            // i pasmie, tylko w puli pasma, wlasnosc RUNDY. Premie lukowa i stylu SUMUJA sie w
+            // SelectionScore; styl ze znakiem ujemnym obniza zdarzenia z mocnej strony gracza.
+            // LUK MA PIERWSZENSTWO (decyzja autora po przegladzie S8): kandydat pasujacy do fazy otwartego luku
+            // (ArcBonus > 0) nie dostaje UJEMNEJ premii stylu. W eskalacji kierunek stylu jest ujemny, a luki pod styl
+            // czekaja na zdarzenia z MOCNEJ strony - suma oslabiala albo zerowala sterowanie luku. Dodatnia zostaje.
+            float premiaStylu = best - progPasma;
+            bool stylStosowany = false;
+            int stylowychWPasmie = 0;
+            for (int i = 0; i < lista.Count; i++)
+            {
+                lista[i].StyleBonus = 0f;
+                if (lista[i].StyleApplied)
+                {
+                    stylStosowany = true;
+                }
+            }
+            for (int i = 0; i < pulaZdarzen.Count; i++)
+            {
+                ScoredCandidate k = pulaZdarzen[i];
+                if (k.StyleApplied && k.StyleValue != 0f)
+                {
+                    k.StyleBonus = k.ArcBonus > 0f && k.StyleValue < 0f ? 0f : premiaStylu * k.StyleValue;
+                    stylowychWPasmie++;
+                }
+            }
+
             List<ActionGroup> grupy = ActionWeighting.Group(pulaZdarzen);
             double[] pZdarzen = new double[pulaZdarzen.Count];
             int idxZdarzenia = -1;
@@ -798,6 +832,7 @@ namespace ProceduralNarrator.Core.Decision
                 BandThreshold = progPasma,
                 Ranking = ranking,
                 ArcMatchedInBand = lukStosowany ? lukowychWPasmie : -1,
+                StyleNonZeroInBand = stylStosowany ? stylowychWPasmie : -1,
             };
 
             decyzja.Winner = zwyciezca;
@@ -816,6 +851,7 @@ namespace ProceduralNarrator.Core.Decision
             decyzja.Gate = brama;
             decyzja.TurnStats = tura;
             decyzja.ArcMatchedInBand = tura.ArcMatchedInBand;
+            decyzja.StyleNonZeroInBand = tura.StyleNonZeroInBand;
 
             // ---- C10. Powod PASS-a ----
             // Kolejnosc sprawdzania jest istotna: od przyczyny najbardziej zewnetrznej do najbardziej
@@ -868,6 +904,8 @@ namespace ProceduralNarrator.Core.Decision
                 .Append(" akcjiWPasmie=").Append(grupy.Count.ToString(CultureInfo.InvariantCulture))
                 .Append(" lukowychWPasmie=").Append(lukStosowany ? lukowychWPasmie.ToString(CultureInfo.InvariantCulture) : "-")
                 .Append(" premiaLuku=").Append(premiaLuku.ToString("0.000", CultureInfo.InvariantCulture))
+                .Append(" stylowychWPasmie=").Append(stylStosowany ? stylowychWPasmie.ToString(CultureInfo.InvariantCulture) : "-")
+                .Append(" premiaStylu=").Append(premiaStylu.ToString("0.000", CultureInfo.InvariantCulture))
                 .Append(" progPasma=").Append(progPasma.ToString("0.000", CultureInfo.InvariantCulture))
                 .Append(" T=").Append(parameters.softmaxTemperature.ToString("0.0##", CultureInfo.InvariantCulture))
                 .Append(" Tbramy=").Append(parameters.gateTemperature.ToString("0.0##", CultureInfo.InvariantCulture))

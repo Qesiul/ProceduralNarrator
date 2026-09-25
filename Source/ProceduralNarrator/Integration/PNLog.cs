@@ -168,7 +168,12 @@ namespace ProceduralNarrator.Integration
         /// kolumna "klucz" (sygnatura kompozycji) ma od kroku 6 szesc segmentow zamiast pieciu, a bez
         /// nowego numeru skrypt analizy zszylby obie serie bez ostrzezenia - porownywalnosc pozorna
         /// jest gorsza niz zerwana.
-        public const int DataFormatVersion = 8;
+        ///
+        /// v9 (krok 7, styl gracza): dziewiec kolumn stylu w preambule (dni w kolejce, aktywnosc, cztery
+        /// cechy na wspolnej skali, mocne strony, etykieta, kierunek d) i trzy na koncu czesci decyzyjnej
+        /// (wartosc stylu zwyciezcy, jego premia, liczba kandydatow z niezerowym stylem w pasmie); linia
+        /// [PN-GRACZ] poza kontraktem; pole "styl=" w [PN-LOAD] i [PN-RESET].
+        public const int DataFormatVersion = 9;
 
         /// <summary>
         /// PELNA lista kolumn linii [PN-DATA] w ich OBOWIAZUJACEJ kolejnosci. Jedyne zrodlo
@@ -191,6 +196,9 @@ namespace ProceduralNarrator.Integration
             "lukiAktywne", "lukFazy", "frakcjaLuku", "lukStosowany", "lukDopasowanych",
             // --- krok 6 (v8): pamiec narratora w chwili decyzji ---
             "faktow",
+            // --- krok 7 (v9): styl gracza w chwili decyzji ---
+            "stylDni", "stylAktywny", "stylWalka", "stylGospodarka", "stylEkspansja", "stylReaktywnosc",
+            "stylMocne", "stylEtykieta", "stylKierunek",
 
             // --- generowanie kandydatow (CandidateSet) ---
             "wygenerowanych", "budzet", "akcji", "limitNaAkcje", "przestrzen",
@@ -208,7 +216,9 @@ namespace ProceduralNarrator.Integration
             // --- krok 5 (v7): moc zwyciezcy i luk ---
             "intensywnosc", "arcAlignment", "premiaLuku", "lukWPasmie",
             // --- krok 6 (v8): slad zostawiany przez zwyciezce ---
-            "konsekwencja"
+            "konsekwencja",
+            // --- krok 7 (v9): styl gracza u zwyciezcy ---
+            "stylWartosc", "premiaStylu", "stylWPasmie"
         };
 
         private static bool formatVerified;
@@ -559,7 +569,8 @@ namespace ProceduralNarrator.Integration
         public static void Load(string runId, string zrodlo, string profil, string profilZapisany,
                                 int mapCount, int wpisow, int decyzji, int odrzuconych, int wersjaPamieci,
                                 string mapy, string luki, string fakty,
-                                int odrzuconychHistorii, int odrzuconychLukow, int odrzuconychFaktow)
+                                int odrzuconychHistorii, int odrzuconychLukow, int odrzuconychFaktow,
+                                string styl, int odrzuconychStylu)
         {
             string linia = LoadPrefix
                            + "runId=" + (string.IsNullOrEmpty(runId) ? "?" : runId)
@@ -574,9 +585,14 @@ namespace ProceduralNarrator.Integration
                            + "; odrzuconychHistorii=" + odrzuconychHistorii.ToString(CultureInfo.InvariantCulture)
                            + "; odrzuconychLukow=" + odrzuconychLukow.ToString(CultureInfo.InvariantCulture)
                            + "; odrzuconychFaktow=" + odrzuconychFaktow.ToString(CultureInfo.InvariantCulture)
+                           // Krok 7: ksiega stylu gracza (osobny wezel "stylGracza"); wliczona w "odrzuconych".
+                           + "; odrzuconychStylu=" + odrzuconychStylu.ToString(CultureInfo.InvariantCulture)
                            + "; wersjaPamieci=" + wersjaPamieci.ToString(CultureInfo.InvariantCulture)
                            + "; profilZapisany=" + (string.IsNullOrEmpty(profilZapisany) ? "?" : profilZapisany)
                            + "; narrator=" + CurrentStorytellerName()
+                           // Krok 8 (przeglad S10): warunki gry, bez ktorych rozgrywek nie da sie porownac -
+                           // trudnosc, skala zagrozen, duze zagrozenia, zagrozenia intro i scenariusz.
+                           + CurrentGameConditionsText()
                            + "; tick=" + CurrentTickText()
                            + "; dzien=" + CurrentDayText()
                            + "; mapy=" + (mapy ?? string.Empty)
@@ -585,7 +601,10 @@ namespace ProceduralNarrator.Integration
                            + "; luki=" + (luki ?? string.Empty)
                            // Krok 6: fakty "uid:klucz=wartosc@dzien/zycie,..." (+ "uid:kolejka@tick") -
                            // stan pamieci faktow w chwili wczytania, ta sama regula rozwidlenia.
-                           + "; fakty=" + (fakty ?? string.Empty);
+                           + "; fakty=" + (fakty ?? string.Empty)
+                           // Krok 7: stan stylu "dni:..,dzien:..,aktywny:..,mocne:..,etykieta:.." - poczatek
+                           // ciaglosci linii [PN-GRACZ] po rozwidleniu.
+                           + "; styl=" + (styl ?? string.Empty);
 
             WriteData(linia);
 
@@ -637,6 +656,65 @@ namespace ProceduralNarrator.Integration
                       + "; dzien=" + CurrentDayText()
                       + "; akcja=" + (akcja ?? "?")
                       + (string.IsNullOrEmpty(szczegoly) ? string.Empty : "; " + szczegoly));
+        }
+
+        private const string PlayerPrefix = "[PN-GRACZ] ";
+
+        /// <summary>
+        /// Jedna linia na ZAMKNIETA dobe obserwacji stylu gracza (krok 7) - TYLKO do pliku danych, bez
+        /// Verse.Log (limit 1000 komunikatow). Pisze ja obserwator w kazdej grze, takze pod innym
+        /// narratorem (pole narrator=). Poza kontraktem [PN-DATA].
+        ///
+        /// POLA: dzien = zamknieta doba; dni = dni w kolejce po jej dopisaniu; styl* = cechy na wspolnej
+        /// skali (puste = nieznana, takze w rozgrzewce); c* = profil wzgledny; mocne, etykieta, druga,
+        /// margines - puste w rozgrzewce; epizody/oferty/schwytani - liczebnosci w oknie; x*/z* - pomiary
+        /// (puste = brak danych w oknie); n*/d* - surowy licznik i mianownik ZAMKNIETEJ doby (liczby
+        /// calkowite z ksiegi). Analiza przelicza z nich mocne strony i etykiete niezaleznie.
+        /// </summary>
+        public static void Player(Core.PlayerModel.StyleDaySample dzien, Core.PlayerModel.StyleReading r)
+        {
+            if (dzien == null || r == null)
+            {
+                return;
+            }
+            var sb = new StringBuilder(1200);
+            sb.Append(PlayerPrefix)
+              .Append("runId=").Append(CurrentRunId())
+              .Append("; tryb=").Append(InExperiment ? "symulacja" : "gra")
+              .Append("; narrator=").Append(CurrentStorytellerName())
+              .Append("; tick=").Append(CurrentTickText())
+              .Append("; dzien=").Append(dzien.Day.ToString(CultureInfo.InvariantCulture))
+              .Append("; dni=").Append(r.Days.ToString(CultureInfo.InvariantCulture))
+              .Append("; aktywny=").Append(r.Active ? "true" : "false");
+            for (int d = 0; d < Core.PlayerModel.StyleDimensions.Count; d++)
+            {
+                sb.Append("; styl").Append(Core.PlayerModel.StyleDimensions.Name((Core.PlayerModel.StyleDimension)d)).Append('=')
+                  .Append(r.Known[d] ? r.Z[d].ToString("0.000", CultureInfo.InvariantCulture) : string.Empty);
+            }
+            for (int d = 0; d < Core.PlayerModel.StyleDimensions.Count; d++)
+            {
+                sb.Append("; c").Append(Core.PlayerModel.StyleDimensions.Name((Core.PlayerModel.StyleDimension)d)).Append('=')
+                  .Append(r.Known[d] ? r.C[d].ToString("0.000", CultureInfo.InvariantCulture) : string.Empty);
+            }
+            sb.Append("; mocne=").Append(r.Active ? r.StrongData() : string.Empty)
+              .Append("; etykieta=").Append(r.Active ? r.Label ?? string.Empty : string.Empty)
+              .Append("; druga=").Append(r.Active ? r.SecondLabel ?? string.Empty : string.Empty)
+              .Append("; margines=").Append(r.Active && !string.IsNullOrEmpty(r.SecondLabel)
+                                            ? r.Margin.ToString("0.0000", CultureInfo.InvariantCulture) : string.Empty)
+              .Append("; epizody=").Append(r.EpisodesInWindow.ToString(CultureInfo.InvariantCulture))
+              .Append("; oferty=").Append(r.OffersInWindow.ToString(CultureInfo.InvariantCulture))
+              .Append("; schwytani=").Append(r.CapturesInWindow.ToString(CultureInfo.InvariantCulture));
+            for (int i = 0; i < Core.PlayerModel.StyleSignals.Count; i++)
+            {
+                string n = Core.PlayerModel.StyleSignals.Name((Core.PlayerModel.StyleSignal)i);
+                sb.Append("; x").Append(n).Append('=')
+                  .Append(r.SignalKnown[i] ? r.SignalX[i].ToString("0.######", CultureInfo.InvariantCulture) : string.Empty)
+                  .Append("; z").Append(n).Append('=')
+                  .Append(r.SignalKnown[i] ? r.SignalZ[i].ToString("0.000", CultureInfo.InvariantCulture) : string.Empty)
+                  .Append("; n").Append(n).Append('=').Append(dzien.Num[i].ToString(CultureInfo.InvariantCulture))
+                  .Append("; d").Append(n).Append('=').Append(dzien.Den[i].ToString(CultureInfo.InvariantCulture));
+            }
+            WriteData(sb.ToString());
         }
 
         private const string ArcPrefix = "[PN-ARC] ";
@@ -706,6 +784,23 @@ namespace ProceduralNarrator.Integration
                                 int ostatniPrzed, int ostatniPo, string frakcja, string frakcjaZwiazana, int tick,
                                 string frakcjaZrodlo, int tickDecyzji)
         {
+            Exec(mapId, decyzjaNr, incydent, klucz, status, ostatniPrzed, ostatniPo, frakcja, frakcjaZwiazana, tick,
+                 frakcjaZrodlo, tickDecyzji, "-", 0, "-", null);
+        }
+
+        /// <summary>
+        /// Jak wyzej, plus LIST GRACZA (krok 8, decyzje K8-4 i K8-6):
+        ///   list=         dopisany | odroczony | brak | wylaczony | niewykonane | symulacja | pozno | pustyOpis | blad;
+        ///   nowychListow= ile listow przybylo miedzy migawka a wznowieniem iteratora;
+        ///   warianty=     slad TextComposer ("klocek:wariant" po przecinku; "-" = tekst nie liczony);
+        ///   tekstListu=   zlozony opis (jedna linia) - OSTATNIE pole, do konca linii, bo tekst moze
+        ///                 zawierac srednik. Pusty, gdy tekstu nie liczono.
+        /// </summary>
+        public static void Exec(int mapId, int decyzjaNr, string incydent, string klucz, string status,
+                                int ostatniPrzed, int ostatniPo, string frakcja, string frakcjaZwiazana, int tick,
+                                string frakcjaZrodlo, int tickDecyzji, string list, int nowychListow,
+                                string warianty, string tekstListu)
+        {
             WriteData(ExecPrefix
                       + "runId=" + CurrentRunId()
                       + "; tryb=" + (InExperiment ? "symulacja" : "gra")
@@ -725,7 +820,100 @@ namespace ProceduralNarrator.Integration
                       + "; frakcjaZrodlo=" + (string.IsNullOrEmpty(frakcjaZrodlo) ? "-" : frakcjaZrodlo)
                       // S6: tick DECYZJI, ktorej dotyczy potwierdzenie. Na sciezce normalnej == tick; na
                       // spoznionej tick to chwila emisji (T+1000), a analiza laczy wykonanie z decyzja po tym polu.
-                      + "; tickDecyzji=" + tickDecyzji.ToString(CultureInfo.InvariantCulture));
+                      + "; tickDecyzji=" + tickDecyzji.ToString(CultureInfo.InvariantCulture)
+                      + "; list=" + (string.IsNullOrEmpty(list) ? "-" : list)
+                      + "; nowychListow=" + nowychListow.ToString(CultureInfo.InvariantCulture)
+                      + "; warianty=" + (string.IsNullOrEmpty(warianty) ? "-" : JednaLinia(warianty))
+                      + "; tekstListu=" + JednaLinia(tekstListu));
+        }
+
+        private const string FiredPrefix = "[PN-FIRED] ";
+
+        /// <summary>
+        /// Odpalenie incydentu przez narratora - KAZDEGO narratora, w KAZDEJ grze (krok 8, decyzja K8-2).
+        /// Poza kontraktem [PN-DATA]. Pola:
+        ///   narrator=       defName storytellera gry (Cassandra, PN_GenerativeNarrator...);
+        ///   tick=/dzien=    chwila odpalenia (lastFireTicks), nie wykrycia;
+        ///   cel=            map:uid | world | caravan:id;  mapa= uid albo -1;  dom= mapa domowa gracza;
+        ///   incydent=/kategoria=  IncidentDef i jego kategoria;
+        ///   pn=             1 = zdarzenie oddane grze przez nasz comp w tym ticku;
+        ///   kontekst=       przed (tick 999 mod 1000, dla odpalen w ticku interwalu) | po (chwila wykrycia) | -;
+        ///   kolonisci=, kolonisciNaMapie=, powaleni=, zagrozenie=(0/1) - z chwili wedlug kontekst=;
+        ///   bogactwo=, bogactwoWzgl=, punkty= - z chwili wykrycia (puste poza mapa);
+        ///   opoznienie=     ticki miedzy odpaleniem a wykryciem (0 = ten sam tick).
+        /// </summary>
+        public static void Fired(int tick, string cel, int mapa, bool dom, string incydent, string kategoria, bool nasz,
+                                 string kontekst, int kolonisci, int naMapie, int powaleni, int zagrozenie,
+                                 float bogactwo, float bogactwoWzgl, float punkty, int opoznienie)
+        {
+            WriteData(FiredPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; narrator=" + CurrentStorytellerName()
+                      + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
+                      + "; dzien=" + (tick / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
+                      + "; cel=" + (cel ?? "-")
+                      + "; mapa=" + mapa.ToString(CultureInfo.InvariantCulture)
+                      + "; dom=" + (dom ? "true" : "false")
+                      + "; incydent=" + (incydent ?? "-")
+                      + "; kategoria=" + (kategoria ?? "-")
+                      + "; pn=" + (nasz ? "1" : "0")
+                      + "; kontekst=" + (kontekst ?? "-")
+                      + "; kolonisci=" + Liczba(kolonisci)
+                      + "; kolonisciNaMapie=" + Liczba(naMapie)
+                      + "; powaleni=" + Liczba(powaleni)
+                      + "; zagrozenie=" + Liczba(zagrozenie)
+                      + "; bogactwo=" + (bogactwo < 0f ? string.Empty : bogactwo.ToString("0", CultureInfo.InvariantCulture))
+                      + "; bogactwoWzgl=" + (bogactwoWzgl < 0f ? string.Empty : bogactwoWzgl.ToString("0.000", CultureInfo.InvariantCulture))
+                      + "; punkty=" + (punkty < 0f ? string.Empty : punkty.ToString("0.0", CultureInfo.InvariantCulture))
+                      + "; opoznienie=" + opoznienie.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private const string CachePrefix = "[PN-CACHE] ";
+
+        /// <summary>
+        /// KOLIZJA CACHE'U CanFireNow (krok 8, dlug 8): przed naszym pierwszym pytaniem o incydent w turze
+        /// w cache'u gry byl juz werdykt Z TEGO TICKU od innego pytajacego. Izolacja i tak liczy werdykt dla
+        /// naszych parametrow i przywraca cudzy po naszej turze - linia jest POMIAREM, jak czesto bez izolacji
+        /// narrator dostawalby cudzy werdykt (rozny=true: dostalby inny niz wlasny).
+        /// </summary>
+        public static void Cache(int tick, int mapa, string incydent, bool werdyktGry, bool nasz)
+        {
+            WriteData(CachePrefix
+                      + "runId=" + CurrentRunId()
+                      + "; tryb=" + (InExperiment ? "symulacja" : "gra")
+                      + "; eksperyment=" + (InExperiment ? experimentId + "/" + experimentArm : string.Empty)
+                      + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
+                      + "; mapa=" + mapa.ToString(CultureInfo.InvariantCulture)
+                      + "; incydent=" + (incydent ?? "-")
+                      + "; werdyktGry=" + (werdyktGry ? "true" : "false")
+                      + "; nasz=" + (nasz ? "true" : "false")
+                      + "; rozny=" + (werdyktGry != nasz ? "true" : "false"));
+        }
+
+        /// <summary>Liczba albo puste pole dla braku pomiaru (-1).</summary>
+        private static string Liczba(int v)
+        {
+            return v < 0 ? string.Empty : v.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Tekst w jednej linii pliku danych: kazdy znak sterujacy (takze U+0085) oraz separatory U+2028/U+2029
+        /// zamienione na spacje - parser w Pythonie (str.splitlines) cial by na nich linie (przeglad S10).
+        /// Nazwa frakcji pochodzi z gry, wiec o jej znakach nie decydujemy.
+        /// </summary>
+        private static string JednaLinia(string tekst)
+        {
+            if (string.IsNullOrEmpty(tekst))
+            {
+                return string.Empty;
+            }
+            var sb = new StringBuilder(tekst.Length);
+            for (int i = 0; i < tekst.Length; i++)
+            {
+                char c = tekst[i];
+                sb.Append(char.IsControl(c) || c == '\u2028' || c == '\u2029' ? ' ' : c);
+            }
+            return sb.ToString();
         }
 
         private static string CurrentDayText()
@@ -733,6 +921,30 @@ namespace ProceduralNarrator.Integration
             return Current.Game != null && Find.TickManager != null
                 ? (Find.TickManager.TicksGame / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
                 : string.Empty;
+        }
+
+        /// <summary>
+        /// Warunki gry do [PN-LOAD] (krok 8, przeglad S10): trudnosc, skala zagrozen, duze zagrozenia,
+        /// zagrozenia intro i scenariusz. Ewaluacja porownuje narratorow tylko przy tych samych warunkach.
+        /// </summary>
+        private static string CurrentGameConditionsText()
+        {
+            // Pelna nazwa: w przestrzeni ProceduralNarrator.Integration "Storyteller" to nasza podprzestrzen.
+            RimWorld.Storyteller st = Current.Game == null ? null : Current.Game.storyteller;
+            string wynik;
+            if (st == null || st.difficulty == null)
+            {
+                wynik = "; trudnosc=?; skalaZagrozen=; duzeZagrozenia=; zagrozeniaIntro=";
+            }
+            else
+            {
+                wynik = "; trudnosc=" + (st.difficultyDef == null ? "?" : st.difficultyDef.defName)
+                        + "; skalaZagrozen=" + st.difficulty.threatScale.ToString("0.###", CultureInfo.InvariantCulture)
+                        + "; duzeZagrozenia=" + (st.difficulty.allowBigThreats ? "tak" : "nie")
+                        + "; zagrozeniaIntro=" + (st.difficulty.allowIntroThreats ? "tak" : "nie");
+            }
+            string scen = Current.Game == null || Find.Scenario == null ? "?" : (Find.Scenario.name ?? "?");
+            return wynik + "; scenariusz=" + JednaLinia(scen).Replace(';', ',').Replace('=', '-');
         }
 
         private static string CurrentStorytellerName()
@@ -836,6 +1048,22 @@ namespace ProceduralNarrator.Integration
             // warunki. Analiza odtwarza ja z linii [PN-FACT] (dzien ustawienia + czas zycia) i porownuje.
             Append(sb, "faktow", swiat == null ? string.Empty
                                               : Int(Core.Blackboard.NarratorBlackboard.FactCountIn(swiat.Facts)));
+            // KROK 7 (v9): styl gracza w chwili decyzji. Wartosci i reguly pustych pol liczy rdzen
+            // (StyleFocus.Preamble, TEST 14n): wszystko puste, gdy warstwy stylu nie ma (ramie S, styl
+            // wylaczony, bezpiecznik); w rozgrzewce puste cechy, mocne strony i etykieta, kierunek jest.
+            Core.PlayerModel.StyleFocus styl = context == null ? null : context.StyleFocus;
+            Core.PlayerModel.StyleFocus.PreambleColumns ks = styl == null
+                ? new Core.PlayerModel.StyleFocus.PreambleColumns()
+                : styl.Preamble();
+            Append(sb, "stylDni", ks.Dni);
+            Append(sb, "stylAktywny", ks.Aktywny);
+            Append(sb, "stylWalka", ks.Z[0]);
+            Append(sb, "stylGospodarka", ks.Z[1]);
+            Append(sb, "stylEkspansja", ks.Z[2]);
+            Append(sb, "stylReaktywnosc", ks.Z[3]);
+            Append(sb, "stylMocne", ks.Mocne);
+            Append(sb, "stylEtykieta", ks.Etykieta);
+            Append(sb, "stylKierunek", ks.Kierunek);
 
             // ---- generowanie kandydatow ----
             // Kolumny budowane tutaj, a NIE przez CandidateSet.DataLogFragment(), mimo ze tamta

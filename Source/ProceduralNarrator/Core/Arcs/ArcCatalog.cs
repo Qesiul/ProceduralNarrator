@@ -283,6 +283,13 @@ namespace ProceduralNarrator.Core.Arcs
             {
                 p.Add("pusty defName");
             }
+            // SPROSTOWANIE (krok 7): w S6 ponizsza wstawka o kluczach faktow weszla MIEDZY "if" a "else if",
+            // wiec kontrola SafeId przylgnela do "if (a.startConditions != null)" i dla lukow z warunkami
+            // startu (czyli wszystkich) nigdy sie nie wykonywala. Teraz stoi przy swoim "if".
+            else if (!SafeId(a.defName))
+            {
+                p.Add("defName moze zawierac tylko litery, cyfry i '_'");
+            }
             // Klucz faktu w warunku startu (S6): zly klucz dawal warunek zawsze niespelniony, a
             // Cond_Fakt z required=false i pustym kluczem - ZAWSZE spelniony. Sprawdzamy ta sama regula
             // co ksiega faktow, a nie sama niepustoscia.
@@ -298,11 +305,14 @@ namespace ProceduralNarrator.Core.Arcs
                     {
                         p.Add("warunek " + c.GetType().Name + " z niepoprawnym kluczem faktu '" + (klucz ?? "") + "'");
                     }
+                    // Styl gracza (krok 7): cecha jako tekst - nieznana cecha daje warunek zawsze falszywy.
+                    Cond_StylMocnaStrona styl = c as Cond_StylMocnaStrona;
+                    PlayerModel.StyleDimension cecha;
+                    if (styl != null && !PlayerModel.StyleDimensions.TryParse(styl.dimension, out cecha))
+                    {
+                        p.Add("warunek Cond_StylMocnaStrona z nieznana cecha '" + (styl.dimension ?? "") + "'");
+                    }
                 }
-            }
-            else if (!SafeId(a.defName))
-            {
-                p.Add("defName moze zawierac tylko litery, cyfry i '_'");
             }
             if (a.cooldownDays < 0f || float.IsNaN(a.cooldownDays))
             {
@@ -523,7 +533,19 @@ namespace ProceduralNarrator.Core.Arcs
                    + "; nastepca=" + (string.IsNullOrEmpty(a.successor) ? "-" : a.successor)
                    + "; wiazeFrakcje=" + (a.BindsFaction ? "tak" : "nie")
                    + "; fazy=" + string.Join(",", fazy.ToArray())
-                   + "; krawedzie=" + string.Join(",", krawedzie.ToArray());
+                   + "; krawedzie=" + string.Join(",", krawedzie.ToArray())
+                   // Krok 7: cecha wymagana jako mocna strona gracza ("!" = wymagany BRAK), "-" = bez warunku.
+                   // Analiza sprawdza z tego, ze luk otwiera sie tylko przy tej cesze w stylMocne decyzji.
+                   + "; warunekStylu=" + WarunekStylu(a);
+        }
+
+        private static string WarunekStylu(ArcDefinition a)
+        {
+            string[] czesci = (a.startConditions ?? new List<NarrativeCondition>())
+                .OfType<Cond_StylMocnaStrona>()
+                .Select(c => (c.required ? string.Empty : "!") + (c.dimension ?? "?"))
+                .ToArray();
+            return czesci.Length == 0 ? "-" : string.Join("/", czesci);
         }
     }
 }

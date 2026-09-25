@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Integration.Arcs;
 using RimWorld;
 using Verse;
 
@@ -47,6 +48,10 @@ namespace ProceduralNarrator.Integration.Incidents
     ///                                    MeteoriteImpact, RansomDemand,
     ///                                    WandererJoin i RefugeePodCrash - oba IncidentWorker_GiveQuest,
     ///                                    gdzie list tworzy zadanie, nie incydent.
+    ///                                  OD KROKU 8 NIEUZYWANE (decyzja autora K8-4): opis dopisujemy
+    ///                                  do listu PO wykonaniu (ChoiceLetter.Text ma publiczny setter),
+    ///                                  co dziala dla 13/13 i zostawia waniliowe informacje
+    ///                                  mechaniczne - patrz LetterAnnotator.
     ///
     ///   spawnCenter         1/12 wprost
     ///                              - NIE jest bezczynne, ale tez NIE czyta go zaden worker napadu.
@@ -99,60 +104,47 @@ namespace ProceduralNarrator.Integration.Incidents
     public static class IncidentParmsBuilder
     {
         /// <summary>
-        /// Dopisuje do gotowych parametrow wszystko, co wnosi kompozycja.
+        /// Dopisuje do gotowych parametrow wszystko, co wnosi kompozycja - i NIC poza tym, co niesie
+        /// specyfikacja wykonania (krok 8, dlug 9). Metoda nie widzi ani zdarzenia, ani tekstu, wiec
+        /// nie da sie w niej zmienic parametru, ktorego nie ma w kluczu: ExecutionSpec.Key i to
+        /// tlumaczenie powstaja z TEGO SAMEGO obiektu (walidator TEST 15 pilnuje, ze kazde pole specu
+        /// zmienia klucz).
         ///
         /// Parametry bazowe przychodza z zewnatrz (StorytellerComp.GenerateParms), bo tamta
         /// metoda jest chroniona i nalezy do compa - a ta klasa ma zostac bezstanowa i mozliwie
         /// niezalezna. Mutujemy przekazany obiekt i zwracamy go dla wygody wolajacego.
+        ///
+        /// FRAKCJA SPRAWCY (krok 5, ciaglosc frakcji luku Wendeta): ustawiana wylacznie dla
+        /// kandydata, ktorego luk dopasowal przez oczekiwanie sameFaction i tylko przy frakcji,
+        /// ktora przechodzi PELNY waniliowy filtr zrodla napadu (FactionBinding) - bo ustawiona
+        /// frakcja omija sprawdzenie kandydatow w PawnsArrive.CanFireNowSub. Rozwiazywana tutaj
+        /// z identyfikatora w specyfikacji, a nie podawana z boku.
         /// </summary>
-        public static IncidentParms Apply(IncidentParms parms, ComposedEvent zdarzenie,
-                                          bool uzyjZlozonegoListu)
+        public static IncidentParms Apply(IncidentParms parms, ExecutionSpec spec)
         {
-            return Apply(parms, zdarzenie, uzyjZlozonegoListu, null);
-        }
-
-        /// <summary>
-        /// Jak wyzej, plus FRAKCJA SPRAWCY (krok 5, ciaglosc frakcji luku Wendeta). Ustawiana
-        /// wylacznie dla kandydata, ktorego luk dopasowal przez oczekiwanie sameFaction i tylko
-        /// przy frakcji, ktora przechodzi PELNY waniliowy filtr zrodla napadu (FactionBinding) -
-        /// bo ustawiona frakcja omija sprawdzenie kandydatow w PawnsArrive.CanFireNowSub.
-        /// ZMIENIA WYKONALNOSC, wiec wchodzi do ExecutionKey ponizej.
-        /// </summary>
-        public static IncidentParms Apply(IncidentParms parms, ComposedEvent zdarzenie,
-                                          bool uzyjZlozonegoListu, Faction frakcja)
-        {
-            if (parms == null || zdarzenie == null)
+            if (parms == null || spec == null)
             {
                 return parms;
             }
 
-            if (frakcja != null)
+            if (spec.FactionId != null)
             {
-                parms.faction = frakcja;
+                Faction frakcja = ArcObservationBuilder.ResolveFaction(spec.FactionId);
+                if (frakcja != null)
+                {
+                    parms.faction = frakcja;
+                }
             }
 
             // INTENSYWNOSC -> PUNKTY. Jedyne tlumaczenie, ktore dziala dla calego katalogu.
             // Zakres mnoznika (0.70-1.35) jest celowo wezszy od waniliowego pointsFactorFromAdaptDays
             // (0.40-2.00): intensywnosc klocka ma modulowac dawke, a nie przejmowac sterowanie
             // trudnoscia, ktora i tak rosnie z bogactwem przez PointsPerWealthCurve.
-            parms.points *= IntensityTable.PointsFactor(zdarzenie.Intensity);
+            parms.points *= IntensityTable.PointsFactor(spec.Intensity);
 
-            if (uzyjZlozonegoListu && !string.IsNullOrEmpty(zdarzenie.Description))
-            {
-                // Zlozony opis zamiast waniliowego listu. Dziala dla 8 z 12 naszych incydentow -
-                // patrz tabela w komentarzu klasy. Etykiety NIE podmieniamy: nie skladamy
-                // krotkiego tytulu, a waniliowy jest trafny, wiec customLetterLabel zostaje pusty
-                // i gra uzyje swojego.
-                //
-                // Bezpieczenstwo tekstu jest zapewnione WCZESNIEJ, przez regule "fakt w tekscie
-                // = warunek twardy": kazdy fragment, ktory stwierdza sprawdzalny fakt o swiecie,
-                // ma ten fakt jako conditions (Cond_Night, Cond_CalmPeriod, Cond_KidnappedColonist,
-                // Cond_HostileFaction...), a fragmenty, ktorych nie dalo sie zabezpieczyc, zostaly
-                // przepisane tak, by nic nie stwierdzaly. Bez tamtej rundy wlaczenie tego
-                // przelacznika kazaloby narratorowi klamac graczowi prosto w twarz.
-                parms.customLetterText = zdarzenie.Description;
-            }
-
+            // Tekstu listu tu NIE MA (krok 8, decyzja K8-4): opis zlozony z klockow dopisuje
+            // LetterAnnotator do listu gry PO wykonaniu - customLetterText honorowalo 9 z 13 naszych
+            // incydentow i zastepowalo waniliowe informacje mechaniczne.
             return parms;
         }
 
@@ -160,12 +152,11 @@ namespace ProceduralNarrator.Integration.Incidents
         /// ODCISK PARAMETROW WYKONANIA - dwa zdarzenia o tym samym kluczu trafiaja do gry
         /// z IncidentParms nieodroznialnymi z punktu widzenia CanFireNow.
         ///
-        /// MUSI SIE ZMIENIAC RAZEM Z Apply I DLATEGO STOI TUZ POD NIA. Apply rozniicuje dzis
-        /// dokladnie dwie rzeczy:
+        /// Od kroku 8 to cienka nakladka na ExecutionSpec.Key (jedno zrodlo prawdy z Apply).
+        /// Apply rozniicuje dzis dokladnie dwie rzeczy, obie w specyfikacji:
         ///   - parms.points   (przez IntensityTable.PointsFactor(Intensity))  -> ISTOTNE
-        ///   - customLetterText                                               -> nieistotne
-        /// Tekst listu nie bierze udzialu w zadnej bramce wykonalnosci - CanFireNow go nie czyta -
-        /// wiec do klucza nie wchodzi. Punkty wchodza, bo od nich wykonalnosc REALNIE zalezy:
+        ///   - parms.faction  (wiazanie frakcji luku)                         -> ISTOTNE
+        /// Punkty wchodza, bo od nich wykonalnosc REALNIE zalezy:
         /// bramki min/maxThreatPoints leza przed cache'em w kazdym payloadzie z progiem, a z 3 z 13
         /// payloadow, ktore czytaja parms.points w CanFireNowSub, wynik zmienia sie w JEDNYM -
         /// ManhunterPack (TryFindAggressiveAnimalKind(points)). WandererJoin i RefugeePodCrash
@@ -177,31 +168,18 @@ namespace ProceduralNarrator.Integration.Incidents
         /// z osiemdziesieciu kandydatow.
         ///
         /// GDY DOJDZIE NOWE POLE (raidArrivalMode, infestationLocOverride, spawnCenter przy
-        /// domykaniu slotu Target) - DOPISAC JE TUTAJ. Pominiecie nie da bledu kompilacji ani
-        /// wyjatku: narrator zacznie po cichu wspoldzielic potwierdzenie miedzy wariantami,
-        /// ktore ida do gry roznie. Jedynym widocznym objawem bedzie wzrost udzialu kolumny
-        /// "wspoldzielona" w danych badawczych.
-        /// </summary>
-        public static string ExecutionKey(ComposedEvent zdarzenie)
-        {
-            return ExecutionKey(zdarzenie, null);
-        }
-
-        /// <summary>
-        /// Klucz z FRAKCJA (krok 5): parms.faction zmienia sciezke CanFireNowSub napadu (z frakcja
-        /// "true" od razu, bez niej - sprawdzenie kandydatow), wiec dwa warianty rozniace sie tylko
-        /// wiazaniem frakcji NIE sa dla gry nieodroznialne. Bez frakcji klucz jest identyczny jak
-        /// przed krokiem 5 - dane i odlozenia v6 zostaja porownywalne.
+        /// domykaniu slotu Target) - dopisuje sie je do ExecutionSpec (Core/Model), a nie tutaj.
+        /// Apply nie ma innego wejscia, a TEST 15 zapali sie, dopoki nowe pole nie zmienia klucza.
+        ///
+        /// Frakcja (krok 5): parms.faction zmienia sciezke CanFireNowSub napadu (z frakcja "true" od
+        /// razu, bez niej - sprawdzenie kandydatow), wiec dwa warianty rozniace sie tylko wiazaniem
+        /// frakcji NIE sa dla gry nieodroznialne. Bez frakcji klucz jest identyczny jak przed
+        /// krokiem 5 - dane i odlozenia v6 zostaja porownywalne.
         /// </summary>
         public static string ExecutionKey(ComposedEvent zdarzenie, string frakcjaId)
         {
-            if (zdarzenie == null)
-            {
-                return null;
-            }
-            return (zdarzenie.ActionPayload ?? "?") + "|"
-                   + ((int)zdarzenie.Intensity).ToString(System.Globalization.CultureInfo.InvariantCulture)
-                   + (string.IsNullOrEmpty(frakcjaId) ? string.Empty : "|F" + frakcjaId);
+            ExecutionSpec spec = ExecutionSpec.From(zdarzenie, frakcjaId);
+            return spec == null ? null : spec.Key;
         }
 
         /// <summary>

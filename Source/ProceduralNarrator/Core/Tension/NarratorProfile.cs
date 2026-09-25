@@ -47,6 +47,20 @@ namespace ProceduralNarrator.Core.Tension
         public TensionParams Tension = new TensionParams();
 
         /// <summary>
+        /// ORIENTACJA wobec stylu gracza (krok 7, decyzja autora nr 13): +1 Powsciagliwy (gra na mocne
+        /// strony gracza), 0 Zrownowazony, -1 Napastliwy (gra na slabe). Wazona 0.3 w kierunku d, reszte
+        /// (0.7) daje rytm krzywej - patrz Core/PlayerModel/StyleDirection. Jedyna liczba stylu w profilu:
+        /// reszta maszynerii stylu jest wspolna (blok &lt;playerStyle&gt;).
+        /// </summary>
+        public float StyleOrientation;
+
+        /// <summary>
+        /// Orientacja profilu awaryjnego = orientacja Zrownowazonego (0). Krzywa awaryjna
+        /// (TensionParams.Default()) to tez krzywa Zrownowazonego, wiec awaryjny ma byc "srodkiem".
+        /// </summary>
+        public const float FallbackStyleOrientation = 0f;
+
+        /// <summary>
         /// Identyfikator profilu awaryjnego. Ta sama wartosc trafia do kolumny "profil" danych
         /// badawczych, gdy narrator liczy na profilu awaryjnym - dane maja nazywac profil
         /// FAKTYCZNIE uzyty, a nie ten, ktory zapis gry wskazuje, ale ktorego juz nie ma.
@@ -73,7 +87,8 @@ namespace ProceduralNarrator.Core.Tension
                     : "awaryjny (wagi z bloku <weights>, krzywa domyslna z kodu)",
                 SelectionWeight = 0f,
                 Weights = weights == null ? new ScoringWeights() : weights.Clone(),
-                Tension = TensionParams.Default()
+                Tension = TensionParams.Default(),
+                StyleOrientation = FallbackStyleOrientation
             };
         }
 
@@ -93,6 +108,8 @@ namespace ProceduralNarrator.Core.Tension
             }
             sb.Append(" | wagi: ").Append(Weights == null ? "(brak)" : Weights.Describe());
             sb.Append(" | ").Append(Tension == null ? "(brak krzywej)" : Tension.ToString());
+            sb.Append(" | orientacjaStylu=")
+              .Append(StyleOrientation.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture));
             return sb.ToString();
         }
     }

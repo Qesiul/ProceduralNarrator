@@ -4,6 +4,7 @@ using System.Text;
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Decision;
+using ProceduralNarrator.Core.PlayerModel;
 using ProceduralNarrator.Core.Tension;
 using RimWorld;
 
@@ -166,27 +167,24 @@ namespace ProceduralNarrator.Integration.Storyteller
         public ArcParams arcs = ArcParams.Default();
 
         /// <summary>
-        /// Czy zlozony opis narracyjny ma zastapic waniliowy list w grze.
-        ///
-        /// DOMYSLNIE WYLACZONE I TO JEST DECYZJA, NIE ZANIECHANIE. Powod jest zmierzony:
-        /// customLetterText honoruje tylko bazowy IncidentWorker.SendIncidentLetter (takze przez
-        /// SendStandardLetter), a przez niego przechodzi 9 z naszych 13 incydentow. Pozostale
-        /// cztery ignoruja pole: MeteoriteImpact i RansomDemand buduja list samodzielnie,
-        /// a WandererJoin i RefugeePodCrash (IncidentWorker_GiveQuest) oddaja list zadaniu.
-        /// Wlaczenie przelacznika daje wiec rozgrywke, w ktorej CZESC zdarzen ma opis zlozony
-        /// z klockow, a czesc waniliowy - niespojnosc widoczna dla gracza i trudna do obronienia
-        /// w rozdziale o ewaluacji. (Wczesniejsze "7 z 12" pochodzilo z pomiaru obalonego
-        /// przegladem - zgadnietych typow lisciowych bez przejscia po dziedziczeniu.)
-        ///
-        /// Mechanizm jest gotowy i przetestowany; brakuje decyzji, czy niespojnosc 9/13 jest
-        /// akceptowalna, czy najpierw domknac pozostala czworke (dwie z nich wymagaja wejscia
-        /// w warstwe questow, nie w incydent).
-        ///
-        /// Katalog jest po stronie TEKSTU juz bezpieczny: regula "fakt w tekscie = warunek
-        /// twardy" zostala przeprowadzona, a fragmenty, ktorych nie dalo sie zabezpieczyc
-        /// (polozenie, koncowa skala), zostaly przepisane tak, by nic nie stwierdzaly.
+        /// STYL GRACZA (krok 7) - WSPOLNA maszyneria, nie profil: rozgrzewka, kolejka dni, pomiary z normami,
+        /// prototypy archetypow i wagi kierunku. Profil wnosi tylko orientacje (NarratorProfile.StyleOrientation).
         /// </summary>
-        public bool useComposedLetter = false;
+        public PlayerStyleParams playerStyle = PlayerStyleParams.Default();
+
+        /// <summary>
+        /// Czy dopisywac zlozony opis narracyjny do listu gry (krok 8, decyzja autora K8-4: TAK, domyslnie).
+        ///
+        /// Opis trafia NA POCZATEK waniliowego listu, PO wykonaniu zdarzenia (LetterAnnotator), dla
+        /// wszystkich 13 incydentow - takze tych, ktore buduja list same (okup, meteoryt) albo oddaja go
+        /// zadaniu (wedrowiec, uchodzcy). Waniliowy tekst zostaje pod opisem, z informacjami
+        /// mechanicznymi. Wczesniejsza droga (customLetterText) dzialala dla 9 z 13 i zastepowala caly
+        /// tekst gry - dlatego do kroku 8 przelacznik byl wylaczony.
+        ///
+        /// Tekst: warianty zalezne od kontekstu (TextComposer), regula "fakt w tekscie = warunek twardy".
+        /// Jezyk: polski w ASCII (decyzja K8-7) - w grze uruchomionej po angielsku list jest dwujezyczny.
+        /// </summary>
+        public bool useComposedLetter = true;
 
         public StorytellerCompProperties_Generative()
         {
@@ -327,6 +325,18 @@ namespace ProceduralNarrator.Integration.Storyteller
                 poprawki.Add("<arcs>: " + poprawkiLukow);
             }
 
+            if (playerStyle == null)
+            {
+                poprawki.Add("brak bloku <playerStyle> -> parametry stylu gracza domyslne");
+                playerStyle = PlayerStyleParams.Default();
+            }
+
+            string poprawkiStylu = playerStyle.Sanitize();
+            if (!string.IsNullOrEmpty(poprawkiStylu))
+            {
+                poprawki.Add("<playerStyle>: " + poprawkiStylu);
+            }
+
             return poprawki.Count == 0 ? null : string.Join("; ", poprawki.ToArray());
         }
 
@@ -369,7 +379,8 @@ namespace ProceduralNarrator.Integration.Storyteller
               .Append(" strikeGain=").Append(Num(contrast == null ? 0f : contrast.strikeGain))
               .Append(" | zlozonyList=").Append(useComposedLetter ? "tak" : "nie")
               .Append(" | ").Append(crisis == null ? "BRAK BLOKU <crisis>" : crisis.ToString())
-              .Append(" | ").Append(arcs == null ? "BRAK BLOKU <arcs>" : arcs.ToString());
+              .Append(" | ").Append(arcs == null ? "BRAK BLOKU <arcs>" : arcs.ToString())
+              .Append(" | ").Append(playerStyle == null ? "BRAK BLOKU <playerStyle>" : playerStyle.ToString());
             return sb.ToString();
         }
 

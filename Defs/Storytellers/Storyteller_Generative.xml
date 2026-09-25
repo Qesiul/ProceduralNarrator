@@ -94,7 +94,7 @@
 
              Wartosc jest opisowa i ma sie zmieniac razem z kalibracja - dzieki temu w serii
              ewaluacyjnej widac w logu, na ktorej wersji konfiguracji powstal dany wiersz. -->
-        <configStamp>krok6-przeglad</configStamp>
+        <configStamp>krok8-mod</configStamp>
         <allowedTargetTags>
           <li>Map_PlayerHome</li>
         </allowedTargetTags>
@@ -332,6 +332,10 @@
           <downedFraction>0.5</downedFraction>
           <minDowned>1</minDowned>
           <enabled>true</enabled>
+          <!-- Krok 8 (dlug 12, decyzja autora K8-8): powalony ze stanem, ktory osiagnal polowe progu
+               smierci (hipotermia, udar cieplny, toksyny - bez wyliczania nazw), jest powalony OSTRO.
+               Porod przestaje byc liczony (bol porodowy to nie nagly wypadek). -->
+          <lethalFraction>0.5</lethalFraction>
         </crisis>
 
         <!-- LUKI NARRACYJNE (krok 5) - WSPOLNA maszyneria, nie profil. Katalog lukow: Defs/Arcs.
@@ -345,31 +349,111 @@
           <maxConcurrent>2</maxConcurrent>
         </arcs>
 
-        <!-- ZLOZONY OPIS ZAMIAST WANILIOWEGO LISTU - DECYZJA DO PODJECIA, nie zaniechanie.
+        <!-- STYL GRACZA (krok 7) - WSPOLNA maszyneria, nie profil (profil wnosi tylko <styleOrientation>).
+             Decyzje autora (dziennik "Krok 7 - plan i decyzje autora"): styl, nie umiejetnosci; cztery cechy
+             z koncepcji; bez Harmony; kolejka FIFO 60 dni o rownej wadze (dzien 61 wypycha dzien 1);
+             rozgrzewka 15 dni (jak "history lesson" w PaSSAGE); wspolna skala z norma przecietnej kolonii
+             (z = 0.5); wybor zdarzen wedlug profilu WZGLEDNEGO (mocna strona = co najmniej 0.1 ponad wlasna
+             srednia: progMocnej 0.4 * skala 0.25), etykieta wedlug wartosci BEZWZGLEDNYCH; kierunek
+             d = 0.3*orientacja + 0.7*rytm.
 
-             Mechanizm jest gotowy (IncidentParmsBuilder). Wylaczony, bo pokrycie wynosi 9 z 13:
-             waniliowy IncidentWorker.SendIncidentLetter (takze przez SendStandardLetter) honoruje
-             customLetterText tylko dla workerow, ktore przez niego przechodza. Pomiar z przejsciem
-             po lancuchu dziedziczenia (CLAUDE.md, sekcja o IncidentParmsBuilder) plus Amok:
-               DZIALA:     ResourcePodCrash, Flashstorm, Infestation, PsychicEmanatorShipPartCrash,
-                           AmbrosiaSprout, WildManWandersIn, ManhunterPack, RaidEnemy,
-                           AnimalInsanitySingle
-               IGNORUJE:   MeteoriteImpact, RansomDemand (list budowany samodzielnie) oraz
-                           WandererJoin, RefugeePodCrash (IncidentWorker_GiveQuest - list nalezy
-                           do zadania, nie do incydentu)
-             Wczesniejsze wydanie tego komentarza (7 z 12, WandererJoin jako DZIALA, ManhunterPack
-             i RaidEnemy jako IGNORUJE) pochodzilo z pomiaru obalonego przegladem.
+             NORMY I ROZPIETOSCI SA TYMCZASOWE (dlug kalibracji kroku 7): to szacunki dla typowej kolonii,
+             do przestrojenia na danych [PN-GRACZ] z sesji koncowej. Pomiary w trybie "zdarzenia" (Inicjatywa,
+             Przyjecia, Werbunek, Poborowi, Szybkosc) licza iloraz sum z okna; w trybie "stanu" (Obrona,
+             Praca, Produkcja) srednia z dziennych ilorazow. Poborowi i Szybkosc wymagaja >= 2 epizodow
+             zagrozenia w oknie (decyzja nr 9). Inicjatywa: norma 0, rozpietosc 1/30 na dzien - brak atakow
+             na osady daje z = 0.5, jeden atak w pelnym oknie 0.75, dwa - 1 (decyzja nr 19: liczona od razu).
 
-             Wlaczenie da wiec rozgrywke, w ktorej czesc zdarzen ma opis zlozony z klockow,
-             a czesc waniliowy. Ta niespojnosc jest widoczna dla gracza i trudna do obronienia
-             w rozdziale o ewaluacji - stad decyzja nalezy do autora, a nie do kodu.
+             Kolejnosc prototypow JEST DANA: remis odleglosci rozstrzyga prototyp wczesniejszy. Wszechstronny
+             pierwszy, potem jednocechowe (przed dwucechowymi, zeby przy nieznanej cesze "Wojownik" wygrywal
+             z "Dowodca"), potem dwucechowe, na koncu jednolite. Nazwy dwucechowe zatwierdzone razem z planem. -->
+        <playerStyle>
+          <enabled>true</enabled>
+          <warmupDays>15</warmupDays>
+          <capacityDays>60</capacityDays>
+          <relativeScale>0.25</relativeScale>
+          <strongSideThreshold>0.4</strongSideThreshold>
+          <orientationWeight>0.3</orientationWeight>
+          <rhythmWeight>0.7</rhythmWeight>
+          <threatSampleTicks>250</threatSampleTicks>
+          <quietSamplesToClose>4</quietSamplesToClose>
+          <minEpisodeSamples>2</minEpisodeSamples>
+          <reactionCapTicks>2500</reactionCapTicks>
+          <!-- Przeglad S8 (decyzja autora): epizod zagrozenia dluzszy niz 1 doba jest zamykany i liczony raz. -->
+          <maxEpisodeTicks>60000</maxEpisodeTicks>
+          <wildManTimeoutDays>15</wildManTimeoutDays>
+          <defenseCategories>
+            <li>Security</li>
+          </defenseCategories>
+          <productionCategories>
+            <li>Production</li>
+            <li>Power</li>
+          </productionCategories>
+          <productiveRecords>
+            <li>TimeConstructing</li>
+            <li>TimeSowingAndHarvesting</li>
+            <li>TimeMining</li>
+            <li>TimeResearching</li>
+            <li>TimeHandlingAnimals</li>
+            <li>TimeHunting</li>
+          </productiveRecords>
+          <!-- Tylko noszenie i sprzatanie: gaszenie pozarow, opieka nad rannymi, naprawy i pilnowanie jencow
+               reaguja wprost na NASZE zdarzenia. SPROSTOWANIE (przeglad S8): noszenie TEZ reaguje - rekord liczy
+               kazde niesienie (ratowanie rannych, ciala po napadach, lupy ze zrzutow, a takze materialy na budowe).
+               Decyzja autora: zostaje; proporcja tlumi efekt, a sprzatanie reaguje tak samo. Znane ograniczenie. -->
+          <supportRecords>
+            <li>TimeHauling</li>
+            <li>TimeCleaning</li>
+          </supportRecords>
+          <offerQuestRoots>
+            <li>WandererJoins</li>
+            <li>RefugeePodCrash</li>
+            <!-- Royalty: ta sama oferta przyjmij/odrzuc co wedrowiec (decyzja autora, przeglad S8). -->
+            <li MayRequire="Ludeon.RimWorld.Royalty">WandererJoinAbasia</li>
+          </offerQuestRoots>
+          <signals>
+            <li><signal>Obrona</signal><weight>1</weight><norm>0.04</norm><spread>0.04</spread><minEvents>1</minEvents></li>
+            <!-- Przeglad S8 (decyzje autora): Inicjatywa znana dopiero z atakiem w oknie (minNumerator), wiec moze Walke
+                 tylko podniesc; Przyjecia od 3 ofert, Werbunek od 2 jencow - jedno zdarzenie nie przelacza mocnej strony. -->
+            <li><signal>Inicjatywa</signal><weight>0.5</weight><norm>0</norm><spread>0.0333333</spread><minEvents>1</minEvents><minNumerator>1</minNumerator></li>
+            <li><signal>Praca</signal><weight>1</weight><norm>0.65</norm><spread>0.2</spread><minEvents>1</minEvents></li>
+            <li><signal>Produkcja</signal><weight>0.5</weight><norm>0.15</norm><spread>0.1</spread><minEvents>1</minEvents></li>
+            <li><signal>Przyjecia</signal><weight>1</weight><norm>0.5</norm><spread>0.5</spread><minEvents>3</minEvents></li>
+            <li><signal>Werbunek</signal><weight>0.5</weight><norm>0.3</norm><spread>0.3</spread><minEvents>2</minEvents></li>
+            <li><signal>Poborowi</signal><weight>1</weight><norm>0.5</norm><spread>0.4</spread><minEvents>2</minEvents></li>
+            <li><signal>Szybkosc</signal><weight>0.5</weight><norm>0.5</norm><spread>0.4</spread><minEvents>2</minEvents></li>
+          </signals>
+          <prototypes>
+            <li><label>Wszechstronny</label><walka>0.5</walka><gospodarka>0.5</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Wojownik</label><walka>0.8</walka><gospodarka>0.5</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Gospodarz</label><walka>0.5</walka><gospodarka>0.8</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Osadnik</label><walka>0.5</walka><gospodarka>0.5</gospodarka><ekspansja>0.8</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Czujny</label><walka>0.5</walka><gospodarka>0.5</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.8</reaktywnosc></li>
+            <li><label>Kasztelan</label><walka>0.8</walka><gospodarka>0.8</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Zdobywca</label><walka>0.8</walka><gospodarka>0.5</gospodarka><ekspansja>0.8</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Dowodca</label><walka>0.8</walka><gospodarka>0.5</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.8</reaktywnosc></li>
+            <li><label>Zalozyciel</label><walka>0.5</walka><gospodarka>0.8</gospodarka><ekspansja>0.8</ekspansja><reaktywnosc>0.5</reaktywnosc></li>
+            <li><label>Zaradny</label><walka>0.5</walka><gospodarka>0.8</gospodarka><ekspansja>0.5</ekspansja><reaktywnosc>0.8</reaktywnosc></li>
+            <li><label>Opiekun</label><walka>0.5</walka><gospodarka>0.5</gospodarka><ekspansja>0.8</ekspansja><reaktywnosc>0.8</reaktywnosc></li>
+            <li><label>Zaangazowany</label><walka>0.75</walka><gospodarka>0.75</gospodarka><ekspansja>0.75</ekspansja><reaktywnosc>0.75</reaktywnosc></li>
+            <li><label>Bierny</label><walka>0.25</walka><gospodarka>0.25</gospodarka><ekspansja>0.25</ekspansja><reaktywnosc>0.25</reaktywnosc></li>
+          </prototypes>
+        </playerStyle>
 
-             Po stronie TEKSTU regula "fakt w tekscie = warunek twardy" zostala przeprowadzona
-             dla slotow kroku 2, a fragmenty, ktorych nie dalo sie zabezpieczyc (polozenie, koncowa
-             skala), przepisano tak, by nic nie stwierdzaly. SPROSTOWANIE (S6): slot konsekwencji
-             z kroku 6 tej reguly poczatkowo NIE przeszedl (trzy zdania-obietnice, poprawione
-             2026-09-23) - przed wlaczeniem zlozonego listu przejrzec katalog jako zbior ZDAN. -->
-        <useComposedLetter>false</useComposedLetter>
+        <!-- ZLOZONY OPIS W LISCIE GRY - krok 8, decyzja autora K8-4 (2026-09-25): WLACZONY.
+
+             Opis zlozony z klockow (z wariantami zaleznymi od kontekstu, TextComposer) trafia NA
+             POCZATEK waniliowego listu, PO wykonaniu zdarzenia (LetterAnnotator): ChoiceLetter.Text ma
+             publiczny setter, a listy 12 z 13 naszych incydentow przychodza synchronicznie w TryExecute,
+             takze listy zadan Wedrowca i Uchodzcow; meteoryt - przez Skyfaller.impactLetter. Dziala dla
+             13/13 bez Harmony. Waniliowy tekst zostaje pod opisem (kwota okupu, kto dolacza, jakie
+             zwierzeta). Dawna droga przez customLetterText (9 z 13, zastepowala caly tekst gry) jest usunieta.
+
+             Tekst: regula "fakt w tekscie = warunek twardy" obowiazuje takze warianty (walidacja katalogu
+             odrzuca wariant z warunkiem miekkim albo ze znacznikiem bez zabezpieczenia). Jezyk: polski
+             w ASCII (decyzja K8-7) - w grze uruchomionej po angielsku list jest dwujezyczny.
+             Stan listu i slad wariantow w [PN-EXEC]: list=, nowychListow=, warianty=, tekstListu=. -->
+        <useComposedLetter>true</useComposedLetter>
       </li>
 
       <!-- ============ PONIZEJ: skopiowane z Cassandry bez zmian ============ -->

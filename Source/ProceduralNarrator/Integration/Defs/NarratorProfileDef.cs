@@ -42,6 +42,12 @@ namespace ProceduralNarrator.Integration.Defs
         public TensionParams tension = new TensionParams();
 
         /// <summary>
+        /// Orientacja wobec stylu gracza (krok 7, decyzja autora nr 13): +1 / 0 / -1, zakres [-1, 1].
+        /// Patrz NarratorProfile.StyleOrientation.
+        /// </summary>
+        public float styleOrientation;
+
+        /// <summary>
         /// Przepisuje Def na typ rdzenia. KOPIA, nie referencja: Def zyje w DefDatabase przez
         /// caly proces gry i jest wspoldzielony miedzy rozgrywkami, wiec przekazanie referencji
         /// pozwoliloby jednej rozgrywce po cichu przestroic profil innej. Sanitize() dziala
@@ -58,7 +64,8 @@ namespace ProceduralNarrator.Integration.Defs
                 Label = string.IsNullOrEmpty(label) ? defName : label,
                 SelectionWeight = selectionWeight,
                 Weights = (weights ?? new ScoringWeights()).Clone(),
-                Tension = (tension ?? TensionParams.Default()).Clone()
+                Tension = (tension ?? TensionParams.Default()).Clone(),
+                StyleOrientation = styleOrientation
             };
         }
 
@@ -78,6 +85,13 @@ namespace ProceduralNarrator.Integration.Defs
                 yield return "selectionWeight jest ujemny ("
                              + selectionWeight.ToString("0.###", CultureInfo.InvariantCulture)
                              + ") - losowanie profilu traktuje go jak zero";
+            }
+
+            if (float.IsNaN(styleOrientation) || styleOrientation < -1f || styleOrientation > 1f)
+            {
+                yield return "styleOrientation poza [-1, 1] ("
+                             + styleOrientation.ToString("0.###", CultureInfo.InvariantCulture)
+                             + ") - kierunek stylu zostanie sciety do [-1, 1]";
             }
 
             if (weights == null || weights.Total() <= 0f)

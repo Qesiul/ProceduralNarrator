@@ -5,9 +5,11 @@ using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.PlayerModel;
 using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
 using ProceduralNarrator.Integration.Defs;
+using ProceduralNarrator.Integration.PlayerModel;
 using Verse;
 
 namespace ProceduralNarrator.Integration.Persistence
@@ -47,13 +49,20 @@ namespace ProceduralNarrator.Integration.Persistence
         /// starcie kroku 6, bo pamiec v2 nie przeszla jeszcze w grze cyklu zapis-wczytanie.
         /// Slad po zamknietych watkach (linie Z) jedzie w istniejacym wezle "luki" - nowy znacznik
         /// linii nie zmienia liczby pol linii istniejacych, wiec nie wymagal nowego wezla.
-        private const int MemoryFormatVersion = 3;
+        /// Wersja 4 (krok 7): wezel "stylGracza" - ksiega stylu gracza (kolejka dni, dzien w toku, bazy
+        /// rekordow, otwarte epizody zagrozen, oferty, dzicy ludzie). Styl jest JEDEN NA GRE, wiec to
+        /// wezel komponentu, a nie rekordu mapy. Zapis v3 wczytuje sie bez straty: styl startuje pusty,
+        /// a rozgrzewka liczy sie od chwili wczytania.
+        private const int MemoryFormatVersion = 4;
 
         /// <summary>Wersja, od ktorej zapis niesie ksiege lukow - do rozroznienia komunikatu przy wczytaniu.</summary>
         private const int ArcsSinceVersion = 2;
 
         /// <summary>Wersja, od ktorej zapis niesie ksiege faktow - do rozroznienia komunikatu przy wczytaniu.</summary>
         private const int FactsSinceVersion = 3;
+
+        /// <summary>Wersja, od ktorej zapis niesie ksiege stylu gracza - do rozroznienia komunikatu przy wczytaniu.</summary>
+        private const int StyleSinceVersion = 4;
 
         /// <summary>
         /// Pamiec zdarzen narratora, OSOBNA DLA KAZDEJ MAPY (klucz: Map.uniqueID).
@@ -88,6 +97,28 @@ namespace ProceduralNarrator.Integration.Persistence
         /// istnieja takze wtedy, gdy warstwa lukow jest wylaczona albo uszkodzona.
         /// </summary>
         private Dictionary<int, FactLedger> facts = new Dictionary<int, FactLedger>();
+
+        /// <summary>
+        /// KSIEGA STYLU GRACZA (krok 7) - jedna na gre, nie per mapa: styl opisuje gracza, a nie kolonie
+        /// (epizody zagrozen sa liczone per mapa wewnatrz ksiegi). Pisze do niej WYLACZNIE obserwator
+        /// w GameComponentTick; narrator tylko czyta (PlayerStyleModel.Evaluate).
+        /// </summary>
+        private PlayerStyleLedger styl = new PlayerStyleLedger();
+
+        /// <summary>Bufor serializacji wezla "stylGracza" - wylacznie na czas zapisu albo wczytania.</summary>
+        private List<string> stylZapis = new List<string>();
+
+        /// <summary>
+        /// Obserwator stylu rzucil wyjatek - obserwacja wylaczona do wczytania zapisu (komponent powstaje
+        /// wtedy od nowa), raport raz. Narrator nie uzywa wtedy stylu (StorytellerComp_Generative.StylTury).
+        /// </summary>
+        private bool stylBroken;
+
+        /// <summary>
+        /// Parametry stylu dla obserwatora, rozwiazywane leniwie (PlayerStyleObserver.ResolveParams) -
+        /// nie w kazdym ticku. Nie utrwalane; FinalizeInit je zeruje.
+        /// </summary>
+        private PlayerStyleParams stylParams;
 
         /// <summary>
         /// Bufor serializacji - WYLACZNIE do rozmowy ze Scribe'em, nigdy do odczytu w trakcie gry.
@@ -139,6 +170,7 @@ namespace ProceduralNarrator.Integration.Persistence
         private int odrzuconychHistorii;
         private int odrzuconychLukow;
         private int odrzuconychFaktow;
+        private int odrzuconychStylu;
 
         private bool kanarekWypisany;
 
@@ -226,7 +258,8 @@ namespace ProceduralNarrator.Integration.Persistence
             PNLog.Reset("wymusProfil",
                         "profilPoprzedni=" + (string.IsNullOrEmpty(poprzedni) ? "?" : poprzedni)
                         + "; profilNowy=" + (string.IsNullOrEmpty(profileId) ? "?" : profileId)
-                        + "; mapy=" + OpisMap() + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow());
+                        + "; mapy=" + OpisMap() + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow()
+                        + "; styl=" + OpisStylu());
         }
 
         /// <summary>Widok do akcji debugowych i diagnostyki. Nie mutowac przez niego pamieci.</summary>
@@ -305,6 +338,38 @@ namespace ProceduralNarrator.Integration.Persistence
             get { return facts ?? new Dictionary<int, FactLedger>(); }
         }
 
+        /// <summary>Ksiega stylu gracza. Mutuje ja wylacznie obserwator; reszta tylko czyta.</summary>
+        public PlayerStyleLedger Style
+        {
+            get { return styl ?? (styl = new PlayerStyleLedger()); }
+        }
+
+        /// <summary>Bezpiecznik stylu spalony (wyjatek obserwatora) - narrator liczy wtedy bez stylu.</summary>
+        public bool StyleBroken
+        {
+            get { return stylBroken; }
+        }
+
+        /// <summary>Parametry stylu uzywane przez obserwatora (blok &lt;playerStyle&gt; naszego Defa, po Sanitize).</summary>
+        public PlayerStyleParams StyleParams
+        {
+            get { return stylParams ?? (stylParams = PlayerStyleObserver.ResolveParams()); }
+        }
+
+        /// <summary>
+        /// Kasuje ksiege stylu (akcja "PN: skasuj styl gracza") - obserwacja i rozgrzewka od nowa.
+        /// "PN: skasuj pamiec" stylu NIE kasuje: styl opisuje gracza, a nie narracje (decyzja zgloszona
+        /// autorowi przy planie kroku 7); ta akcja sluzy do sprawdzania rozgrzewki.
+        /// </summary>
+        public void ClearStyle()
+        {
+            PNLog.Reset("skasujStyl", "styl=" + OpisStylu());
+            styl = new PlayerStyleLedger();
+            PNLog.Decision("STYL GRACZA SKASOWANY recznie (akcja debugowa). Obserwacja zaczyna od nastepnego ticku, "
+                           + "styl wroci po rozgrzewce (" + StyleParams.warmupDays.ToString(CultureInfo.InvariantCulture)
+                           + " dni). Pamiec narratora (historia, luki, fakty) nietknieta.");
+        }
+
         /// <summary>
         /// Kasuje CALA pamiec narratora. Uzywane przez akcje debugowa.
         ///
@@ -320,12 +385,13 @@ namespace ProceduralNarrator.Integration.Persistence
             int map = histories == null ? 0 : histories.Count;
             // Znacznik PRZED kasowaniem, zeby niosl stan, ktory przepada (uid:decyzji).
             PNLog.Reset("skasujPamiec", "map=" + map.ToString(CultureInfo.InvariantCulture) + "; mapy=" + OpisMap()
-                                        + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow());
+                                        + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow() + "; styl=" + OpisStylu());
             histories = new Dictionary<int, EventHistory>();
             ledgers = new Dictionary<int, ArcLedger>();
             // Fakty RAZEM z reszta: skasowana ksiega lukow obok zachowanych faktow dawalaby pamiec
             // wewnetrznie sprzeczna (fakt "po walce" bez historii tej walki).
             facts = new Dictionary<int, FactLedger>();
+            // Styl gracza ZOSTAJE (krok 7): opisuje gracza, nie narracje - do jego kasowania jest osobna akcja.
             PNLog.Decision("PAMIEC NARRATORA SKASOWANA recznie (akcja debugowa). Zwolniono map: "
                            + map.ToString(CultureInfo.InvariantCulture)
                            + ". Swiezosc, kontrast i gestosc PASS licza sie od zera.");
@@ -358,6 +424,10 @@ namespace ProceduralNarrator.Integration.Persistence
             /// <summary>Ksiegi faktow gry (odlozone) i ich zamrozony kodek - jak przy lukach.</summary>
             internal Dictionary<int, FactLedger> OriginalFacts;
             internal Dictionary<int, List<string>> FrozenFacts;
+
+            /// <summary>Ksiega stylu gry (odlozona) i jej zamrozony kodek (krok 7) - jak przy faktach.</summary>
+            internal PlayerStyleLedger OriginalStyle;
+            internal List<string> FrozenStyle;
         }
 
         private MemoryCheckpoint eksperyment;
@@ -382,7 +452,11 @@ namespace ProceduralNarrator.Integration.Persistence
                 OriginalLedgers = ledgers ?? new Dictionary<int, ArcLedger>(),
                 FrozenLedgers = new Dictionary<int, List<string>>(),
                 OriginalFacts = facts ?? new Dictionary<int, FactLedger>(),
-                FrozenFacts = new Dictionary<int, List<string>>()
+                FrozenFacts = new Dictionary<int, List<string>>(),
+                // Styl: ramie go nie obserwuje (symulator nie tyka GameComponent), ale ramie ma czytac KOPIE -
+                // odcisk pamieci obejmuje styl, wiec kopia przez kodek sprawdza tez jego sciezke.
+                OriginalStyle = Style,
+                FrozenStyle = Style.ToPersistableLines()
             };
 
             // Luki mutuja sie w KAZDYM wywolaniu compa (obserwacja), nie tylko w decyzji - bez
@@ -465,6 +539,13 @@ namespace ProceduralNarrator.Integration.Persistence
             }
             facts = kopiaFaktow;
 
+            var kopiaStylu = new PlayerStyleLedger();
+            if (c.FrozenStyle != null)
+            {
+                odrzuconych += kopiaStylu.RestoreFromLines(c.FrozenStyle);
+            }
+            styl = kopiaStylu;
+
             profileId = string.IsNullOrEmpty(armProfileId) ? c.ProfileId : armProfileId;
             return odrzuconych;
         }
@@ -482,6 +563,7 @@ namespace ProceduralNarrator.Integration.Persistence
             histories = c.Original;
             ledgers = c.OriginalLedgers ?? new Dictionary<int, ArcLedger>();
             facts = c.OriginalFacts ?? new Dictionary<int, FactLedger>();
+            styl = c.OriginalStyle ?? new PlayerStyleLedger();
             profileId = c.ProfileId;
             eksperyment = null;
         }
@@ -518,6 +600,17 @@ namespace ProceduralNarrator.Integration.Persistence
             // listy pomocnicze, wiec krotkie przeciazenie jest poprawne. Ten sam wzorzec ma
             // waniliowy StoryState.lastFireTicks (LookMode.Def + LookMode.Value).
             Scribe_Collections.Look(ref zapis, "pamiecMap", LookMode.Value, LookMode.Deep);
+
+            // WEZEL STYLU GRACZA (krok 7) - osobny, z tego samego powodu co "fakty": blad kodeka jednej
+            // ksiegi nie moze kaskadowac na reszte pamieci. W trakcie eksperymentu - oryginal, nie ramie.
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                PlayerStyleLedger doZapisu = eksperyment != null && eksperyment.OriginalStyle != null
+                    ? eksperyment.OriginalStyle
+                    : Style;
+                stylZapis = doZapisu.ToPersistableLines();
+            }
+            Scribe_Collections.Look(ref stylZapis, "stylGracza", LookMode.Value);
 
             // Rehydratacja idzie TUTAJ, a nie w PostLoadInit, mimo ze wanilia lubi tamta faze.
             // Powod: komponent DOLOZONY przez FillComponents() do zapisu, w ktorym go nie bylo
@@ -622,6 +715,16 @@ namespace ProceduralNarrator.Integration.Persistence
 
         private void RestoreFromSaveBuffer()
         {
+            // Styl PRZED wczesnym powrotem ponizej: zapis moze miec styl bez zadnej mapy w pamieci
+            // (gra zapisana przed pierwsza decyzja narratora - styl obserwuje sie od dnia 0).
+            styl = new PlayerStyleLedger();
+            odrzuconychStylu = 0;
+            if (stylZapis != null && stylZapis.Count > 0)
+            {
+                odrzuconychStylu = styl.RestoreFromLines(stylZapis);
+            }
+            stylZapis = new List<string>();
+
             histories = new Dictionary<int, EventHistory>();
             ledgers = new Dictionary<int, ArcLedger>();
             facts = new Dictionary<int, FactLedger>();
@@ -669,7 +772,7 @@ namespace ProceduralNarrator.Integration.Persistence
                 }
             }
 
-            odrzuconychLinii = odrzuconychHistorii + odrzuconychLukow + odrzuconychFaktow;
+            odrzuconychLinii = odrzuconychHistorii + odrzuconychLukow + odrzuconychFaktow + odrzuconychStylu;
 
             // Bufor przestaje byc potrzebny natychmiast po odbudowie. Trzymanie go dalej
             // groziloby tym, ze ktos kiedys odczyta z niego nieaktualny stan.
@@ -713,7 +816,93 @@ namespace ProceduralNarrator.Integration.Persistence
 
         public override void GameComponentTick()
         {
+            // Zegar NAJPIERW - obserwatory nie moga go opoznic ani zablokowac wyjatkiem.
             zegarGry = Find.TickManager.TicksGame;
+            ObserwujOdpalenia(zegarGry);
+            ObserwujStyl(zegarGry);
+        }
+
+        // ---------------------------------------------------------------- LOG ODPALEN (krok 8)
+
+        /// <summary>
+        /// Obserwator odpalen incydentow ([PN-FIRED], decyzja autora K8-2). Tworzony od nowa w FinalizeInit
+        /// z tickiem startu = tick wczytania, wiec odpalenia sprzed zapisu nie wracaja jako nowe. NIE jest
+        /// utrwalany: po wczytaniu linia [PN-LOAD] i tak rozwidla analize.
+        /// </summary>
+        private Evaluation.IncidentFireWatcher strazOdpalen;
+
+        /// <summary>Bezpiecznik obserwatora odpalen: wyjatek wylacza go do wczytania zapisu, jeden raport.</summary>
+        private bool odpaleniaBroken;
+
+        /// <summary>
+        /// Comp rejestruje tu zdarzenie oddawane grze w tym ticku (przed yield) - obserwator oznaczy je pn=1.
+        /// </summary>
+        internal void ZarejestrujWlasneOdpalenie(int tick, int mapId, string incydent)
+        {
+            // Przy spalonym bezpieczniku obserwator nie sprzata rejestru - nie dopisujemy (przeglad S10).
+            if (strazOdpalen != null && eksperyment == null && !odpaleniaBroken)
+            {
+                strazOdpalen.RegisterOwn(tick, mapId, incydent);
+            }
+        }
+
+        /// <summary>Cofa rejestracje zdarzenia, ktorego nasz TryFire nie wykonal (przeglad S10).</summary>
+        internal void WyrejestrujWlasneOdpalenie(int tick, int mapId, string incydent)
+        {
+            if (strazOdpalen != null)
+            {
+                strazOdpalen.UnregisterOwn(tick, mapId, incydent);
+            }
+        }
+
+        private void ObserwujOdpalenia(int tick)
+        {
+            if (odpaleniaBroken || eksperyment != null || strazOdpalen == null)
+            {
+                return;
+            }
+            try
+            {
+                uint rand0 = Arcs.RandCanary.Read();
+                strazOdpalen.Tick(tick);
+                Arcs.RandCanary.Check(rand0, "obserwator odpalen incydentow");
+            }
+            catch (Exception e)
+            {
+                odpaleniaBroken = true;
+                PNLog.Error("OBSERWATOR ODPALEN ([PN-FIRED]) rzucil wyjatek i jest WYLACZONY do wczytania zapisu. "
+                            + "Narrator dziala dalej; brakujace linie [PN-FIRED] od tej chwili sa luka w danych "
+                            + "ewaluacji, nie brakiem zdarzen.\n" + e);
+            }
+        }
+
+        /// <summary>
+        /// Krok obserwatora stylu gracza (krok 7) w kazdym ticku, od dnia 0, w kazdej grze. Wlasny
+        /// bezpiecznik: wyjatek wylacza obserwacje do wczytania zapisu, jeden raport, narrator liczy dalej
+        /// bez stylu. W trakcie eksperymentu nic (symulator i tak nie tyka komponentow gry).
+        /// </summary>
+        private void ObserwujStyl(int tick)
+        {
+            if (stylBroken || eksperyment != null)
+            {
+                return;
+            }
+            try
+            {
+                PlayerStyleParams p = StyleParams;
+                StyleDaySample dzien = PlayerStyleObserver.Tick(Style, p, tick);
+                if (dzien != null)
+                {
+                    PNLog.Player(dzien, PlayerStyleModel.Evaluate(Style, p));
+                }
+            }
+            catch (Exception e)
+            {
+                stylBroken = true;
+                PNLog.Error("OBSERWATOR STYLU GRACZA rzucil wyjatek i jest WYLACZONY do wczytania zapisu (komponent "
+                            + "powstaje wtedy od nowa). Narrator dziala dalej BEZ stylu: kolumny stylu puste, luki pod styl "
+                            + "sie nie otworza. Ksiega stylu zostaje w stanie sprzed wyjatku i tak trafi do zapisu.\n" + e);
+            }
         }
 
         /// <summary>
@@ -727,6 +916,10 @@ namespace ProceduralNarrator.Integration.Persistence
         {
             // Po wczytaniu gra stoi na ticku zapisu; pierwszy prawdziwy DoSingleTick to tick+1.
             zegarGry = Find.TickManager != null ? Find.TickManager.TicksGame : int.MinValue;
+
+            // Obserwator odpalen od nowa: odpalenia do ticku wczytania (wlacznie) sa juz za nami.
+            strazOdpalen = new Evaluation.IncidentFireWatcher(Find.TickManager != null ? Find.TickManager.TicksGame : 0);
+            odpaleniaBroken = false;
 
             if (histories == null)
             {
@@ -744,6 +937,16 @@ namespace ProceduralNarrator.Integration.Persistence
             {
                 zapis = new Dictionary<int, MapMemoryRecord>();
             }
+            if (styl == null)
+            {
+                styl = new PlayerStyleLedger();
+            }
+            if (stylZapis == null)
+            {
+                stylZapis = new List<string>();
+            }
+            // Parametry stylu rozwiazywane od nowa w kazdej grze (Def mogl sie zmienic miedzy sesjami).
+            stylParams = null;
 
             if (string.IsNullOrEmpty(runId))
             {
@@ -756,7 +959,8 @@ namespace ProceduralNarrator.Integration.Persistence
                 // Osobny komunikat, bo ogolny ("wpisy pominiete") sugerowalby utrate danych.
                 PNLog.Decision("Pamiec narratora z zapisu w wersji "
                                + memoryVersion.ToString(CultureInfo.InvariantCulture)
-                               + " (sprzed lukow narracyjnych): historia wczytana, luki startuja puste.");
+                               + " (sprzed lukow narracyjnych): historia wczytana, luki startuja puste, "
+                               + "fakty i styl gracza od tego momentu.");
             }
             else if (wczytanoZZapisu && memoryVersion >= ArcsSinceVersion && memoryVersion < FactsSinceVersion)
             {
@@ -765,7 +969,17 @@ namespace ProceduralNarrator.Integration.Persistence
                 // o pominietych wpisach, choc niczego nie pominieto.
                 PNLog.Decision("Pamiec narratora z zapisu w wersji "
                                + memoryVersion.ToString(CultureInfo.InvariantCulture)
-                               + " (sprzed faktow blackboardu): historia i luki wczytane, fakty startuja puste.");
+                               + " (sprzed faktow blackboardu): historia i luki wczytane, fakty startuja puste, "
+                               + "styl gracza od tego momentu.");
+            }
+            else if (wczytanoZZapisu && memoryVersion >= FactsSinceVersion && memoryVersion < StyleSinceVersion)
+            {
+                // Zapis z kroku 6 (v3): wezla "stylGracza" nie bylo. Ta galaz tez MUSI stac przed ogolna -
+                // inaczej v3 dostalby falszywe ostrzezenie o pominietych wpisach.
+                PNLog.Decision("Pamiec narratora z zapisu w wersji "
+                               + memoryVersion.ToString(CultureInfo.InvariantCulture)
+                               + " (sprzed stylu gracza): historia, luki i fakty wczytane; styl gracza startuje "
+                               + "od tego momentu (rozgrzewka liczy sie od wczytania).");
             }
             else if (wczytanoZZapisu && memoryVersion != MemoryFormatVersion)
             {
@@ -884,7 +1098,7 @@ namespace ProceduralNarrator.Integration.Persistence
 
             PNLog.Load(runId, zrodlo, EffectiveProfileId, profileId, histories.Count, wpisow, decyzji,
                        odrzuconychLinii, memoryVersion, OpisMap(), OpisLukow(), OpisFaktow(),
-                       odrzuconychHistorii, odrzuconychLukow, odrzuconychFaktow);
+                       odrzuconychHistorii, odrzuconychLukow, odrzuconychFaktow, OpisStylu(), odrzuconychStylu);
 
             if (odrzuconychLinii > 0)
             {
@@ -893,8 +1107,35 @@ namespace ProceduralNarrator.Integration.Persistence
                            + " linii nie do sparsowania (historia " + odrzuconychHistorii.ToString(CultureInfo.InvariantCulture)
                            + ", luki " + odrzuconychLukow.ToString(CultureInfo.InvariantCulture)
                            + ", fakty " + odrzuconychFaktow.ToString(CultureInfo.InvariantCulture)
+                           + ", styl " + odrzuconychStylu.ToString(CultureInfo.InvariantCulture)
                            + "). Reszta pamieci zostala zachowana.");
             }
+        }
+
+        /// <summary>
+        /// Stan stylu gracza - pole "styl" linii [PN-LOAD] i [PN-RESET]:
+        /// "dni:N,dzien:D,aktywny:0|1,mocne:Walka/Ekspansja,etykieta:X" (dni w kolejce, dzien w toku,
+        /// ewaluacja w tej chwili; mocne i etykieta puste w rozgrzewce). Analiza zaczyna od niego
+        /// ciaglosc linii [PN-GRACZ] po rozwidleniu. Ewaluacja w try: pole logu nie moze zabic kanarka.
+        /// </summary>
+        private string OpisStylu()
+        {
+            PlayerStyleLedger l = Style;
+            StyleReading r = null;
+            try
+            {
+                r = PlayerStyleModel.Evaluate(l, StyleParams);
+            }
+            catch (Exception)
+            {
+                r = null;
+            }
+            bool aktywny = r != null && r.Active;
+            return "dni:" + l.Days.Count.ToString(CultureInfo.InvariantCulture)
+                   + ",dzien:" + l.CurrentDay.ToString(CultureInfo.InvariantCulture)
+                   + ",aktywny:" + (aktywny ? "1" : "0")
+                   + ",mocne:" + (aktywny ? r.StrongData() : string.Empty)
+                   + ",etykieta:" + (aktywny ? r.Label ?? string.Empty : string.Empty);
         }
 
         /// <summary>

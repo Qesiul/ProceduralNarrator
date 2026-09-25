@@ -39,9 +39,10 @@ namespace ProceduralNarrator.Core.Arcs
         public List<ArcClosure> Closed = new List<ArcClosure>();
 
         /// <summary>
-        /// Ile zamkniec pamietamy. Szesnascie to cztery pelne obroty dzisiejszego katalogu lukow
-        /// (cztery luki), czyli wystarczajaco, by kazdy luk mial w pamieci swoje ostatnie zamkniecie
-        /// nawet przy rozgrywce, w ktorej wszystkie krecily sie na zmiane.
+        /// Ile zamkniec pamietamy. Od kroku 7 katalog ma osiem lukow, czyli szesnascie to dwa pelne
+        /// obroty. To nadal wystarcza, by kazdy luk mial w pamieci swoje ostatnie zamkniecie: regula
+        /// przycinania (PrzytnijZamkniecia) oszczedza ostatnie zamkniecie kazdego luku, dopoki roznych
+        /// lukow jest najwyzej MaxClosed.
         /// </summary>
         public const int MaxClosed = 16;
 

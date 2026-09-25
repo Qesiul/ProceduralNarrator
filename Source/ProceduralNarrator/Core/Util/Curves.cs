@@ -44,6 +44,19 @@ namespace ProceduralNarrator.Core.Util
         /// zamienia sie w prog skokowy - to zachowanie jest odziedziczone bez zmian po
         /// NarrativeCondition.Ramp, zeby zaden istniejacy warunek miekki nie zmienil wyniku.
         /// </summary>
+        /// <summary>
+        /// Klamruje do [-1,1] i JAWNIE zbija NaN do zera - odpowiednik Clamp01 dla wielkosci ze znakiem
+        /// (profil wzgledny i kierunek stylu gracza, krok 7). Math.Clamp nie istnieje w net472.
+        /// </summary>
+        public static float ClampSigned(float v)
+        {
+            if (float.IsNaN(v))
+            {
+                return 0f;
+            }
+            return v < -1f ? -1f : (v > 1f ? 1f : v);
+        }
+
         public static float Ramp(float value, float from, float to)
         {
             if (from == to)

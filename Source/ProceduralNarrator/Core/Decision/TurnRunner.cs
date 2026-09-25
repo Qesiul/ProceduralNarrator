@@ -450,6 +450,9 @@ namespace ProceduralNarrator.Core.Decision
                 // z przedzialu zaczepionego o opcje, ktorej gra wlasnie odmowila.
                 // Prog BEZWZGLEDNY (qualityCutoff) nie przelicza sie nigdy i to on, a nie pasmo,
                 // jest gwarancja jakosci w kolejnych rundach.
+                // UWAGA (przeglad S8 kroku 7): od prewerifikacji czola lider jest sprawdzony w fazie 0 i zostaje dostepny
+                // we wszystkich rundach, wiec w praktyce best i pasmo sa stale przez cala ture; przeliczanie zostaje jako
+                // bezpiecznik (galaz bledu okablowania z linia [PN-ERR]).
                 decyzja = policy.Select(pool, pass, rng, straznikSerii, brama, statystykiTury);
                 decyzja.AttachTurnContext(passDensity, context.History.DeliberateSilenceStreak);
                 losowaniaTury += decyzja.RandomDraws;

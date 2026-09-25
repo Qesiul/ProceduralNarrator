@@ -1,5 +1,6 @@
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.PlayerModel;
 
 namespace ProceduralNarrator.Core.Tension
 {
@@ -68,6 +69,23 @@ namespace ProceduralNarrator.Core.Tension
             plan.Context.ArcFocus = arcs == null || ledger == null
                 ? null
                 : arcs.BuildFocus(ledger, plan.Intent.Intent, gameDay, usability);
+            return plan;
+        }
+
+        /// <summary>
+        /// Przeciazenie ze STYLEM GRACZA (krok 7). Fokus stylu dostaje intencje PO regule kryzysu
+        /// (plan.Intent), wiec kryzys - wymuszony oddech - daje kierunek z wiersza oddechu. style == null
+        /// = warstwa stylu nieobecna (ramie S, styl wylaczony, spalony bezpiecznik): fokus pusty.
+        /// </summary>
+        public static TurnPlan Plan(TensionModel tensionModel, CrisisParams crisisParams, EventHistory history,
+                                    WorldSnapshot snapshot, float gameDay, ArcDirector arcs, ArcLedger ledger,
+                                    IFactionUsability usability, StyleReading style, float styleOrientation,
+                                    PlayerStyleParams styleParams)
+        {
+            TurnPlan plan = Plan(tensionModel, crisisParams, history, snapshot, gameDay, arcs, ledger, usability);
+            plan.Context.StyleFocus = style == null
+                ? null
+                : StyleFocus.Build(style, styleOrientation, plan.Intent.Intent, styleParams);
             return plan;
         }
     }

@@ -22,9 +22,12 @@
                    jednego wydarzenia byly w jednym miejscu. WYJATEK (krok 6): klocki
                    KONSEKWENCJI deklaruja swoje zakazy same (Blocks_Consequences.xml).
       factsOnExecute   (tylko Consequence) fakty zostawiane po POTWIERDZONYM wykonaniu.
+      styleWeights (tylko Action, krok 7) czego zdarzenie DOTYCZY w jezyku cech stylu gracza
+                   (walka, gospodarka, ekspansja, reaktywnosc); decyzja autora nr 20: cecha glowna 1,
+                   a nagle zagrozenia dodatkowo 0.5 reaktywnosci.
 
-    NOWA AKCJA wymaga wpisu w tabelach walidatora (TestsComposition: Oczekiwane
-    i DozwoloneKonsekwencje). Graf jest "brak krawedzi = zgoda", wiec akcja, o ktorej
+    NOWA AKCJA wymaga wpisu w tabelach walidatora (TestsComposition: Oczekiwane,
+    DozwoloneKonsekwencje i WagiStyluAkcji). Graf jest "brak krawedzi = zgoda", wiec akcja, o ktorej
     Blocks_Consequences.xml nie wie, jest zgodna ze WSZYSTKIMI konsekwencjami.
 
     UWAGA: wezel musi miec PELNA nazwe typu z namespace'em - sama <NarrativeBlockDef>
@@ -48,6 +51,17 @@
     <intensity>High</intensity>
     <tags><li>rozglos</li></tags>
     <textFragment>Wiesc o zamoznosci kolonii rozeszla sie po okolicy.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>bardzo</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_WealthRelative"><min>4</min></li>
+        </conditions>
+        <text>Kolonia uchodzi w okolicy za wyjatkowo zamozna.</text>
+      </li>
+    </textVariants>
     <!-- Zeby wiesc o bogactwie mogla sie rozejsc, kolonia musi cos miec -->
     <!-- 2.0 = kolonia dwa razy bogatsza, niz gra sie spodziewa na tym etapie.
          Prog wzgledny, bo absolutny zalezy od scenariusza startowego. -->
@@ -75,6 +89,17 @@
     <intensity>Normal</intensity>
     <tags><li>spokoj</li></tags>
     <textFragment>Po dniach spokoju cos w koncu zaklocilo rutyne.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>dluga</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_CalmPeriod"><minDays>5</minDays></li>
+        </conditions>
+        <text>Po wielu dniach spokoju cos w koncu zaklocilo rutyne.</text>
+      </li>
+    </textVariants>
     <!-- Ten fragment stwierdza, ze BYL spokoj - a tego wczesniej nikt nie sprawdzal.
          Gdy poprzednie wydarzenie wypadlo dzien wczesniej, zdanie bylo po prostu nieprawdziwe.
          1.5 dnia przy mtbDays=2.5 odsiewa nastepstwa "tuz po sobie", zostawiajac typowe odstepy. -->
@@ -114,8 +139,23 @@
          Zabezpieczenie warunkiem jest dzis niemozliwe (wymagaloby parametryzacji frakcji
          w IncidentParms - patrz dlug otwarty o slocie Target), wiec zgodnie z przyjeta zasada
          TEKST PRZESTAJE STWIERDZAC to, czego nie kontrolujemy. Nowy fragment mowi wylacznie to,
-         co Cond_HostileFaction faktycznie gwarantuje: ze napastnik jest wrogi i ludzki. -->
+         co Cond_HostileFaction faktycznie gwarantuje: ze istnieje wroga frakcja. SPROSTOWANIE (przeglad S8
+         kroku 7): wczesniej pisalo tu "wrogi i ludzki" - warunek nie wybiera napastnika, a napad wanilii moze przyjsc
+         od mechanoidow; sam tekst ("Wroga grupa zbrojna") jest prawdziwy tak czy inaczej. -->
     <textFragment>Wroga grupa zbrojna</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>frakcja</id>
+        <requiresFaction>true</requiresFaction>
+        <text>Wroga grupa zbrojna z frakcji {FRAKCJA}</text>
+      </li>
+      <li>
+        <id>z1</id>
+        <text>Wrogi oddzial</text>
+      </li>
+    </textVariants>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
     </conditions>
@@ -143,6 +183,14 @@
     <intensity>Normal</intensity>
     <tags><li>zwierzeta</li></tags>
     <textFragment>Dzika zwierzyna</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Okoliczna zwierzyna</text>
+      </li>
+    </textVariants>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_WildAnimals">
         <min>1</min>
@@ -166,6 +214,14 @@
     <intensity>Normal</intensity>
     <tags><li>neutralny</li><li>ludzki</li></tags>
     <textFragment>Ktos z zewnatrz</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Ktos obcy</text>
+      </li>
+    </textVariants>
     <!-- Wedrowcy trafiaja raczej do kolonii, ktora zdazyla zaistniec -->
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
@@ -187,6 +243,8 @@
     <intensity>Normal</intensity>
     <tags><li>militarny</li></tags>
     <payload>RaidEnemy</payload>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <!-- Krok 5: jedyny incydent katalogu, ktory honoruje parms.faction (IncidentWorker_RaidEnemy,
          dekompilacja 1.5.4063). Pozwala lukowi Wendeta sprowadzic ponownie TE SAMA frakcje.
          Audyt startowy odrzuca te flage na klocku, ktorego worker nie jest typu RaidEnemy. -->
@@ -196,6 +254,21 @@
          uderza na kolonie zbrojnie". Zapamietac: przepisanie tekstu JEDNEGO klocka moze
          zepsuc zdanie skladane z INNYM klockiem, a widac to dopiero w zlozonym opisie. -->
     <textFragment>uderza na kolonie.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>noc</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Night" />
+        </conditions>
+        <text>nadciaga noca na kolonie.</text>
+      </li>
+      <li>
+        <id>z1</id>
+        <text>rusza do ataku na kolonie.</text>
+      </li>
+    </textVariants>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_HostileFaction"/>
       <!-- 11, nie 5: odwzorowuje OnOffCycle(ThreatBig) u Cassandry. Comp ma prog 5 (tor Misc,
@@ -232,7 +305,20 @@
     <intensity>Low</intensity>
     <tags><li>militarny</li><li>zwierzeta</li></tags>
     <payload>ManhunterPack</payload>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <textFragment>wpada w szal i rusza na osade.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>noc</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Night" />
+        </conditions>
+        <text>wpada w szal i w ciemnosciach rusza na osade.</text>
+      </li>
+    </textVariants>
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_WildAnimals">
         <min>1</min>
@@ -270,7 +356,17 @@
     <intensity>High</intensity>
     <tags><li>militarny</li><li>insekty</li></tags>
     <payload>Infestation</payload>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <textFragment>wygryza sie spod podlogi.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wygryza sie z glebi skaly.</text>
+      </li>
+    </textVariants>
     <!-- Twardy warunek, ktory wczesniej odbijal sie od CanFireNow -->
     <conditions>
       <li Class="ProceduralNarrator.Core.Conditions.Cond_MountainRoof"/>
@@ -308,6 +404,9 @@
       <li>PN_Aktor_Obcy</li>
       <li>PN_Trig_Bogactwo</li>
       <li>PN_Aktor_Natura</li>
+      <!-- Przeglad S10 (decyzja autora 2026-09-25): rojenie to owady z tuneli (Faction.OfInsects), a Cond_WildAnimals
+           aktora liczy inne zwierzeta - "Dzika zwierzyna wygryza sie spod podlogi" stwierdzalo nieprawde. -->
+      <li>PN_Aktor_Dzikie</li>
     </incompatibleWith>
     <!-- Infestacja to zagrozenie fazy sredniej i poznej: zanim kolonia rozbuduje sie pod gora,
          nie ma czego atakowac. Warunek twardy pilnuje stropu, preferencja - dojrzalosci. -->
@@ -328,7 +427,23 @@
     <intensity>Low</intensity>
     <tags><li>spoleczny</li></tags>
     <payload>WandererJoin</payload>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
     <textFragment>prosi o przyjecie do kolonii.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>nieliczna</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Colonists"><max>3</max></li>
+        </conditions>
+        <text>prosi o przyjecie do nielicznej kolonii.</text>
+      </li>
+      <li>
+        <id>z1</id>
+        <text>prosi o miejsce w kolonii.</text>
+      </li>
+    </textVariants>
     <!-- Male kolonie bardziej potrzebuja rak do pracy -->
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
@@ -355,7 +470,18 @@
     <!-- "niebo": wspolny tag lukow PN_Luk_ZnakiZNieba (krok 5) - kapsula spada z nieba. -->
     <tags><li>zasoby</li><li>niebo</li></tags>
     <payload>ResourcePodCrash</payload>
-    <textFragment>zostawia po sobie rozbita kapsule z zaopatrzeniem.</textFragment>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>zrzuca w okolicy kapsuly z zaopatrzeniem.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>zostawia po sobie rozbite kapsuly z zaopatrzeniem.</text>
+      </li>
+    </textVariants>
     <!-- Uboga kolonia bardziej potrzebuje zaopatrzenia -->
     <preferences>
       <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
@@ -390,9 +516,25 @@
          a tego nie kontrolujemy: IncidentWorker sam wybiera miejsce, wiec zdanie bywalo
          falszywe i zadnym warunkiem twardym nie dalo sie tego naprawic. Nowa wersja mowi
          o WADZE sprawy, ktora ten klocek faktycznie koduje (scale + intensity), wiec jest
-         prawdziwa z konstrukcji. Dopoki slot Target nie parametryzuje IncidentParms,
+         prawdziwa z konstrukcji. (NIEAKTUALNE od przegladu S10 kroku 8: klocek wnosi tylko WKLAD do mocy,
+         wiec o wadze decyduje moc KONCOWA - stad warianty ponizej.) Dopoki slot Target nie parametryzuje IncidentParms,
          nie wolno mu obiecywac polozenia. -->
-    <textFragment>Dla kolonii to sprawa pierwszej wagi.</textFragment>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): WAGA WEDLUG MOCY. Klocek wnosi tylko swoj wklad do
+         mocy, a "sprawa pierwszej wagi" mowi o CALYM zdarzeniu - przy mocy koncowej VeryLow bylo nieprawda.
+         Tekst bazowy pusty; zdanie tylko przy mocy koncowej co najmniej High. -->
+    <textFragment></textFragment>
+    <textVariants>
+      <li>
+        <id>waga</id>
+        <minIntensity>High</minIntensity>
+        <text>Dla kolonii to sprawa pierwszej wagi.</text>
+      </li>
+      <li>
+        <id>waga2</id>
+        <minIntensity>High</minIntensity>
+        <text>Kolonia nie moze tego zlekcewazyc.</text>
+      </li>
+    </textVariants>
     <!-- "Serce osady" ma sens, gdy osada ma serce: rozwinieta kolonia ma gesty rdzen,
          w ktory da sie uderzyc. Para przeciwstawna z PN_Cel_Obrzeza - bez tego jeden z celow
          nie mial ZADNEJ preferencji i wygrywal remis samym brakiem kary. -->
@@ -417,9 +559,24 @@
          a tego nie kontrolujemy: IncidentWorker sam wybiera miejsce, wiec zdanie bywalo
          falszywe i zadnym warunkiem twardym nie dalo sie tego naprawic. Nowa wersja mowi
          o WADZE sprawy, ktora ten klocek faktycznie koduje (scale + intensity), wiec jest
-         prawdziwa z konstrukcji. Dopoki slot Target nie parametryzuje IncidentParms,
+         prawdziwa z konstrukcji. (NIEAKTUALNE od przegladu S10 kroku 8: klocek wnosi tylko WKLAD do mocy,
+         wiec o wadze decyduje moc KONCOWA - stad warianty ponizej.) Dopoki slot Target nie parametryzuje IncidentParms,
          nie wolno mu obiecywac polozenia. -->
-    <textFragment>Dla kolonii to na razie sprawa drugorzedna.</textFragment>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): WAGA WEDLUG MOCY - "sprawa drugorzedna" padala tez
+         przy napadzie o mocy VeryHigh. Tekst bazowy pusty; zdanie tylko przy mocy koncowej co najwyzej Low. -->
+    <textFragment></textFragment>
+    <textVariants>
+      <li>
+        <id>waga</id>
+        <maxIntensity>Low</maxIntensity>
+        <text>Dla kolonii to na razie sprawa drugorzedna.</text>
+      </li>
+      <li>
+        <id>waga2</id>
+        <maxIntensity>Low</maxIntensity>
+        <text>Na razie nie jest to sprawa pierwszej wagi.</text>
+      </li>
+    </textVariants>
     <!-- Mala kolonia to jeszcze nie osada z centrum - jej zycie toczy sie na obrzezach.
          Rampa MALEJACA, przeciwstawna do PN_Cel_Osada. -->
     <preferences>
@@ -441,7 +598,17 @@
          Ten slot wnosi warunki, preferencje, tekst i intensywnosc; osi nie wnosi. -->
     <intensity>High</intensity>
     <tags><li>czas</li></tags>
-    <textFragment>Wszystko rozgrywa sie po zmroku.</textFragment>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>Nad osada zapadla juz noc.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Jest juz ciemno.</text>
+      </li>
+    </textVariants>
     <!-- REGULA: fragment STWIERDZAJACY sprawdzalny fakt musi miec go jako warunek TWARDY.
          Zmierzone w grze: przy samej preferencji softmax wybral ten klocek w biale poludnie
          (noc=False) i narrator napisal "po zmroku" - kompozycja formalnie poprawna, tekst
@@ -525,7 +692,24 @@
 
          GDZIE TO WIDAC: PNStartup.AuditIntensityEffect wypisuje te liste przy kazdym starcie,
          wiec przy dosypce katalogu nie trzeba jej odtwarzac dekompilatorem. -->
-    <textFragment>Rozmach jest mniejszy, niz moglby byc.</textFragment>
+    <!-- ROZSTRZYGNIECIE SPORU (krok 8, decyzja autora K8-6, 2026-09-25): tekst bazowy PUSTY - poza
+         przypadkiem z desygnatem (akcja skalujaca sie punktami i moc koncowa co najwyzej Low - wariant
+         "skala") klocek nic nie stwierdza. Wplyw na moc i na wybor bez zmian. -->
+    <textFragment></textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>skala</id>
+        <!-- Przeglad S10 (decyzja autora 2026-09-25): ponizej ok. 300 punktow podlogi silnika (napad:
+             MinimumPoints*1.05, stado: Clamp(2, 100)) daja ten sam rozmach przy Normal i Low. -->
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints"><min>300</min></li>
+        </conditions>
+        <maxIntensity>Low</maxIntensity><requiresPointsScaling>true</requiresPointsScaling>
+        <text>Rozmach jest mniejszy, niz moglby byc.</text>
+      </li>
+    </textVariants>
     <!-- ZNALEZISKO Z ROZGRYWKI: ten klocek nie mial zadnej preferencji, wiec nigdy nie byl
          karany, podczas gdy PN_Mod_Noc w ciagu dnia dostawal 0.20. Skutek: trzy pierwsze
          decyzje z rzedu wybraly "Skala zdarzenia okazuje sie mniejsza..." i opisy zaczely sie

@@ -3,6 +3,7 @@ using System.Linq;
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Model;
+using ProceduralNarrator.Core.Tension;
 using RimWorld;
 using Verse;
 
@@ -65,7 +66,6 @@ namespace ProceduralNarrator.Integration
                 return new WorldSnapshot();
             }
 
-            int hour = GenLocalDate.HourOfDay(map);
             int dni = GenDate.DaysPassedSinceSettle;
 
             // PlayerWealthForStoryteller, a NIE WealthTotal - to pierwsze jest miara,
@@ -82,7 +82,16 @@ namespace ProceduralNarrator.Integration
                 MountainRoofCellsNearColony = MountainRoofNearColony(map),
                 HasHostileFaction = HasHostileFaction(),
                 Season = SeasonIndex(GenLocalDate.Season(map)),
-                IsNight = hour < 6 || hour >= 18,
+                // NOC = CIEMNOSC (krok 8, decyzja autora po przegladzie S10), a nie zegar. Dawniej: godzina < 6 albo
+                // >= 18 - a gra rozroznia dzien po jasnosci slonca (GenCelestial): na rowniku o 18:00 jasnosc 0,84
+                // (pelny dzien), latem przy biegunie jasno cala "noc". Teksty mowia o ciemnosci ("po zmroku",
+                // "w ciemnosciach"), a fakt w tekscie ma byc warunkiem twardym. Prog 0,3 = ciemnosc wedlug GlowGrid.
+                // GenCelestial liczy z pozycji kafla i TicksAbs - deterministycznie, bez RNG.
+                IsNight = GenCelestial.CurCelestialSunGlow(map) <= NocnaJasnosc,
+                // Krok 8 (dlug 6): ten sam odczyt co IncidentWorker_WildManWandersIn.CanFireNowSub (bez RNG).
+                SeasonAcceptableForHumans = map.mapTemperature == null || map.mapTemperature.SeasonAcceptableFor(ThingDefOf.Human),
+                // Przeglad S10 (dlug 6): skazone powietrze - dwa kolejne warunki tego samego CanFireNowSub.
+                ToxicAirActive = SkazonePowietrze(map),
                 WildAnimalCount = CountWildAnimals(map),
                 MaddenableAnimalCount = CountMaddenableAnimals(map),
                 AcuteDownedCount = CountAcutelyDownedColonists(map),
@@ -322,13 +331,15 @@ namespace ProceduralNarrator.Integration
         /// w chwili powalenia; snapshot jest STANEM, wiec pytamy o slady, ktore przemoc
         /// (i kazdy inny ostry kryzys) zostawia na pionku, dopoki ktos go nie opatrzy.
         ///
+        /// KROK 8 (dlug 12, decyzja autora K8-8) - decyzja przeniesiona do Core (AcuteDownedRule, testowana
+        /// offline); tutaj tylko odczyt flag z gry:
+        ///   - LICZONY od kroku 8: powalony przez stan z progiem smierci osiagnietym w &gt;= lethalFraction
+        ///     (0,5) - udar cieplny, hipotermia, zatrucie toksynami (ToxicBuildup nie jest tendable i nie boli,
+        ///     wiec dawne kryterium go nie widzialo) i kazdy podobny, bez wyliczania nazw;
+        ///   - NIE LICZONY od kroku 8: porod (PregnancyLabor/Pushing - bol 0.85 &gt;= prog szoku 0.8; w kolonii
+        ///     dwuosobowej wlaczal kryzys skrajny). Rana albo krwawienie przy porodzie dalej sie licza.
+        ///
         /// ZNANE OGRANICZENIA I ZACHOWANIA, swiadome (zweryfikowane dekompilacja w przegladzie):
-        ///   - NIE liczony: powalony przez sama swiadomosc bez ran - udar cieplny, hipotermia,
-        ///     zatrucie toksynami (ToxicBuildup nie jest tendable i nie boli). Brak szoku, krwi
-        ///     i nic do opatrzenia.
-        ///   - LICZONY: porod (PregnancyLabor/Pushing - Moving 0 i bol 0.85 &gt;= prog szoku 0.8)
-        ///     - stan ostry i wymagajacy pomocy, wiec zgodny z intencja predykatu, ale w kolonii
-        ///     dwuosobowej wlacza kryzys skrajny;
         ///   - LICZONY OKRESOWO: trwale powalony z przewlekla choroba do opatrywania (np. astma) -
         ///     wraca do licznika na kilka godzin przed kazdym koncem opatrunku;
         ///   - LICZONY ZAWSZE: pionek w trwalym szoku bolowym (przewlekle bolesne blizny).
@@ -338,25 +349,110 @@ namespace ProceduralNarrator.Integration
         /// Pionek NOSZONY (akcja ratunkowa) nie jest spawnowany, wiec wypada z licznika i z
         /// mianownika jednoczesnie - ulamek zostaje dobrze okreslony.
         /// </summary>
-        private static int CountAcutelyDownedColonists(Map map)
+        internal static int CountAcutelyDownedColonists(Map map)
         {
             List<Pawn> kolonisci = map.mapPawns.FreeColonistsSpawned;
+            float prog = ProgSmiertelnosci();
             int n = 0;
             for (int i = 0; i < kolonisci.Count; i++)
             {
                 Pawn p = kolonisci[i];
-                if (p == null || !p.Downed || LifeStageUtility.AlwaysDowned(p) || p.health == null)
+                // Tanie odsianie przed odczytem hediffow: niepowalony nie jest ostry w zadnej galezi reguly.
+                if (p == null || !p.Downed || p.health == null)
                 {
                     continue;
                 }
-                if (p.health.InPainShock
-                    || p.health.hediffSet.BleedRateTotal > 0f
-                    || p.health.HasHediffsNeedingTend())
+                if (AcuteDownedRule.IsAcute(FlagiPionka(p), prog))
                 {
                     n++;
                 }
             }
             return n;
+        }
+
+        /// <summary>Flagi zdrowia pionka dla AcuteDownedRule (krok 8) - sam odczyt, bez decyzji.</summary>
+        private static PawnAcuteFlags FlagiPionka(Pawn p)
+        {
+            var f = new PawnAcuteFlags
+            {
+                Downed = p.Downed,
+                AlwaysDowned = LifeStageUtility.AlwaysDowned(p),
+                InPainShock = p.health.InPainShock,
+                Bleeding = p.health.hediffSet.BleedRateTotal > 0f,
+                NeedsTend = p.health.HasHediffsNeedingTend()
+            };
+            List<Hediff> hediffy = p.health.hediffSet.hediffs;
+            for (int i = 0; i < hediffy.Count; i++)
+            {
+                Hediff h = hediffy[i];
+                if (h == null || h.def == null)
+                {
+                    continue;
+                }
+                // Przeglad S10: choroby PRZEWLEKLE (blokada tetnicy, rozpad narzadow - HediffDef.chronic) nie sa
+                // nagla sytuacja; bez tego trwale powalony z przewlekla choroba >= 0,5 byl liczony zawsze
+                // (w kolonii dwuosobowej: staly kryzys skrajny).
+                if (h.def.lethalSeverity > 0f && !h.def.chronic)
+                {
+                    float ulamek = h.Severity / h.def.lethalSeverity;
+                    if (ulamek > f.MaxLethalFraction)
+                    {
+                        f.MaxLethalFraction = ulamek;
+                    }
+                }
+                // HediffDefOf.PregnancyLabor* sa [MayRequireBiotech] - bez Biotechu sa null i nic nie pasuje.
+                if ((HediffDefOf.PregnancyLabor != null && h.def == HediffDefOf.PregnancyLabor)
+                    || (HediffDefOf.PregnancyLaborPushing != null && h.def == HediffDefOf.PregnancyLaborPushing))
+                {
+                    f.InLabor = true;
+                }
+            }
+            return f;
+        }
+
+        /// <summary>
+        /// Prog smiertelnosci z bloku &lt;crisis&gt; NASZEGO narratora - takze w grze z innym narratorem
+        /// (obserwator [PN-FIRED] liczy powalonych ta sama miara). Konfiguracja, nie stan rozgrywki:
+        /// czytana z Defa przy kazdym uzyciu (raz na ture i raz na 1000 tickow).
+        /// </summary>
+        /// <summary>Jasnosc slonca, ponizej ktorej (wlacznie) jest noc - ciemnosc wedlug GlowGrid (krok 8).</summary>
+        internal const float NocnaJasnosc = 0.3f;
+
+        /// <summary>
+        /// Opad toksyczny albo toksyczna mgla (Biotech) na mapie - te same warunki gry, przy ktorych
+        /// IncidentWorker_WildManWandersIn.CanFireNowSub odmawia (przeglad S10, dlug 6). Czysty odczyt listy
+        /// aktywnych warunkow, bez RNG. NoxiousHaze jest [MayRequireBiotech] - bez Biotechu null.
+        /// </summary>
+        private static bool SkazonePowietrze(Map map)
+        {
+            GameConditionManager gcm = map.GameConditionManager;
+            if (gcm == null)
+            {
+                return false;
+            }
+            if (GameConditionDefOf.ToxicFallout != null && gcm.ConditionIsActive(GameConditionDefOf.ToxicFallout))
+            {
+                return true;
+            }
+            return ModsConfig.BiotechActive && GameConditionDefOf.NoxiousHaze != null
+                   && gcm.ConditionIsActive(GameConditionDefOf.NoxiousHaze);
+        }
+
+        internal static float ProgSmiertelnosci()
+        {
+            StorytellerDef def = DefDatabase<StorytellerDef>.GetNamedSilentFail("PN_GenerativeNarrator");
+            if (def != null && def.comps != null)
+            {
+                for (int i = 0; i < def.comps.Count; i++)
+                {
+                    var g = def.comps[i] as Storyteller.StorytellerCompProperties_Generative;
+                    if (g != null && g.crisis != null)
+                    {
+                        return g.crisis.lethalFraction;
+                    }
+                }
+            }
+            return CrisisParams.Default().lethalFraction;
         }
 
         /// <summary>
@@ -370,7 +466,7 @@ namespace ProceduralNarrator.Integration
         /// byla poza gra. Niemowleta wypadaja z obu stron, bo zadne z nich nie moze byc ani
         /// "zdolne do dzialania", ani "powalone w kryzysie".
         /// </summary>
-        private static int CountColonistsOnMap(Map map)
+        internal static int CountColonistsOnMap(Map map)
         {
             List<Pawn> kolonisci = map.mapPawns.FreeColonistsSpawned;
             int n = 0;

@@ -230,6 +230,12 @@ namespace ProceduralNarrator.Core.Decision
             {
                 context.ArcFocus.Apply(wynik);
             }
+            // WARTOSC STYLU (krok 7) - tak samo jak luk: po wecie, poza Utility i poza Factors.
+            // Premie z niej liczy dopiero SelectionPolicy w C6.
+            if (context != null && context.StyleFocus != null)
+            {
+                context.StyleFocus.Apply(wynik);
+            }
             return wynik;
         }
 

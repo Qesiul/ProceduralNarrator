@@ -53,5 +53,17 @@ namespace ProceduralNarrator.Integration.Defs
         /// Nazwa pola musi sie zgadzac z Block.FactsOnExecute - pilnuje tego audyt startowy.
         /// </summary>
         public List<FactWrite> factsOnExecute = new List<FactWrite>();
+
+        /// <summary>
+        /// Wagi cech stylu gracza (krok 7, decyzja autora nr 20) - WYLACZNIE klocek akcji. Nazwa pola musi
+        /// sie zgadzac z Block.StyleWeights - pilnuje tego audyt startowy.
+        /// </summary>
+        public ProceduralNarrator.Core.PlayerModel.StyleWeights styleWeights = new ProceduralNarrator.Core.PlayerModel.StyleWeights();
+
+        /// <summary>Warianty tekstu (krok 8) - patrz Core/Model/TextVariant.</summary>
+        public List<TextVariant> textVariants = new List<TextVariant>();
+
+        /// <summary>Tylko klocek akcji: incydent skaluje sie punktami (audyt wobec IncidentDef.pointsScaleable).</summary>
+        public bool scalesWithPoints;
     }
 }

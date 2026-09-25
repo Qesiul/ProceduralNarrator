@@ -50,6 +50,17 @@
     <defName>PN_Kons_SladWalki</defName>
     <blockType>Consequence</blockType>
     <textFragment>Tego dnia kolonia predko nie zapomni.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>kolejna</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>walka.byla</key></li>
+        </conditions>
+        <text>Kolejnego takiego dnia kolonia predko nie zapomni.</text>
+      </li>
+    </textVariants>
     <factsOnExecute>
       <li>
         <key>walka.byla</key>
@@ -124,7 +135,20 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Kons_NowyCzlowiek</defName>
     <blockType>Consequence</blockType>
-    <textFragment>W kolonii pojawia sie ktos nowy.</textFragment>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>Ktos nowy moze dolaczyc do kolonii.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>znow</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>ludzie.przybyli</key></li>
+        </conditions>
+        <text>Znow ktos moze dolaczyc do kolonii.</text>
+      </li>
+    </textVariants>
     <factsOnExecute>
       <li>
         <key>ludzie.przybyli</key>
@@ -150,7 +174,20 @@
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
     <defName>PN_Kons_Plotki</defName>
     <blockType>Consequence</blockType>
-    <textFragment>Wraz z przybyszem docieraja wiesci z zewnatrz.</textFragment>
+    <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
+         gra nie gwarantuje (zweryfikowane dekompilacja). -->
+    <textFragment>Do kolonii docieraja wiesci z zewnatrz.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>kolejne</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>wiesci.zrodlo</key></li>
+        </conditions>
+        <text>Do kolonii docieraja kolejne wiesci z zewnatrz.</text>
+      </li>
+    </textVariants>
     <factsOnExecute>
       <li>
         <key>wiesci.zrodlo</key>
@@ -171,6 +208,8 @@
       <li>PN_Akcja_Burza</li>
       <li>PN_Akcja_Emanator</li>
       <li>PN_Akcja_Amok</li>
+      <!-- Przeglad S10 (decyzja autora 2026-09-25): zdziczaly czlowiek nie przynosi wiesci. -->
+      <li>PN_Akcja_Dzikus</li>
     </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
@@ -180,6 +219,17 @@
     <defName>PN_Kons_Wrak</defName>
     <blockType>Consequence</blockType>
     <textFragment>Na ziemi zostaje to, co spadlo.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>znow</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>wrak.lezy</key></li>
+        </conditions>
+        <text>Znow na ziemi zostaje to, co spadlo.</text>
+      </li>
+    </textVariants>
     <factsOnExecute>
       <li>
         <key>wrak.lezy</key>
@@ -210,6 +260,17 @@
     <defName>PN_Kons_ZnakNaNiebie</defName>
     <blockType>Consequence</blockType>
     <textFragment>Kolonia dlugo bedzie pamietac, co przyszlo z nieba.</textFragment>
+    <!-- Warianty tekstu (krok 8, decyzja autora K8-6, teksty zatwierdzone 2026-09-25). Wariant z warunkiem
+         wygrywa z tekstem bazowym; bez warunku jest zamiennikiem. Fakt w tekscie = warunek twardy. -->
+    <textVariants>
+      <li>
+        <id>znow</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>niebo.znak</key></li>
+        </conditions>
+        <text>Niebo znow daje kolonii znak.</text>
+      </li>
+    </textVariants>
     <!-- Zdanie o PAMIECI, nie o niebie (S6): burza trwa ok. 2 h gry, a emanator w ogole nie zmienia
          nieba - dawne "niebo dlugo nie wraca do normy" bylo obietnica bez pokrycia. -->
     <factsOnExecute>

@@ -203,6 +203,9 @@ namespace ProceduralNarrator.Core.Decision
         /// </summary>
         public int ArcMatchedInBand = -1;
 
+        /// <summary>Kandydaci z niezerowa wartoscia stylu w pasmie rundy pierwszej (krok 7); -1 = styl nie dzialal.</summary>
+        public int StyleNonZeroInBand = -1;
+
         public void AttachTurnContext(float recentDensity, int passStreak)
         {
             RecentDensity = recentDensity;
@@ -285,8 +288,9 @@ namespace ProceduralNarrator.Core.Decision
 
             // KROK 5 (format v7): moc zwyciezcy (skala IntensityLevel, jak docelowaMoc) i luk.
             // Puste przy PASS i gdy luk sie w tej turze wstrzymal - brak pomiaru, nie zero.
-            // premiaLuku to premia RUNDY, ktora wybrala zwyciezce; przy jednej rundzie (losowan=3)
-            // rowna (best - pasmo) * arcAlignment - niezmiennik sprawdzany w analizie danych.
+            // premiaLuku to premia RUNDY, ktora wybrala zwyciezce, rowna (best - pasmo) * arcAlignment w KAZDEJ
+            // turze ze zdarzeniem (przeglad S8 kroku 7: lider zweryfikowany w fazie 0 zostaje dostepny we wszystkich
+            // rundach, wiec best i pasmo rundy zwyciezcy == wartosci z wiersza) - niezmiennik 19 w analizie danych.
             Append(sb, "intensywnosc", pass || w == null || w.Event == null ? string.Empty : Int((int)w.Event.Intensity));
             bool lukowy = !pass && w != null && w.ArcValue >= 0f;
             Append(sb, "arcAlignment", lukowy ? Fmt(w.ArcValue) : string.Empty);
@@ -298,6 +302,15 @@ namespace ProceduralNarrator.Core.Decision
             // WYMUSZONY - akcja nie ma zadnej zgodnej). Material na metryke "wariant narracyjny"
             // odrozniana od "typu incydentu" (dlug 10).
             Append(sb, "konsekwencja", pass || w == null || w.Event == null ? string.Empty : ConsequenceId(w.Event));
+
+            // KROK 7 (format v9): styl gracza u zwyciezcy. Puste przy PASS i gdy styl w tej turze nie
+            // dzialal (rozgrzewka, ramie S, styl wylaczony) - brak pomiaru, nie zero. premiaStylu to premia
+            // RUNDY zwyciezcy, rowna (best - pasmo) * stylWartosc w kazdej turze ze zdarzeniem, a 0 przy fazie luku
+            // i ujemnej wartosci (luk ma pierwszenstwo, decyzja autora po przegladzie S8) - niezmiennik 32.
+            bool stylowy = !pass && w != null && w.StyleApplied;
+            Append(sb, "stylWartosc", stylowy ? Fmt(w.StyleValue) : string.Empty);
+            Append(sb, "premiaStylu", stylowy ? Fmt(w.StyleBonus) : string.Empty);
+            Append(sb, "stylWPasmie", StyleNonZeroInBand >= 0 ? Int(StyleNonZeroInBand) : string.Empty);
 
             return sb.ToString();
         }

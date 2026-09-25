@@ -123,6 +123,14 @@ namespace ProceduralNarrator.Integration.Defs
             {
                 PNLog.Warn("Profil " + profil.Id + " - poprawiono parametry krzywej: " + poprawki);
             }
+            // Orientacja stylu gracza (krok 7): poza [-1, 1] albo NaN - scinamy i MOWIMY o tym.
+            float orientacja = ProceduralNarrator.Core.Util.Curves.ClampSigned(profil.StyleOrientation);
+            if (orientacja != profil.StyleOrientation)
+            {
+                PNLog.Warn("Profil " + profil.Id + " - styleOrientation poza [-1, 1] -> "
+                           + orientacja.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+                profil.StyleOrientation = orientacja;
+            }
             return profil;
         }
 

@@ -37,6 +37,12 @@ namespace ProceduralNarrator.Core.Tension
         /// <summary>Wylacznik reguly - do serii kontrolnych porownujacych narratora z regula i bez.</summary>
         public bool enabled = true;
 
+        /// <summary>
+        /// Krok 8 (dlug 12, decyzja autora K8-8): powalony ze stanem, ktorego prog smierci osiagnal co
+        /// najmniej ten ulamek (hipotermia, udar, toksyny...), jest "powalony ostro" - patrz AcuteDownedRule.
+        /// </summary>
+        public float lethalFraction = 0.5f;
+
         public static CrisisParams Default()
         {
             return new CrisisParams();
@@ -44,7 +50,8 @@ namespace ProceduralNarrator.Core.Tension
 
         public CrisisParams Clone()
         {
-            return new CrisisParams { downedFraction = downedFraction, minDowned = minDowned, enabled = enabled };
+            return new CrisisParams { downedFraction = downedFraction, minDowned = minDowned, enabled = enabled,
+                                      lethalFraction = lethalFraction };
         }
 
         /// <summary>Klamruje wartosci i ZWRACA opis poprawek (pusty, gdy nic nie poprawiono).</summary>
@@ -72,6 +79,22 @@ namespace ProceduralNarrator.Core.Tension
                 Note(sb, "minDowned " + minDowned.ToString(CultureInfo.InvariantCulture) + " -> 1");
                 minDowned = 1;
             }
+
+            if (float.IsNaN(lethalFraction) || float.IsInfinity(lethalFraction))
+            {
+                Note(sb, "lethalFraction NaN/Inf -> 0.5");
+                lethalFraction = 0.5f;
+            }
+            else if (lethalFraction < 0.05f)
+            {
+                Note(sb, "lethalFraction " + lethalFraction.ToString("0.###", CultureInfo.InvariantCulture) + " -> 0.05");
+                lethalFraction = 0.05f;
+            }
+            else if (lethalFraction > 1f)
+            {
+                Note(sb, "lethalFraction " + lethalFraction.ToString("0.###", CultureInfo.InvariantCulture) + " -> 1");
+                lethalFraction = 1f;
+            }
             return sb.ToString();
         }
 
@@ -88,7 +111,8 @@ namespace ProceduralNarrator.Core.Tension
         {
             return "kryzys: " + (enabled ? "wlaczony" : "WYLACZONY")
                    + " ulamekPowalonych=" + downedFraction.ToString("0.##", CultureInfo.InvariantCulture)
-                   + " minPowalonych=" + minDowned.ToString(CultureInfo.InvariantCulture);
+                   + " minPowalonych=" + minDowned.ToString(CultureInfo.InvariantCulture)
+                   + " progSmiertelnosci=" + lethalFraction.ToString("0.##", CultureInfo.InvariantCulture);
         }
     }
 
@@ -130,7 +154,8 @@ namespace ProceduralNarrator.Core.Tension
     /// NIEZALEZNOSC OD ZAGROZENIA (decyzja autora). Predykat nie wymaga DangerRating: kryzys
     /// niebojowy (zaraza w stadium skrajnym - szok bolowy; pozar - oparzenia do opatrzenia) tez
     /// kladzie kolonie. Powalenie przez sama swiadomosc bez ran (zatrucie toksynami, udar
-    /// cieplny, hipotermia) NIE jest liczone - patrz ograniczenia w WorldSnapshotBuilder.
+    /// cieplny, hipotermia) jest liczone od kroku 8 (dlug 12), gdy stan osiagnal lethalFraction progu smierci;
+    /// porod juz nie - patrz AcuteDownedRule.
     /// Samo DangerRating = High przy zerze powalonych NIE jest kryzysem skrajnym - to zwykly
     /// napad, i od tego jest krzywa.
     /// </summary>

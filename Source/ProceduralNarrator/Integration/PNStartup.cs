@@ -137,6 +137,9 @@ namespace ProceduralNarrator.Integration
             AuditBlockDefFields();
             AuditFactKeys();
             AuditBudget();
+            AuditPlayerStyle();
+            AuditTextVariants();
+            AuditEnvironment();
 
             // Naglowek formatu danych badawczych wypisujemy raz, przed jakakolwiek decyzja.
             // Dzieki temu skrypt agregujacy z kroku 8 czyta kolejnosc kolumn z tego samego pliku,
@@ -268,6 +271,9 @@ namespace ProceduralNarrator.Integration
                 // (Resolve) liczylby na poprawionych - rozjazd konfiguracji z danymi.
                 NarratorProfile prof = def.ToProfile();
                 string poprawki = prof.Tension.Sanitize();
+                // Orientacja stylu przycieta TAK JAK W GRZE (NarratorProfileCatalog.Resolve) - [PN-CONFIG] ma niesc wartosc,
+                // na ktorej liczy narrator (przeglad S8 kroku 7: surowa wartosc spoza [-1, 1] dawala falszywe 36 w analizie).
+                prof.StyleOrientation = Core.Util.Curves.ClampSigned(prof.StyleOrientation);
                 if (!string.IsNullOrEmpty(poprawki))
                 {
                     PNLog.Warn("Profil " + def.defName + " - poprawiono parametry krzywej: " + poprawki);
@@ -441,6 +447,12 @@ namespace ProceduralNarrator.Integration
             {
                 ZbierzKluczeWarunkow(b.Conditions, czytane, zleKluczeWarunkow, b.Id);
                 ZbierzKluczeWarunkow(b.Preferences, czytane, zleKluczeWarunkow, b.Id);
+                // Krok 8: warianty tekstu tez czytaja fakty ("znow", "kolejne") - sa czytelnikami i maja miec
+                // poprawne klucze. Literowka dawala by wariant nigdy niewybierany, bez sladu w logu.
+                foreach (Core.Model.TextVariant v in b.TextVariants ?? new List<Core.Model.TextVariant>())
+                {
+                    ZbierzKluczeWarunkow(v.conditions, czytane, zleKluczeWarunkow, b.Id + ":" + v.id);
+                }
             }
             if (zleKluczeWarunkow.Count > 0)
             {
@@ -458,7 +470,11 @@ namespace ProceduralNarrator.Integration
             var zleLuki = new List<string>();
             foreach (Core.Model.Block b in klocki)
             {
-                foreach (NarrativeCondition w in (b.Conditions ?? new List<NarrativeCondition>()).Concat(b.Preferences ?? new List<NarrativeCondition>()))
+                // Krok 8: takze warunki wariantow tekstu (np. "znowu uderza" przy otwartej Wendecie).
+                var wariantowe = (b.TextVariants ?? new List<Core.Model.TextVariant>())
+                    .SelectMany(v => v.conditions ?? new List<NarrativeCondition>());
+                foreach (NarrativeCondition w in (b.Conditions ?? new List<NarrativeCondition>())
+                             .Concat(b.Preferences ?? new List<NarrativeCondition>()).Concat(wariantowe))
                 {
                     string luk = w is Cond_WatekOtwarty ? ((Cond_WatekOtwarty)w).arc
                                : w is Cond_WatekZamkniety ? ((Cond_WatekZamkniety)w).arc : null;
@@ -572,6 +588,130 @@ namespace ProceduralNarrator.Integration
             }
         }
 
+        /// <summary>
+        /// Audyt STYLU GRACZA (krok 7). Kazda z tych awarii jest CICHA - obserwator liczy dalej, tylko
+        /// pomiar jest staly albo pusty, a styl wyglada na poprawny:
+        ///   1. rekord gry z listy pracy nie istnieje albo nie jest typu Time (Praca liczy sie bez niego),
+        ///      rekordy werbunku nie istnieja albo nie sa typu Int (Werbunek zawsze 0/0);
+        ///   2. kategoria budynku nie istnieje (Obrona albo Produkcja zawsze 0);
+        ///   3. korzen zadania-oferty nie istnieje (Przyjecia nigdy nie zobacza oferty);
+        ///   4. wagi stylu na klocku innym niz akcja (czyta je TYLKO akcja), akcja bez wag (styl jej nie
+        ///      dotyka), wagi ujemne albo nieskonczone;
+        ///   5. warunek stylu w warunkach albo preferencjach KLOCKA - zmienialby liczbe akcji w puli (m),
+        ///      a przez to K = B/m i pule bramy PASS, czyli tempo; styl czytaja tylko warunki startu lukow
+        ///      (decyzja autora nr 14). Walidator pilnuje tego samego offline (TEST 1c), gra czyta kazdy plik.
+        /// Efektywne parametry ida do [PN-CONFIG] linia "styl=".
+        /// </summary>
+        private static void AuditPlayerStyle()
+        {
+            StorytellerDef narrator = DefDatabase<StorytellerDef>.GetNamedSilentFail("PN_GenerativeNarrator");
+            StorytellerCompProperties_Generative props = narrator == null || narrator.comps == null
+                ? null
+                : narrator.comps.OfType<StorytellerCompProperties_Generative>().FirstOrDefault();
+            Core.PlayerModel.PlayerStyleParams p = props == null ? null : props.playerStyle;
+            if (p == null)
+            {
+                PNLog.Warn("Styl gracza: brak bloku <playerStyle> w PN_GenerativeNarrator - obserwator uzyje "
+                           + "wartosci domyslnych z kodu.");
+                return;
+            }
+
+            var pusta = new List<string>();
+            var zle = new List<string>();
+            foreach (string n in (p.productiveRecords ?? pusta).Concat(p.supportRecords ?? pusta))
+            {
+                RecordDef d = string.IsNullOrEmpty(n) ? null : DefDatabase<RecordDef>.GetNamedSilentFail(n);
+                if (d == null)
+                {
+                    zle.Add((n ?? "null") + " (brak Defa)");
+                }
+                else if (d.type != RecordType.Time)
+                {
+                    zle.Add(n + " (typ " + d.type + ", potrzebny Time)");
+                }
+            }
+            foreach (string n in new[] { PlayerModel.PlayerStyleObserver.RecruitedRecord, PlayerModel.PlayerStyleObserver.CapturedRecord })
+            {
+                RecordDef d = DefDatabase<RecordDef>.GetNamedSilentFail(n);
+                if (d == null)
+                {
+                    zle.Add(n + " (brak Defa)");
+                }
+                else if (d.type != RecordType.Int)
+                {
+                    zle.Add(n + " (typ " + d.type + ", potrzebny Int)");
+                }
+            }
+            if (zle.Count > 0)
+            {
+                PNLog.Error("Styl gracza: rekordy gry nie do uzycia - pomiar bedzie liczony bez nich: "
+                            + string.Join(", ", zle.ToArray()));
+            }
+
+            var zleKategorie = (p.defenseCategories ?? pusta).Concat(p.productionCategories ?? pusta)
+                .Where(n => string.IsNullOrEmpty(n) || DefDatabase<DesignationCategoryDef>.GetNamedSilentFail(n) == null)
+                .ToList();
+            if (zleKategorie.Count > 0)
+            {
+                PNLog.Error("Styl gracza: nieistniejace kategorie budynkow (Obrona/Produkcja stale 0): "
+                            + string.Join(", ", zleKategorie.Select(n => n ?? "null").ToArray()));
+            }
+            var wspolne = (p.defenseCategories ?? pusta).Intersect(p.productionCategories ?? pusta, StringComparer.Ordinal).ToList();
+            if (wspolne.Count > 0)
+            {
+                PNLog.Warn("Styl gracza: kategoria budynkow liczona i w Obronie, i w Produkcji: "
+                           + string.Join(", ", wspolne.ToArray()));
+            }
+            var zleZadania = (p.offerQuestRoots ?? pusta)
+                .Where(n => string.IsNullOrEmpty(n) || DefDatabase<QuestScriptDef>.GetNamedSilentFail(n) == null)
+                .ToList();
+            if (zleZadania.Count > 0)
+            {
+                PNLog.Error("Styl gracza: nieistniejace korzenie zadan-ofert (Przyjecia ich nie zobacza): "
+                            + string.Join(", ", zleZadania.Select(n => n ?? "null").ToArray()));
+            }
+
+            // Wagi stylu i warunki stylu w klockach - na rdzeniowych klockach z loadera (to, co widzi narrator).
+            List<Core.Model.Block> klocki;
+            Core.Composition.CompatibilityGraph graf;
+            BlockCatalogLoader.Load(out klocki, out graf);
+            if (klocki != null)
+            {
+                var wagiNieAkcji = klocki.Where(b => b.Type != BlockType.Action && b.StyleWeights != null && b.StyleWeights.Total() > 0f)
+                                         .Select(b => b.Id).ToList();
+                if (wagiNieAkcji.Count > 0)
+                {
+                    PNLog.Error("Styl gracza: wagi stylu na klockach innych niz akcja (czyta je tylko akcja - wagi martwe): "
+                                + string.Join(", ", wagiNieAkcji.ToArray()));
+                }
+                var zleWagi = klocki.Where(b => b.StyleWeights != null && b.StyleWeights.AnyInvalid()).Select(b => b.Id).ToList();
+                if (zleWagi.Count > 0)
+                {
+                    PNLog.Error("Styl gracza: wagi stylu ujemne albo nieskonczone: " + string.Join(", ", zleWagi.ToArray()));
+                }
+                var akcjeBezWag = klocki.Where(b => b.Type == BlockType.Action && (b.StyleWeights == null || !(b.StyleWeights.Total() > 0f)))
+                                        .Select(b => b.Id).ToList();
+                if (akcjeBezWag.Count > 0)
+                {
+                    PNLog.Warn("Styl gracza: akcje bez wag stylu (styl ich nie dotyka; nowa akcja = wpis w <styleWeights> "
+                               + "i w tabeli walidatora): " + string.Join(", ", akcjeBezWag.ToArray()));
+                }
+                var warunkiStyluWKlockach = klocki
+                    .Where(b => (b.Conditions ?? new List<NarrativeCondition>()).Concat(b.Preferences ?? new List<NarrativeCondition>())
+                                                                               .Any(w => w is Cond_StylMocnaStrona))
+                    .Select(b => b.Id).ToList();
+                if (warunkiStyluWKlockach.Count > 0)
+                {
+                    PNLog.Error("Styl gracza: warunek stylu w klockach (zmienia pule akcji, a przez nia budzet i tempo - "
+                                + "styl wolno czytac tylko w warunkach startu lukow): "
+                                + string.Join(", ", warunkiStyluWKlockach.ToArray()));
+                }
+            }
+
+            PNLog.Decision("Styl gracza: " + p.Describe());
+            konfiguracjaDoDanych.Add("styl=" + p.Describe());
+        }
+
         private static void AuditArcs()
         {
             var brakujace = new List<string>();
@@ -658,6 +798,111 @@ namespace ProceduralNarrator.Integration
         /// parms.faction (dekompilacja 1.5.4063), a ustawiona frakcja w innym workerze bylaby
         /// ignorowana po cichu - luk obiecywalby w komunikacie ciaglosc, ktorej gra nie daje.
         /// </summary>
+        /// <summary>
+        /// SRODOWISKO GRY w danych (krok 8, decyzja autora K8-5): aktywne mody w kolejnosci ladowania, jezyk
+        /// i wersja gry. Sesja koncowa i ewaluacja maja isc na czystej grze (Core + DLC + nasz mod); mody
+        /// zmieniajace zachowanie pionkow (np. PickUpAndHaul - noszenie, ktore mierzy styl gracza) albo nieznany
+        /// kod psuja porownywalnosc z wbudowanymi narratorami. Mod NICZEGO nie blokuje - zapisuje, co bylo
+        /// aktywne, i ostrzega, zeby dane same mowily, w jakim srodowisku powstaly.
+        /// </summary>
+        private static void AuditEnvironment()
+        {
+            var mody = new List<string>();
+            var obce = new List<string>();
+            foreach (ModMetaData m in ModsConfig.ActiveModsInLoadOrder)
+            {
+                if (m == null)
+                {
+                    continue;
+                }
+                string id = m.PackageIdNonUnique ?? "?";
+                mody.Add(id);
+                if (!id.StartsWith("ludeon.rimworld", StringComparison.Ordinal) && id != "luis.proceduralnarrator")
+                {
+                    obce.Add(id);
+                }
+            }
+            string jezyk = LanguageDatabase.activeLanguage == null ? "?" : (LanguageDatabase.activeLanguage.folderName ?? "?");
+            // Izolacja cache'u CanFireNow (krok 8, dlug 8) wymaga dwoch prywatnych pol IncidentWorker.
+            bool izolacja = Incidents.IncidentCacheAccess.Available;
+            if (!izolacja)
+            {
+                PNLog.Warn("Nie znaleziono pol cache'u IncidentWorker (lastCheckCanRunTick / lastCanRunResult) - "
+                           + "inna wersja gry? Narrator pyta CanFireNow BEZ izolacji (jak przed krokiem 8), "
+                           + "dlug 8 wraca: werdykty moga byc wspoldzielone z waniliowymi compami w tym samym ticku.");
+            }
+            konfiguracjaDoDanych.Add("srodowisko=gra; mody=" + (mody.Count == 0 ? "-" : string.Join(",", mody.ToArray()))
+                                     + "; obceMody=" + (obce.Count == 0 ? "-" : string.Join(",", obce.ToArray()))
+                                     + "; jezyk=" + jezyk
+                                     + "; wersjaGry=" + VersionControl.CurrentVersionStringWithRev
+                                     + "; izolacjaCache=" + (izolacja ? "tak" : "nie"));
+            if (obce.Count > 0)
+            {
+                PNLog.Warn("Aktywne mody spoza Core i DLC: " + string.Join(", ", obce.ToArray())
+                           + ". Dane z tej sesji NIE nadaja sie do ewaluacji porownawczej (decyzja autora K8-5: "
+                           + "sesja koncowa i ewaluacja na czystej grze - Core, DLC i nasz mod). Lista w [PN-CONFIG] mody=.");
+            }
+        }
+
+        /// <summary>
+        /// Warianty tekstu (krok 8, decyzja autora K8-6): odrzucone warianty i deklaracje
+        /// scalesWithPoints.
+        ///
+        /// Odrzucenie jest juz zrobione w BlockCatalogLoader (comp nigdy nie dostaje zlego wariantu) -
+        /// tutaj tylko je widac. scalesWithPoints porownujemy z IncidentDef.pointsScaleable, bo na tej
+        /// deklaracji stoi prawda wariantu z requiresPointsScaling ("mniejszy rozmach" przy incydencie,
+        /// ktory punktow nie czyta, nie mialby w grze desygnatu - spor o PN_Mod_Slabo, dlug 11).
+        /// </summary>
+        private static void AuditTextVariants()
+        {
+            List<Block> klocki;
+            Core.Composition.CompatibilityGraph graf;
+            List<string> problemy;
+            BlockCatalogLoader.Load(out klocki, out graf, out problemy);
+            for (int i = 0; i < problemy.Count; i++)
+            {
+                PNLog.Warn("Wariant tekstu " + problemy[i]);
+            }
+
+            var skaluja = new List<string>();
+            foreach (NarrativeBlockDef d in DefDatabase<NarrativeBlockDef>.AllDefsListForReading)
+            {
+                if (d.blockType != BlockType.Action)
+                {
+                    if (d.scalesWithPoints)
+                    {
+                        PNLog.Error("Klocek " + d.defName + " deklaruje scalesWithPoints, a nie jest klockiem akcji - "
+                                    + "pole czyta wylacznie akcja.");
+                    }
+                    continue;
+                }
+                IncidentDef inc = string.IsNullOrEmpty(d.payload) ? null : DefDatabase<IncidentDef>.GetNamedSilentFail(d.payload);
+                if (inc == null)
+                {
+                    continue; // brak incydentu zglasza AuditActionPayloads
+                }
+                if (d.scalesWithPoints)
+                {
+                    skaluja.Add(d.defName);
+                }
+                if (inc.pointsScaleable != d.scalesWithPoints)
+                {
+                    PNLog.Warn("Klocek " + d.defName + " deklaruje scalesWithPoints=" + (d.scalesWithPoints ? "true" : "false")
+                               + ", a " + inc.defName + ".pointsScaleable=" + (inc.pointsScaleable ? "true" : "false")
+                               + " - wariant tekstu z requiresPointsScaling mowilby o skali, ktorej gra nie zmienia.");
+                }
+            }
+
+            int wariantow = klocki.Sum(b => b.TextVariants.Count);
+            int zWariantami = klocki.Count(b => b.TextVariants.Count > 0);
+            konfiguracjaDoDanych.Add("warianty=" + wariantow.ToString(CultureInfo.InvariantCulture)
+                                     + "; klockowZWariantami=" + zWariantami.ToString(CultureInfo.InvariantCulture)
+                                     + "; odrzuconychWariantow=" + problemy.Count.ToString(CultureInfo.InvariantCulture)
+                                     + "; skalujaSiePunktami=" + (skaluja.Count == 0 ? "-" : string.Join(",", skaluja.ToArray())));
+            PNLog.Decision("Warianty tekstu: " + wariantow + " w " + zWariantami + " klockach"
+                           + (problemy.Count > 0 ? ", odrzuconych " + problemy.Count : string.Empty) + ".");
+        }
+
         private static void AuditFactionCarriers()
         {
             foreach (NarrativeBlockDef b in DefDatabase<NarrativeBlockDef>.AllDefsListForReading.Where(x => x.carriesFaction))
