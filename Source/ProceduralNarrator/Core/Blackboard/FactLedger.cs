@@ -273,7 +273,7 @@ namespace ProceduralNarrator.Core.Blackboard
         /// Decyzje i zastosowania faktow leza na siatce 1000 tickow, wiec wiek faktu w chwili decyzji
         /// jest wielokrotnoscia 1/60 dnia z bledem float32 rzedu 1e-4 - pol interwalu rozdziela
         /// "ostatni interwal zycia" i "tick wygasniecia" z zapasem dwoch rzedow wielkosci. Te sama
-        /// regule stosuje Cond_FaktOd i analiza danych (analiza_v7.py).
+        /// regule stosuje Cond_FaktOd i analiza danych (analysis_v7.py).
         /// </summary>
         public const float BoundaryToleranceDays = 1f / 120f;
 

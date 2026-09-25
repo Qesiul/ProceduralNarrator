@@ -160,7 +160,7 @@ namespace ProceduralNarrator.Core.PlayerModel
         /// <summary>
         /// Wartosci dziewieciu kolumn preambuly [PN-DATA] v9 w kolejnosci kontraktu. Liczone w rdzeniu,
         /// zeby reguly pustych pol byly testowalne offline (TEST 14n); PNLog wpisuje je literalnymi
-        /// Append (sprawdz_kolumny.py czyta nazwy kolumn z kodu).
+        /// Append (check_columns.py czyta nazwy kolumn z kodu).
         /// Puste = brak pomiaru: dziedziny z rozgrzewki (z, mocne, etykieta) sa puste, kierunek d jest
         /// zawsze, a "-" w mocnych stronach znaczy "styl aktywny, mocnych stron brak".
         /// </summary>

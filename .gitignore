@@ -12,5 +12,14 @@ bin/
 # Skopiowane DLL-e gry (nigdy nie commitujemy assembly RimWorlda)
 Source/**/Assemblies/
 
-# Pamiec podreczna Pythona (narzedzia w Dev/Narzedzia)
+# Pamiec podreczna Pythona (narzedzia w Dev/Tools)
 __pycache__/
+
+# Prywatne dokumenty autora (dziennik, plan ewaluacji) - nigdy w repozytorium (decyzja autora 2026-09-25)
+Docs/
+
+# Dev/: w repozytorium tylko narzedzia (walidator, skrypty, README) i fikstury testow.
+# Dane przebiegow, archiwa i wyniki analiz zostaja lokalnie (decyzja autora 2026-09-25).
+Dev/Data/*
+!Dev/Data/fixtures/
+Dev/Evaluation/results/
