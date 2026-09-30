@@ -33,6 +33,18 @@ namespace ProceduralNarrator.Core.Composition
         public int ActionCount;
 
         /// <summary>
+        /// Akcje, ktore przeszly tag i wlasne warunki, ale wypadly przez lustro sprawdzen gry (krok 9, K0) -
+        /// nie wchodza do m ani do K.
+        /// </summary>
+        public int EngineBlocked;
+
+        /// <summary>
+        /// Strona bramy Anomaly, z ktora wygenerowano ten zestaw (krok 9, K0) - kopia EventRecipe.AnomalySide, zeby
+        /// log danych (kolumna anomaliaTura) czytal ja z tego samego obiektu co pozostale liczby generowania.
+        /// </summary>
+        public AnomalyGateKind AnomalySide;
+
+        /// <summary>
         /// Suma N_i po wszystkich akcjach - rozmiar calej przestrzeni wariantow tej tury.
         /// Mianownik pokrycia: pokrycie = Candidates.Count / TotalVariants.
         /// Gdy Truncated == true, jest to DOLNE ograniczenie, a pokrycie liczone z niego

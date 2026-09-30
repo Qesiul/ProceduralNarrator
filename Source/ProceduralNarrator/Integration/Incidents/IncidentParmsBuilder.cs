@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Integration.Arcs;
 using RimWorld;
@@ -265,16 +266,19 @@ namespace ProceduralNarrator.Integration.Incidents
                     continue;
                 }
 
-                if (inc == null || inc.minThreatPoints <= 0f)
+                // Prog = wieksza z wartosci: minThreatPoints Defa i minimum sprawdzane przez sam worker (krok 9, K2 -
+                // roje trupow: punkty < 40 w IncidentWorker_EntitySwarm.CanFireNowSub). Regula w Core (PointsSieve).
+                float prog = inc == null ? 0f : PointsSieve.EffectiveMinimum(inc.minThreatPoints, e);
+                if (prog <= 0f)
                 {
-                    // Brak progu w Defie albo nierozwiazany payload - nie nasza sprawa.
+                    // Brak progu albo nierozwiazany payload - nie nasza sprawa.
                     // Payloadu pilnuje audyt startowy, a odmowe zglosi akceptor.
                     przepuszczeni.Add(e);
                     continue;
                 }
 
                 float punktyKoncowe = punktyBazowe * IntensityTable.PointsFactor(e.Intensity);
-                if (punktyKoncowe < inc.minThreatPoints)
+                if (punktyKoncowe < prog)
                 {
                     usunietych++;
                     continue;

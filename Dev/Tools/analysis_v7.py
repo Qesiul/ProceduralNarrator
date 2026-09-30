@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
-"""ANALIZA PLIKU DANYCH NARRATORA (format [PN-DATA] v6-v9: luki z kroku 5, fakty z kroku 6,
-styl gracza z kroku 7) - niezmienniki + podsumowanie.
+"""ANALIZA PLIKU DANYCH NARRATORA (format [PN-DATA] v6-v10: luki z kroku 5, fakty z kroku 6,
+styl gracza z kroku 7, brama Anomaly i lustro silnika z kroku 9) - niezmienniki + podsumowanie.
 
 Uzycie:
     python analysis_v7.py                                   # domyslny PN_decyzje.log gracza
     python analysis_v7.py sciezka/PN_decyzje.log
     python analysis_v7.py plik --tryb gra|symulacja|wszystko   (domyslnie: wszystko)
 
-Zawiera 17 niezmiennikow v6 (bez zmian znaczenia), niezmienniki lukow (18-27, dla v7-v9),
-niezmienniki faktow (28-31, dla v8-v9) oraz stylu gracza (32-41, tylko v9). Wiersze starszego
+Zawiera 17 niezmiennikow v6 (bez zmian znaczenia), niezmienniki lukow (18-27, dla v7-v10),
+niezmienniki faktow (28-31, dla v8-v10), stylu gracza (32-41, dla v9-v10), kroku 8 (42-45) oraz
+kolumn v10 (46: strona bramy Anomaly, szansa, akcje odciete lustrem sprawdzen gry). Wiersze starszego
 formatu w tym samym pliku sa sprawdzane tylko regulami swojej wersji. Parametry (profile, PASS,
 brama, limit lukow, katalog lukow z krawedziami i warunkiem stylu, parametry i prototypy stylu,
 orientacja stylu profili) czyta z linii [PN-CONFIG] - nie z literalow.
@@ -520,8 +521,8 @@ def main():
             if (r.get('straznikZawieszony') == 'true') and not kryzys:
                 narusz('17 straznikZawieszony tylko w kryzysie', (klucz, nr))
 
-            # ---------------- 18-24: luki w wierszu [PN-DATA] (v7-v9) ----------------
-            if r.get('wersjaLogu') in ('7', '8', '9'):
+            # ---------------- 18-24: luki w wierszu [PN-DATA] (v7-v10) ----------------
+            if r.get('wersjaLogu') in ('7', '8', '9', '10'):
                 if not r['_ksztalt_ok']:
                     narusz('18 ksztalt wiersza v7 = naglowek', (klucz, nr))
                 aa, pl = r.get('arcAlignment', ''), r.get('premiaLuku', '')
@@ -549,8 +550,8 @@ def main():
                         if fz is not None and not any(r['intencja'] in ZGODNOSC.get(v, set()) for v in fz['walencje']):
                             narusz('24 faza aktywna => walencja zgodna z intencja', (klucz, nr, x, r['intencja']))
 
-            # ---------------- 28, 31: fakty i konsekwencja w wierszu [PN-DATA] (v8-v9) ----------------
-            if r.get('wersjaLogu') in ('8', '9'):
+            # ---------------- 28, 31: fakty i konsekwencja w wierszu [PN-DATA] (v8-v10) ----------------
+            if r.get('wersjaLogu') in ('8', '9', '10'):
                 if r.get('faktow', '') != '' and int(r['faktow']) != r['_faktow']:
                     narusz('28 faktow = stan odtworzony z [PN-FACT]', (klucz, nr, r['faktow'], r['_faktow']))
                 segmenty = r.get('klucz', '').split('|')
@@ -560,9 +561,26 @@ def main():
                 elif len(segmenty) != 6 or segmenty[5] != r.get('konsekwencja'):
                     narusz('31 konsekwencja zgodna z kluczem kompozycji', (klucz, nr, r.get('klucz'), r.get('konsekwencja')))
 
-            # ---------------- 32-38, 41: styl gracza w wierszu [PN-DATA] (tylko v9) ----------------
-            if r.get('wersjaLogu') == '9':
+            # ---------------- 32-38, 41: styl gracza w wierszu [PN-DATA] (v9-v10) ----------------
+            if r.get('wersjaLogu') in ('9', '10'):
                 styl_wiersza(r, klucz, nr, pas, los, prof, r['_styl'], narusz)
+
+            # ---------------- 46: brama Anomaly i lustro silnika (v10) ----------------
+            # Wyprowadzenie z kodu moda: strona to symbol enuma AnomalyGateKind z przepisu tury - w grze zawsze
+            # Regular albo Anomaly (None tylko w testach bez przepisu); bez DLC (szansa pusta) AnomalyGate.Draw
+            # zwraca Regular bez losowania; szansa to prawdopodobienstwo z gry (AnomalyIncidentChanceNow) w [0, 1];
+            # zablokowanychSilnik to licznik akcji (>= 0) albo puste, gdy lustro nie dzialalo.
+            if r.get('wersjaLogu') == '10':
+                tura, sz, zb = r.get('anomaliaTura', ''), r.get('anomaliaSzansa', ''), r.get('zablokowanychSilnik', '')
+                n46 = '46 kolumny v10: strona bramy Anomaly, szansa, lustro silnika'
+                if tura not in ('Regular', 'Anomaly'):
+                    narusz(n46, (klucz, nr, 'strona', tura))
+                elif sz == '' and tura != 'Regular':
+                    narusz(n46, (klucz, nr, 'bez DLC strona', tura))
+                if sz != '' and not (0.0 <= f(r, 'anomaliaSzansa') <= 1.0):
+                    narusz(n46, (klucz, nr, 'szansa', sz))
+                if zb != '' and not (zb.isdigit()):
+                    narusz(n46, (klucz, nr, 'zablokowanychSilnik', zb))
             poprzedni = nr
 
     # ---------------- 22: legalne krawedzie automatow ----------------
@@ -608,7 +626,7 @@ def main():
 
     klucz_exec = collections.Counter(klucz_decyzji(e) for e in execs)
     for r in rows:
-        if r.get('wersjaLogu') in ('7', '8', '9') and r['decyzja'] != 'PASS':
+        if r.get('wersjaLogu') in ('7', '8', '9', '10') and r['decyzja'] != 'PASS':
             if klucz_exec[klucz_zdarzenia(r)] != 1:
                 narusz('25 kazde zdarzenie <-> dokladnie jedno [PN-EXEC]',
                        (r.get('eksperyment'), r.get('mapa'), r.get('tick'), klucz_exec[klucz_zdarzenia(r)]))
@@ -676,7 +694,7 @@ def main():
         if war in ('-', '', None):
             continue
         r = a.get('_wiersz')
-        if r is None or r.get('wersjaLogu') != '9':
+        if r is None or r.get('wersjaLogu') not in ('9', '10'):
             continue
         mocne = zbior_mocnych(r.get('stylMocne'))
         for w in war.split('/'):
@@ -774,7 +792,8 @@ def main():
         if pozno:
             ok = li == 'pozno'
         elif st == 'wykonane':
-            ok = li in ('dopisany', 'odroczony', 'brak', 'wylaczony', 'pustyOpis', 'blad')
+            # 'ukryty' (krok 9, K2-b): zdarzenie ukryte - gra nie wysyla listu, tekst zostaje tylko w logu.
+            ok = li in ('dopisany', 'odroczony', 'brak', 'wylaczony', 'pustyOpis', 'blad', 'ukryty')
         elif st == 'symulacja':
             ok = li in ('symulacja', 'blad')
         else:
@@ -783,13 +802,16 @@ def main():
             narusz(n44, ('list', st, li, 'spozniona' if pozno else 'normalna', e.get('tick')))
         if li in ('dopisany', 'odroczony') and (int(e.get('nowychListow') or 0) < 1 or not e.get('tekstListu')):
             narusz(n44, ('dopisany bez nowego listu albo bez tekstu', e.get('nowychListow'), e.get('tick')))
+        # Zdarzenie ukryte: comp nie szuka listu (nowy list w tym ticku bylby cudzy), a tekst ma trafic do logu.
+        if li == 'ukryty' and (int(e.get('nowychListow') or 0) != 0 or not e.get('tekstListu')):
+            narusz(n44, ('ukryty z liczonym listem albo bez tekstu w logu', e.get('nowychListow'), e.get('tick')))
         liczony = st in ('wykonane', 'symulacja') and not pozno and li != 'blad'
         if liczony != (war not in ('-', '')):
             narusz(n44, ('warianty', st, li, war, e.get('tick')))
         if war not in ('-', '') and any(w.count(':') != 1 for w in war.split(',')):
             narusz(n44, ('format warianty= (klocek:wariant)', war))
         zl = (e.get('_stc') or {}).get('zlozonyList')
-        if st == 'wykonane' and not pozno and li != 'blad' and zl is not None and (li == 'wylaczony') != (zl is False):
+        if st == 'wykonane' and not pozno and li not in ('blad', 'ukryty') and zl is not None and (li == 'wylaczony') != (zl is False):
             narusz(n44, ('wylaczony a zlozonyList w konfiguracji', li, zl, e.get('tick')))
 
     # 45: [PN-CACHE] - pole rozny spojne, kolizja tylko w ticku NASZEJ decyzji na tej mapie.
@@ -826,7 +848,8 @@ def main():
         '42 wykonanie <-> [PN-FIRED] pn=1 (gra, obserwator w sesji)',
         '43 forma [PN-FIRED] (kontekst, zakresy, pn=1 tylko nasz narrator)',
         '44 [PN-EXEC] list= zgodny ze statusem, sciezka i konfiguracja',
-        '45 [PN-CACHE] spojna i w ticku naszej decyzji']))
+        '45 [PN-CACHE] spojna i w ticku naszej decyzji',
+        '46 kolumny v10: strona bramy Anomaly, szansa, lustro silnika']))
     for n in nazwy:
         print('  %-66s %s' % (n, 'OK' if narus[n] == 0 else 'NARUSZEN %d, np. %s' % (narus[n], przyklad[n])))
 
@@ -849,9 +872,19 @@ def main():
                 dict(collections.Counter(r['wybor'] for r in zd).most_common()), len(set(r['klucz'] for r in zd)), len(zd)))
         if okres > 0:
             print('   tempo zdarzen %.3f/dzien' % (len(zd) / okres))
-        v7 = [r for r in rr if r.get('wersjaLogu') in ('7', '8', '9')]
-        v8 = [r for r in rr if r.get('wersjaLogu') in ('8', '9')]
-        v9 = [r for r in rr if r.get('wersjaLogu') == '9']
+        v7 = [r for r in rr if r.get('wersjaLogu') in ('7', '8', '9', '10')]
+        v8 = [r for r in rr if r.get('wersjaLogu') in ('8', '9', '10')]
+        v9 = [r for r in rr if r.get('wersjaLogu') in ('9', '10')]
+        v10 = [r for r in rr if r.get('wersjaLogu') == '10']
+        if v10:
+            # Czestosc strony Anomaly wobec sredniej szansy - kanarek losowania bramy (nie niezmiennik: to proba).
+            zdlc = [r for r in v10 if r.get('anomaliaSzansa', '') != '']
+            zb = [int(r['zablokowanychSilnik']) for r in v10 if (r.get('zablokowanychSilnik') or '').isdigit()]
+            print('   brama Anomaly: tur z DLC %d/%d, strona Anomaly %d (sr. szansa %s) | lustro: pomiar w %d turach, '
+                  'sr. zablokowanych %.2f, max %d' % (
+                      len(zdlc), len(v10), sum(1 for r in v10 if r.get('anomaliaTura') == 'Anomaly'),
+                      ('%.3f' % (sum(f(r, 'anomaliaSzansa') for r in zdlc) / len(zdlc))) if zdlc else '-',
+                      len(zb), sum(zb) / float(len(zb)) if zb else 0.0, max(zb) if zb else 0))
         if v9:
             warstwa = [r for r in v9 if r.get('stylDni', '') != '']
             akt = [r for r in warstwa if r.get('stylAktywny') == 'true']

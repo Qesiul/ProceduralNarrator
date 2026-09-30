@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+    PELNE POKRYCIE TORU - ROYALTY (krok 9, etap K2; decyzja autora E-8). Trzy incydenty Royalty z toru podmienianych
+    compow. Kazdy Def ma MayRequire: bez DLC gra (i walidator) pomija go, a katalog wraca do gry podstawowej.
+    Tresc zatwierdzona przez autora 2026-09-28 (Docs/K2_PROPOZYCJA.md, decyzje K2-a...K2-h).
+
+    Pliki DLC odwoluja sie tylko do klockow gry podstawowej (aktorzy Maszyny, Nieznane, Obcy; konsekwencje ZnakNaNiebie,
+    Plotki, NowyCzlowiek). Wszystkie akcje zabraniaja wyzwalacza Bogactwo (jak w K1). ThreatBig: brama Anomaly Regular
+    i prog dnia 11 (parytet z Cassandra).
+  -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Royalty">
+    <defName>PN_Akcja_KlasterMaszyn</defName>
+    <blockType>Action</blockType>
+    <!-- Jak Defoliator (K1-d): Military, bo klaster laduje uspiony i sam nie atakuje. -->
+    <theme>Military</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>militarny</li><li>mechanoidy</li><li>niebo</li></tags>
+    <payload>MechCluster</payload>
+    <anomalyGate>Regular</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: klaster zawsze startuje uspiony (startDormant) i laduje kapsulami. Mechy, zegar, czujniki i budynek
+         szkodzacy sa losowe - tekst o nich milczy. -->
+    <textFragment>zrzuca w poblizu uspiony klaster mechanoidow.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprowadza z nieba w okolice uspione skupisko maszyn.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_MechCluster.CanFireNowSub: frakcja mechanoidow; minThreatPoints 400 (sito zgrubne 296 = 400 / 1.35,
+         dokladne w IncidentParmsBuilder). Miejsce ladowania zostaje przy grze (akceptor). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MechanoidFaction" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>296</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Maszyny</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Royalty">
+    <defName>PN_Akcja_ZrodloKlopotow</defName>
+    <blockType>Action</blockType>
+    <!-- Placowka z urzadzeniem stoi w swiecie, 1-10 kafelkow od kolonii; to sprawa zbrojna bez ataku na kolonie. Bez tagu
+         militarny: obroncy kolonii nie musza stanac do walki (Slawa twierdzy by klamala). -->
+    <theme>Military</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>urzadzenie</li></tags>
+    <payload>ProblemCauser</payload>
+    <anomalyGate>Regular</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: zadanie startuje od razu (list "Quest active"), a urzadzenie od razu szkodzi mapom w zasiegu - kolonia
+         zawsze w nim jest. Wlasciciel (piraci albo mechanoidy) losowany dopiero przy wykonaniu, stad aktor "Cos
+         nieznanego". Wszystkie osiem urzadzen szkodzi (slonce, dym, toksyny, pogoda, klimat, droner, supresor, EMI). -->
+    <textFragment>uruchamia w okolicy urzadzenie, ktore uprzykrza kolonii zycie.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>stawia gdzies w okolicy maszyne, ktora szkodzi kolonii.</text>
+      </li>
+    </textVariants>
+    <!-- QuestNode_QuestUnique: nie trwa inne takie zadanie (warunek SUROWSZY niz gra - patrz Cond_NoOngoingQuest).
+         minThreatPoints 400 (sito 296); od dnia 20 i >= 4 kolonistow sprawdza lustro gry. Kafelek swiata, czesc
+         miejsca i frakcja - losowanie gry, zostaja przy akceptorze. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_NoOngoingQuest">
+        <script>ProblemCauser</script>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>296</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Royalty">
+    <defName>PN_Akcja_Abazja</defName>
+    <blockType>Action</blockType>
+    <!-- Jak Uchodzcy (RefugeePodCrash): czlowiek w kapsule, gracz przyjmuje albo odrzuca. -->
+    <theme>Social</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>spoleczny</li><li>kapsula</li></tags>
+    <payload>WandererJoinAbasia</payload>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
+    <!-- Prawda: list "Transport pod crash" - ktos rozbija sie w kapsule w poblizu. O abazji (nie chodzi) mowi list gry. -->
+    <textFragment>rozbija sie w poblizu w kapsule transportowej.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>spada w kapsule transportowej niedaleko kolonii.</text>
+      </li>
+    </textVariants>
+    <!-- CanFireNowSub: wolny kolonista gdziekolwiek - pyta akceptor (jedno pytanie do gry). -->
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_NowyCzlowiek</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+</Defs>

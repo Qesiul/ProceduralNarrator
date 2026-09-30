@@ -48,6 +48,12 @@ namespace ProceduralNarrator.Integration.Incidents
         public const string PustyOpis = "pustyOpis";
 
         /// <summary>
+        /// Zdarzenie ukryte (krok 9, K2-b; tag Block.HiddenTag): gra nie wysyla listu, a nasz opis nie moze trafic do
+        /// zadnego innego - zostaje tylko w logach ([PN-EXEC] tekstListu=).
+        /// </summary>
+        public const string Ukryty = "ukryty";
+
+        /// <summary>
         /// Dopisuje opis do listu z naszego incydentu. Zwraca status do [PN-EXEC] list=.
         /// </summary>
         public static string Annotate(LetterSnapshot przed, Map map, string opis, out int nowychListow)

@@ -25,6 +25,17 @@ namespace ProceduralNarrator.Integration.Defs
         /// </summary>
         public static void Load(out List<Block> blocks, out CompatibilityGraph graph, out List<string> problemyWariantow)
         {
+            List<string> problemyGrafu;
+            Load(out blocks, out graph, out problemyWariantow, out problemyGrafu);
+        }
+
+        /// <summary>
+        /// Pelne wczytanie katalogu: problemyGrafu to bledy list onlyWith (CatalogGraphBuilder) - zglasza je audyt
+        /// startowy. Graf zawiera zakazy z incompatibleWith i z rozwiniecia list onlyWith.
+        /// </summary>
+        public static void Load(out List<Block> blocks, out CompatibilityGraph graph, out List<string> problemyWariantow,
+                                out List<string> problemyGrafu)
+        {
             blocks = new List<Block>();
             graph = new CompatibilityGraph();
 
@@ -43,7 +54,10 @@ namespace ProceduralNarrator.Integration.Defs
                     Payload = def.payload,
                     TextFragment = def.textFragment,
                     CarriesFaction = def.carriesFaction,
-                    ScalesWithPoints = def.scalesWithPoints
+                    ScalesWithPoints = def.scalesWithPoints,
+                    StyleNeutral = def.styleNeutral,
+                    WorkerMinPoints = def.workerMinPoints,
+                    AnomalyGate = def.anomalyGate
                 };
                 // Kopia LISTY (nie wariantow): walidacja wariantow (TextComposer.Validate) usuwa
                 // niepoprawne z listy klocka i nie moze przy tym zmieniac Defa wspoldzielonego w procesie.
@@ -81,6 +95,11 @@ namespace ProceduralNarrator.Integration.Defs
                     block.StyleWeights = def.styleWeights.Clone();
                 }
 
+                if (def.onlyWith != null)
+                {
+                    block.OnlyWith.AddRange(def.onlyWith);
+                }
+
                 blocks.Add(block);
 
                 if (def.incompatibleWith != null)
@@ -91,6 +110,9 @@ namespace ProceduralNarrator.Integration.Defs
                     }
                 }
             }
+
+            // Listy dozwolonych (krok 9, K0) - PO zakazach z incompatibleWith, bo sprawdzamy sprzecznosci z nimi.
+            CatalogGraphBuilder.ExpandOnlyWith(blocks, graph, out problemyGrafu);
 
             // Warianty tekstu (krok 8): niepoprawne odpadaja TU, zanim ktokolwiek je zobaczy.
             problemyWariantow = TextComposer.Validate(blocks);

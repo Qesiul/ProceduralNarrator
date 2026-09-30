@@ -426,7 +426,8 @@ static class TestsArcsFsm
         dk.OnExecuted(l3, Napad(frakcja: "F9"), ExecStatus.Executed, SwiatStyl(";Gospodarka;", walki), Obs(20f));
         T.Ok("inna mocna strona (Gospodarka) nie otwiera Slawy", l3.Find("PN_Luk_SlawaTwierdzy") == null, l3.Summary());
         // Warunek stylu dziala TYLKO przy otwarciu: dalsze fazy ida bez mocnej strony.
-        var szal = Zd(Theme.Natural, Valence.Negative, EventScale.Moderate, IntensityLevel.Normal, null, false, "militarny", "zwierzeta");
+        // Tagi jak w prawdziwym klocku Szalu (krok 9, K1-e: "nagle" - czytaja go fazy Niespokojnych nocy).
+        var szal = Zd(Theme.Natural, Valence.Negative, EventScale.Moderate, IntensityLevel.Normal, null, false, "militarny", "zwierzeta", "nagle");
         dk.OnExecuted(l1, szal, ExecStatus.Executed, SwiatStyl("", walki), Obs(23.5f));
         T.EqS("otwarta Slawa przesuwa sie dalej bez mocnej strony (styl czytany tylko przy otwarciu)",
               l1.Find("PN_Luk_SlawaTwierdzy")?.PhaseId, "Kulminacja");

@@ -290,7 +290,19 @@ namespace ProceduralNarrator.Core.Composition
         /// </summary>
         public List<Block> AvailableActions(WorldSnapshot snapshot, EventRecipe recipe)
         {
+            int zablokowanych;
+            return AvailableActions(snapshot, recipe, out zablokowanych);
+        }
+
+        /// <summary>
+        /// Akcje dostepne w kontekscie. engineBlocked = akcje, ktore przeszly tag i wlasne warunki, ale wypadly
+        /// przez lustro sprawdzen gry (EngineMirror) - miara wplywu lustra (kolumna zablokowanychSilnik).
+        /// </summary>
+        public List<Block> AvailableActions(WorldSnapshot snapshot, EventRecipe recipe, out int engineBlocked)
+        {
+            engineBlocked = 0;
             string requiredTag = recipe != null ? recipe.RequiredActionTag : null;
+            AnomalyGateKind strona = recipe != null ? recipe.AnomalySide : AnomalyGateKind.None;
 
             var result = new List<Block>();
             for (int i = 0; i < catalog.Count; i++)
@@ -304,8 +316,17 @@ namespace ProceduralNarrator.Core.Composition
                 {
                     continue;
                 }
+                if (!AnomalyGateRules.Allows(strona, block.AnomalyGate))
+                {
+                    continue;
+                }
                 if (!block.IsAvailable(snapshot))
                 {
+                    continue;
+                }
+                if (EngineMirror.IsBlocked(snapshot, block.Payload))
+                {
+                    engineBlocked++;
                     continue;
                 }
                 result.Add(block);

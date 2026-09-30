@@ -175,6 +175,8 @@
             <themes><li>Natural</li></themes>
             <valences><li>Negative</li></valences>
             <scales><li>Minor</li></scales>
+            <!-- Krok 9, K1-e: komunikat mowi o zwierzetach - akcja Natural/Negative/Minor bez zwierzat by sklamala. -->
+            <requiredTag>zwierzeta</requiredTag>
           </li>
         </expectations>
         <message>Zwierzeta w okolicy sa niespokojne.</message>
@@ -728,6 +730,8 @@
             <themes><li>Natural</li></themes>
             <valences><li>Negative</li></valences>
             <scales><li>Moderate</li></scales>
+            <!-- Krok 9, K1-e: fala pogody to nie "zagrozenie znienacka" - fazy tego luku tylko dla tagu "nagle". -->
+            <requiredTag>nagle</requiredTag>
           </li>
         </expectations>
         <message>Kolonia uczy sie spac czujnie.</message>
@@ -742,6 +746,7 @@
             <themes><li>Natural</li></themes>
             <valences><li>Negative</li></valences>
             <scales><li>Moderate</li></scales>
+            <requiredTag>nagle</requiredTag>
           </li>
         </expectations>
         <message>Zagrozenie znowu przychodzi znienacka.</message>
@@ -767,6 +772,7 @@
           <li>
             <valences><li>Negative</li></valences>
             <scales><li>Major</li></scales>
+            <requiredTag>nagle</requiredTag>
           </li>
         </expectations>
         <message>Kolonia staje przed ciezka proba czujnosci.</message>
@@ -793,6 +799,382 @@
           </li>
         </expectations>
         <message>Po niespokojnych dniach przychodzi cos dobrego.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- ===================================================================================
+       LUKI KROKU 9, K1 (decyzja autora K1-f, komunikaty zatwierdzone 2026-09-26): czytelnicy nowych faktow z konsekwencji
+       (E0-8). Kazdy w 3 fazach (jak Scigani), start od dnia 11 i po fakcie rodziny - czyli najpierw jedno zdarzenie
+       z rodziny, potem watek. Priorytety ponizej lukow istniejacych w tej samej grupie. Zasada prawdy tekstu jak wyzej.
+       =================================================================================== -->
+
+  <!-- KAPRYSY POGODY: fala mrozu albo upalu (i burza), potem pogoda na wielka skale (opad, zima wulkaniczna). -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_KaprysyPogody</defName>
+    <label>kaprysy pogody</label>
+    <priority>4</priority>
+    <exclusionGroup>natura</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FaktLiczba">
+        <key>pogoda.zla</key>
+        <min>1</min>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li></scales>
+            <requiredTag>pogoda</requiredTag>
+          </li>
+        </expectations>
+        <message>Pogoda nie daje kolonii spokoju.</message>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>30</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+            <requiredTag>pogoda</requiredTag>
+          </li>
+        </expectations>
+        <message>Pogoda staje sie dla kolonii prawdziwa proba.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Po zlych dniach przychodzi cos dobrego.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- RUCH W DZICZY: zwierzeta w okolicy, potem zwracaja sie przeciw kolonii, na koniec przynosza pozytek. -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_RuchWDziczy</defName>
+    <label>ruch w dziczy</label>
+    <priority>3</priority>
+    <exclusionGroup>natura</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FaktLiczba">
+        <key>zwierzeta.przybyly</key>
+        <min>1</min>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Natural</li></themes>
+            <valences><li>Neutral</li><li>Positive</li></valences>
+            <requiredTag>zwierzeta</requiredTag>
+          </li>
+        </expectations>
+        <message>W okolicy kraza zwierzeta.</message>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>1</minDaysAfterPrevious>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Moderate</li><li>Major</li></scales>
+            <requiredTag>zwierzeta</requiredTag>
+          </li>
+        </expectations>
+        <message>Zwierzeta zwracaja sie przeciw kolonii.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Economic</li></themes>
+            <valences><li>Positive</li></valences>
+            <requiredTag>zwierzeta</requiredTag>
+          </li>
+        </expectations>
+        <message>Tym razem zwierzeta przynosza kolonii pozytek.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- SZEPTY: przygnebiajaca fala (albo emanator), potem emanator, na koniec kojaca fala. -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_Szepty</defName>
+    <label>szepty</label>
+    <priority>4</priority>
+    <exclusionGroup>niebo</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FaktLiczba">
+        <key>psychika.fala</key>
+        <min>1</min>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Supernatural</li></themes>
+            <valences><li>Negative</li></valences>
+            <requiredTag>psychika</requiredTag>
+          </li>
+        </expectations>
+        <message>Cos zaklocilo spokoj umyslow kolonistow.</message>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>30</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Supernatural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+            <requiredTag>psychika</requiredTag>
+          </li>
+        </expectations>
+        <message>Psychiczny szum narasta.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>20</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Supernatural</li></themes>
+            <valences><li>Positive</li></valences>
+            <requiredTag>psychika</requiredTag>
+          </li>
+        </expectations>
+        <message>Kojaca fala przynosi kolonistom ulge.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!-- CHUDE DNI: strata dobytku (zaraza, zwarcie), potem zniszczenia na wielka skale (opad toksyczny, defoliator), na koniec dobro. Przy wdrozeniu zawezone wobec propozycji (2026-09-26): Zasiew bez alfabobrow (drzewa to nie "to, co kolonia zgromadzila"), Kulminacja tylko zdarzenia, ktore NA PEWNO niszcza (tagi toksyny, mechanoidy). -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+    <defName>PN_Luk_ChudeDni</defName>
+    <label>chude dni</label>
+    <priority>4</priority>
+    <exclusionGroup>dobytek</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FaktLiczba">
+        <key>dobytek.straty</key>
+        <min>1</min>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <valences><li>Negative</li></valences>
+            <requiredTag>uprawy</requiredTag>
+          </li>
+          <li>
+            <valences><li>Negative</li></valences>
+            <requiredTag>technika</requiredTag>
+          </li>
+        </expectations>
+        <message>Kolonia traci to, co zgromadzila.</message>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>30</maxDays>
+        <expectations>
+          <!-- Decyzja autora K2-f: tag niszczy (Opad, Defoliator) zamiast toksyny/mechanoidy - uspiony klaster
+               mechanoidow (Royalty) niczego nie niszczy, a nosi tag mechanoidy. Dzis faza bez zmiany zachowania. -->
+          <li>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+            <requiredTag>niszczy</requiredTag>
+          </li>
+        </expectations>
+        <message>Straty kolonii siegaja zenitu.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Economic</li></themes>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Do kolonii znow trafia dobro.</message>
+        <messageType>PositiveEvent</messageType>
+      </li>
+    </phases>
+  </ProceduralNarrator.Integration.Defs.NarrativeArcDef>
+
+  <!--
+    COS SIE BUDZI (krok 9, K2; decyzje autora E0-8 i K2-d) - czytelnik faktu anomalia.byla (konsekwencja Groza).
+    Tylko z DLC Anomaly (MayRequire). Fazy po temacie Supernatural z tagiem anomalia: fale psychiczne (bez tagu)
+    zostaja przy Szeptach, a zdarzenia ukryte nie pasuja do zadnej fazy (ArcExpectation.Matches, K2-b).
+    Wlasna grupa wykluczen "anomalia"; priorytet 4 (arbitralny, jak inne luki K1).
+  -->
+  <ProceduralNarrator.Integration.Defs.NarrativeArcDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Luk_CosSieBudzi</defName>
+    <label>cos sie budzi</label>
+    <priority>4</priority>
+    <exclusionGroup>anomalia</exclusionGroup>
+    <cooldownDays>30</cooldownDays>
+    <startConditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FaktLiczba">
+        <key>anomalia.byla</key>
+        <min>1</min>
+      </li>
+    </startConditions>
+    <phases>
+      <li>
+        <id>Zasiew</id>
+        <kind>Seed</kind>
+        <expectations>
+          <li>
+            <themes><li>Supernatural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Minor</li><li>Moderate</li></scales>
+            <requiredTag>anomalia</requiredTag>
+          </li>
+        </expectations>
+        <message>W okolicy dzieje sie cos nienaturalnego.</message>
+      </li>
+      <li>
+        <id>Kulminacja</id>
+        <kind>Climax</kind>
+        <minDaysAfterPrevious>3</minDaysAfterPrevious>
+        <maxDays>30</maxDays>
+        <expectations>
+          <li>
+            <themes><li>Supernatural</li></themes>
+            <valences><li>Negative</li></valences>
+            <scales><li>Major</li></scales>
+            <requiredTag>anomalia</requiredTag>
+          </li>
+        </expectations>
+        <message>Nienaturalne zagrozenie przybiera na sile.</message>
+        <messageType>NegativeEvent</messageType>
+        <transitions>
+          <li>
+            <guards>
+              <li Class="ProceduralNarrator.Core.Arcs.Guard_ColonistsLost">
+                <min>1</min>
+              </li>
+            </guards>
+            <target>Rozwiazanie</target>
+            <message>Kolonia liczy straty.</message>
+          </li>
+        </transitions>
+      </li>
+      <li>
+        <id>Rozwiazanie</id>
+        <kind>Resolution</kind>
+        <maxDays>15</maxDays>
+        <expectations>
+          <li>
+            <valences><li>Positive</li></valences>
+          </li>
+        </expectations>
+        <message>Po dniach grozy przychodzi cos dobrego.</message>
         <messageType>PositiveEvent</messageType>
       </li>
     </phases>

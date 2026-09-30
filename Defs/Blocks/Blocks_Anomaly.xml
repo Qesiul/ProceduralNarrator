@@ -1,0 +1,1372 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+    PELNE POKRYCIE TORU - ANOMALY (krok 9, etap K2; decyzja autora E-8). 31 incydentow Anomaly z toru podmienianych
+    compow, dwoch aktorow (E0-7: Otchlan, Kult) i konsekwencja Groza (E0-8, K2-d). Kazdy Def ma MayRequire: bez DLC
+    gra (i walidator) go pomija. Tresc zatwierdzona przez autora 2026-09-28 (Docs/K2_PROPOZYCJA.md, K2-a...K2-h).
+    PLIK GENEROWANY z jednej tabeli (scratchpad sesji K2, gen_anomaly.py) - bliznieta dziela dane; recznie
+    poprawiac mozna, ale walidator (tabela Blizniaki) pilnuje identycznosci tekstow, osi, tagow i list.
+
+    Zasady K2: temat Supernatural dla istot i kultu (K2-a); zdarzenia UKRYTE maja tag "ukryte" - bez listu, bez
+    konsekwencji, bez lukow (K2-b); ThreatBig/ThreatSmall: brama Anomaly i prog dnia 11 (parytet z Cassandra);
+    wszystkie akcje zabraniaja wyzwalacza Bogactwo; sito zgrubne punktow = minThreatPoints / 1.35.
+  -->
+
+  <!-- ============================== AKTORZY (decyzja E0-7) ============================== -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Aktor_Otchlan</defName>
+    <blockType>Actor</blockType>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>wrogi</li></tags>
+    <textFragment>Otchlan</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Mroczna otchlan</text>
+      </li>
+    </textVariants>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Aktor_Kult</defName>
+    <blockType>Actor</blockType>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>kult</li><li>wrogi</li></tags>
+    <!-- Bez nazwy "Horaks": nazwa frakcji w grze moze sie roznic, a tekst o nia nie pyta. -->
+    <textFragment>Mroczny kult</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Sekta kultystow</text>
+      </li>
+    </textVariants>
+    <!-- Fakt w tekscie: kult istnieje. Takze warunek wykonania: IncidentWorker_HateChanters i PsychicRitualSiege
+         biora Faction.OfHoraxCult bez sprawdzenia. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FactionExists">
+        <faction>HoraxCult</faction>
+      </li>
+    </conditions>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================== KONSEKWENCJA (decyzje E0-8, K2-d) ============================== -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Kons_Groza</defName>
+    <blockType>Consequence</blockType>
+    <!-- Tekst o pamieci, nie o skutku (jak w K1) - pasuje tez do mglistych Wrzaskow. -->
+    <textFragment>Kolonisci dlugo beda o tym szeptac.</textFragment>
+    <textVariants>
+      <li>
+        <id>znow</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>anomalia.byla</key></li>
+        </conditions>
+        <text>Kolonia znow styka sie z czyms nienaturalnym.</text>
+      </li>
+    </textVariants>
+    <factsOnExecute>
+      <li>
+        <key>anomalia.byla</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================== AKCJE (31) ============================== -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_RojTrupow</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>istoty</li></tags>
+    <payload>ShamblerSwarm</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <workerMinPoints>40</workerMinPoints>
+    <styleWeights><walka>0.5</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Przy 40 punktach przychodzi jeden trup, wiec bez liczby mnogiej. Trupy przechodza przez mape i odchodza (umieraja po 2,5-3,5 dnia), atakuja tylko ludzi, ktorych zobacza - stad "przez okolice". -->
+    <textFragment>posyla przez okolice nieumarle zlo.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wypuszcza na okolice to, co powinno lezec w grobie.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: IncidentWorker_EntitySwarm.CanFireNowSub: punkty >= 40 (minimum grupy) - workerMinPoints; poziom 0. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_RojZwierzat</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>istoty</li></tags>
+    <payload>ShamblerSwarmAnimals</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <workerMinPoints>40</workerMinPoints>
+    <styleWeights><walka>0.5</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Zwierzyna - rzeczownik zbiorowy (liczba bywa 1, precedens Amoku). Martwe zwierzeta biomu jako trupy; 2% chimera. -->
+    <textFragment>podnosi z martwych zwierzyne i puszcza ja przez okolice.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze martwa zwierzyna wstaje i chodzi po okolicy.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Jak roj trupow; poziom 1. Gatunek zwierzat losuje worker przy wykonaniu (akceptor). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_GarstkaTrupow</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>anomalia</li><li>istoty</li></tags>
+    <payload>SmallShamblerSwarm</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <workerMinPoints>40</workerMinPoints>
+    <styleWeights><walka>0.5</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Zawsze 2-4 trupy ("kilka"), rozpadaja sie w ciagu dnia. -->
+    <textFragment>posyla przez okolice kilka chodzacych trupow.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wypuszcza na okolice garstke nieumarlych.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: ThreatSmall; sprawdzenie gry jak roj (punkty >= 40), choc liczba trupow od punktow nie zalezy; poziom 0. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_SzturmTrupow</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li></tags>
+    <payload>ShamblerAssault</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Szturm na kolonie (od 250 punktow, gra tez pisze "horda"); trupy rozpadaja sie po 4-10 h. -->
+    <textFragment>rzuca na kolonie horde nieumarlych.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>posyla na kolonie szturm chodzacych trupow.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 250 (sito 185 = 250 / 1.35); od dnia 20 i odstep 10 dni - lustro; poziom 0. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>185</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Miesobestie</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li><li>podziemia</li></tags>
+    <payload>FleshbeastAttack</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: List gry: ziemia sie zapada, z nor wychodza miesobestie i atakuja kolonie. "Zywe mieso" bez liczby. -->
+    <textFragment>wypycha spod ziemi zywe mieso, ktore rusza na kolonie.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze ziemia sie zapada, a z glebi wypelza zywe mieso.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Brak sprawdzen gry poza poziomem 1 i dniem 15 (lustro). Miejsca nor szuka worker (akceptor). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Kolcarze</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li></tags>
+    <payload>GorehulkAssault</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Zawsze >= 2 (worker podnosi punkty < 75 do 150); list: czlekoksztaltne potwory z kolcami. -->
+    <textFragment>posyla na kolonie potwory o ludzkich ksztaltach, ktore miotaja kolcami.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>napuszcza na kolonie kolczaste poczwary podobne do ludzi.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Brak sprawdzen gry poza poziomem 1 i dniem 15 (lustro). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Pozeracze</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li></tags>
+    <payload>DevourerAssault</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Przy 350 punktach przychodzi jeden pozeracz - tekst bez liczby ("cos", "zlo"). -->
+    <textFragment>napuszcza na kolonie cos, co polyka ludzi w calosci.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>posyla na kolonie zarloczne zlo o ogromnej paszczy.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 350 (sito 259); poziom 1. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>259</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_PozeraczeZWody</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li><li>woda</li></tags>
+    <payload>DevourerWaterAssault</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: "Z wody" gwarantuje samo wykonanie (tekst trafia do listu tylko po wykonaniu); jeden pozeracz przy 500. -->
+    <textFragment>wypuszcza z wody cos, co polyka ludzi w calosci.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze z wody wynurza sie zarloczne zlo.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 500 (sito 370); gra NIE sprawdza wody w CanFireNow i pada przy wykonaniu - warunek konieczny Cond_WalkableWater (zasieg do kolonii i zbiornik > 50 pol zostaja przy grze). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_WalkableWater" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>370</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Chimery</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li></tags>
+    <payload>ChimeraAssault</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: Zawsze >= 2 (300 punktow / 135). Najpierw sie czaja, atakuja pozniej - stad bez SladWalki i bez tagu nagle. -->
+    <textFragment>sprowadza pod kolonie chimery, ktore czaja sie do ataku.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>podsyla w poblize kolonii zwierzoksztaltne chimery, ktore czekaja na okazje.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 300 (sito 222); poziom 1. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>222</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Ghul</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li></tags>
+    <payload>GhoulAttack</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Zawsze dokladnie jeden ghul; list gry: nie czuje bolu. -->
+    <textFragment>nasyla na kolonie ghula, ktory nie czuje bolu.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>posyla na kolonie oszalalego ghula.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: ThreatSmall, bez skalowania punktami; poziom 1, od dnia 15 (lustro). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_PiesnNienawisci</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>kult</li><li>militarny</li></tags>
+    <payload>HateChanters</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: "Chce" - przy wykonaniu kultysci dopiero ida na pozycje. "Chor" - rzeczownik zbiorowy. -->
+    <textFragment>przysyla pod kolonie chor, ktory chce zaintonowac piesn nienawisci.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>stawia pod kolonia chor kultystow gotowy do piesni nienawisci.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 200 (sito 148), odstep 10 dni (lustro); poziom 1. Worker bierze Faction.OfHoraxCult bez sprawdzenia - kult musi istniec. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FactionExists">
+        <faction>HoraxCult</faction>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>148</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Kult</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_RytualKultu</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>kult</li><li>militarny</li></tags>
+    <payload>PsychicRitualSiege</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Nie piszemy, jaki rytual: gra losuje porwanie albo przywolanie miesobestii. -->
+    <textFragment>przysyla pod kolonie grupe kultystow, ktora chce odprawic psychiczny rytual.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wyprawia pod kolonie kultystow z rytualem wymierzonym w kolonistow.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 200 (sito 148); poziom 0; wroga frakcja w zakresie temperatur - kult zawsze; worker wymaga kultu. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FactionExists">
+        <faction>HoraxCult</faction>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>148</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Kult</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Oczyslepy</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>ukryte</li></tags>
+    <payload>SightstealerArrival</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: ZDARZENIE UKRYTE (K2-b): gra nie wysyla listu - tekst tylko w logach, bez konsekwencji i bez lukow. -->
+    <textFragment>wypuszcza w okolicy niewidzialnych lowcow.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprowadza w okolice istoty, ktorych nie widac.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Brak sprawdzen gry poza poziomem 1. Mapa zadania z GetMap() (przy jednej kolonii ta sama). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Night">
+        <wantNight>true</wantNight>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Wrzaski</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>militarny</li><li>nagle</li></tags>
+    <payload>SightstealerSwarm</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: Tak mgliscie jak list gry ("Distant shriek... Something is out there"): bez nazwy istot i bez liczby. -->
+    <textFragment>sprawia, ze z oddali dobiegaja nieludzkie wrzaski.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>niesie po okolicy dalekie, nieludzkie wrzaski.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Brak sprawdzen gry poza poziomem 1. Pole hidden Defa ukrywa tylko znacznik na wykresie historii. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Night">
+        <wantNight>true</wantNight>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Zjawa</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li><li>ukryte</li></tags>
+    <payload>Revenant</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: ZDARZENIE UKRYTE (K2-b): gra nie wysyla listu; gracz dowie sie pozniej (slady, atak, hipnoza). -->
+    <textFragment>wypuszcza w okolice niewidzialna zjawe.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprowadza w okolice cos, co poluje niewidzialne.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 300 (sito 222); od dnia 30, >= 4 kolonistow, odstep 20 dni - lustro; poziom 1. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>222</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Kregoslup</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>istoty</li></tags>
+    <payload>RevenantEmergence</payload>
+    <styleWeights><reaktywnosc>1</reaktywnosc></styleWeights>
+    <!-- Prawda: Prawde gwarantuje warunek: na mapie lezy kregoslup, ktory jeszcze nie buczy. List gry: "spine humming". -->
+    <textFragment>sprawia, ze kregoslup zjawy zaczyna buczec.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>budzi kregoslup zjawy, ktory zaczyna niepokojaco buczec.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanFireNowSub: kregoslup na mapie; TryExecuteWorker: taki ze spawnTick < 0 (inaczej pada). To NIE jest incydent anomalii (poziom -1) - bez bramy i bez progu monolitu. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_IdleRevenantSpine" />
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Wszczep</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>ukryte</li></tags>
+    <payload>MetalhorrorImplantation</payload>
+    <styleNeutral>true</styleNeutral>
+    <!-- Prawda: ZDARZENIE UKRYTE (K2-b): bez listu i bez komunikatu. Bez wag stylu: gracz nie ma na co zareagowac. -->
+    <textFragment>zasiewa w jednym z kolonistow metalowa zaraze.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>ukrywa w ciele jednego z kolonistow metalowego pasozyta.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanFireNowSub: brama biosygnatury 30 dni i pionek z droga zakazenia; minThreatPoints 300 (sito 222); od dnia 30, >= 4 kolonistow - lustro; poziom 1. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MetalhorrorGate" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_InfectablePawn" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>222</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_BramaOtchlani</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>podziemia</li><li>militarny</li></tags>
+    <payload>PitGate</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: List gry: brama poglebia sie przez dobe, potem wychodza miesobestie. Miejsce - gdziekolwiek na mapie. -->
+    <textFragment>zaczyna drazyc w okolicy przejscie w glab ziemi.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze ziemia w okolicy zaczyna zapadac sie w glab.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanFireNowSub: brak bramy i brak zapadajacej sie ziemi; minThreatPoints 500 (sito 370); poziom 2. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ThingCount">
+        <thing>PitGate</thing>
+        <max>0</max>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ThingCount">
+        <thing>PitGateSpawner</thing>
+        <max>0</max>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>370</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_SerceZMiesa</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>podziemia</li><li>militarny</li></tags>
+    <payload>FleshmassHeart</payload>
+    <anomalyGate>Anomaly</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: Tak jak list gry ("Something from below") - o sercu gracz dowie sie z nastepnego listu. -->
+    <textFragment>sprawia, ze cos przekopuje sie od spodu ku powierzchni.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>budzi pod ziemia cos, co ryje ku gorze.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Brak sprawdzen gry poza poziomem 2 (istniejacego serca gra nie sprawdza - odstep 120 dni w lustrze). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Nocisfera</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li><li>istoty</li></tags>
+    <payload>Nociosphere</payload>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: Kula pojawia sie tuz za kolonia, uspiona; laduje sie i przy 100% atakuje. -->
+    <textFragment>przenosi tuz za kolonie dziwna metalowa kule.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>zostawia pod kolonia uspiona metalowa kule.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Misc; TryExecuteWorker pada, gdy na mapie jest juz nocisfera (takze na platformie); poziom 2. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_PawnKindCount">
+        <kind>Nociosphere</kind>
+        <max>0</max>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_ObeliskA</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>niebo</li></tags>
+    <payload>WarpedObelisk_Abductor</payload>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: BLIZNIETA z dwoma pozostalymi obeliskami: funkcje gra ukrywa do badan, tekst jej nie zdradza. -->
+    <textFragment>zrzuca w okolicy tajemniczy obelisk.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>ciska z nieba w okolice dziwny obelisk.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 300 (sito 222); od dnia 30 - lustro; miejsce spadku losuje gra (akceptor). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>222</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Groza</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_ObeliskD</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>niebo</li></tags>
+    <payload>WarpedObelisk_Duplicator</payload>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: BLIZNIETA z dwoma pozostalymi obeliskami: funkcje gra ukrywa do badan, tekst jej nie zdradza. -->
+    <textFragment>zrzuca w okolicy tajemniczy obelisk.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>ciska z nieba w okolice dziwny obelisk.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 300 (sito 222); od dnia 30 - lustro; miejsce spadku losuje gra (akceptor). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>222</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Groza</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_ObeliskM</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>niebo</li></tags>
+    <payload>WarpedObelisk_Mutator</payload>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: BLIZNIETA z dwoma pozostalymi obeliskami: funkcje gra ukrywa do badan, tekst jej nie zdradza. -->
+    <textFragment>zrzuca w okolicy tajemniczy obelisk.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>ciska z nieba w okolice dziwny obelisk.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: minThreatPoints 300 (sito 222); od dnia 30 - lustro; miejsce spadku losuje gra (akceptor). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>222</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Groza</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_LadunekC</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>anomalia</li><li>oferta</li></tags>
+    <payload>MysteriousCargoCube</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: BLIZNIETA z dwoma pozostalymi ladunkami: to tylko oferta (gracz moze odmowic), zawartosc ukryta do dostawy. -->
+    <textFragment>proponuje kolonii tajemniczy ladunek.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>oferuje kolonii nieznana przesylke.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanRun: kolonista bez zainteresowania i spiaczki szescianu; minThreatPoints 200 (sito 148); od dnia 10. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_CubeCandidate" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>148</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.5</from>
+        <to>0.4</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_LadunekS</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>anomalia</li><li>oferta</li></tags>
+    <payload>MysteriousCargoRevenantSpine</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: BLIZNIETA z dwoma pozostalymi ladunkami: to tylko oferta (gracz moze odmowic), zawartosc ukryta do dostawy. -->
+    <textFragment>proponuje kolonii tajemniczy ladunek.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>oferuje kolonii nieznana przesylke.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanRun: mapa domowa (praktycznie zawsze); minThreatPoints 200 (sito 148); od dnia 10. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>148</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.5</from>
+        <to>0.4</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_LadunekZ</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>anomalia</li><li>oferta</li></tags>
+    <payload>MysteriousCargoUnnaturalCorpse</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: BLIZNIETA z dwoma pozostalymi ladunkami: to tylko oferta (gracz moze odmowic), zawartosc ukryta do dostawy. -->
+    <textFragment>proponuje kolonii tajemniczy ladunek.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>oferuje kolonii nieznana przesylke.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanRun: kolonista-czlowiek bez nienaturalnych zwlok; minThreatPoints 200 (sito 148); od dnia 10. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_UnnaturalCorpseCandidate" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>148</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.5</from>
+        <to>0.4</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_KrwawyDeszcz</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li><li>niebo</li></tags>
+    <payload>BloodRain</payload>
+    <styleWeights><reaktywnosc>1</reaktywnosc></styleWeights>
+    <!-- Prawda: Brak szarego i smiertelnego calunu to prawda tekstu: przy calunie gra wykonuje incydent bez skutku i bez listu. -->
+    <textFragment>sprowadza na okolice krwawy deszcz.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze z nieba zaczyna padac krew.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: IncidentWorker_MakeGameCondition: krwawy deszcz nieaktywny (mapa i swiat), ciemnosc nie na mapie; poziom 2. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>BloodRain</li><li>GrayPall</li><li>DeathPall</li></defs>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>UnnaturalDarkness</li></defs>
+        <mapOnly>true</mapOnly>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Pogoda</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>15</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Calun</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>anomalia</li></tags>
+    <payload>DeathPall</payload>
+    <styleWeights><reaktywnosc>1</reaktywnosc></styleWeights>
+    <!-- Prawda: "Moga": gra pisze "umarli powstana" nawet bez zwlok na mapie. -->
+    <textFragment>rozciaga nad okolica calun, pod ktorym umarli moga powstac.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>zasnuwa okolice mgla, w ktorej niepogrzebani moga wstac.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: IncidentWorker_DeathPall (MakeGameCondition): calun nieaktywny (mapa i swiat), ciemnosc nie na mapie; poziom 1. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>DeathPall</li></defs>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>UnnaturalDarkness</li></defs>
+        <mapOnly>true</mapOnly>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>15</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Ciemnosc</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>anomalia</li></tags>
+    <payload>UnnaturalDarkness</payload>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Prawda: List gry od razu: "Dimming sky"; ciemnosc po pol dnia. Bez tagu niebo: nic jeszcze nie spada z nieba. -->
+    <textFragment>zaczyna przyciemniac niebo nad kolonia.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze niebo nad kolonia zaczyna gasnac.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: Zadanie (CanRun: mapa domowa, miejsce na noktolit - losowanie gry, akceptor); requireColonistsPresent - akceptor. Przez 6-8 dni blokuje na mapie wszystkie incydenty (preventIncidents - lustro); poziom 2. -->
+    <onlyWith>
+      <li>PN_Aktor_Otchlan</li>
+      <li>PN_Kons_Groza</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>15</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_Przybysz</defName>
+    <blockType>Action</blockType>
+    <theme>Social</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>spoleczny</li></tags>
+    <payload>CreepJoinerJoin</payload>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
+    <!-- Prawda: BLIZNIETA z przybyszem z metalhorrorem: list gry identyczny, wiec nasz tekst i osie tez. -->
+    <textFragment>zbliza sie do kolonii i chce porozmawiac.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>podchodzi pod kolonie i prosi o rozmowe.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: CanRun zawsze; wolny kolonista i requireColonistsPresent - akceptor; od dnia 10; poziom 0. -->
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_NowyCzlowiek</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef MayRequire="Ludeon.RimWorld.Anomaly">
+    <defName>PN_Akcja_PrzybyszM</defName>
+    <blockType>Action</blockType>
+    <theme>Social</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>spoleczny</li></tags>
+    <payload>CreepJoinerJoin_Metalhorror</payload>
+    <styleWeights><ekspansja>1</ekspansja></styleWeights>
+    <!-- Prawda: BLIZNIETA ze zwyklym przybyszem: list gry identyczny, wiec nasz tekst i osie tez (K2-c). -->
+    <textFragment>zbliza sie do kolonii i chce porozmawiac.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>podchodzi pod kolonie i prosi o rozmowe.</text>
+      </li>
+    </textVariants>
+    <!-- Gra: + brama biosygnatury 30 dni (Find.Anomaly.CanNewMetalhorrorBiosignatureImplantOccur); poziom 2. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MetalhorrorGate" />
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_NowyCzlowiek</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+</Defs>

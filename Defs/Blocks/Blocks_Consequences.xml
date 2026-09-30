@@ -17,14 +17,15 @@
 
     2. BEZ OSI. Theme/Valence/Scale deklaruje WYLACZNIE klocek akcji (umowa danych z kroku 2).
 
-    3. KRAWEDZIE GRAFU DEKLAROWANE TUTAJ, a nie przy akcjach. To odstepstwo od konwencji
-       ("reguly jednego wydarzenia w jednym miejscu"), ale zgodne z jej POWODEM: regula jednego
-       SLADU jest tutaj, zamiast rozsypywac sie po trzynastu klockach akcji. Graf jest symetryczny,
-       wiec kierunek deklaracji nie ma znaczenia mechanicznego.
-       PULAPKA (przeglad S6): graf to "brak krawedzi = zgoda", wiec NOWA AKCJA, o ktorej ten plik
-       nie wie, jest zgodna ze WSZYSTKIMI konsekwencjami ("karawana kupiecka... zostaja slady walki"
-       i licznik walk dla Wendety). Walidator trzyma jawna tabele "akcja -> dozwolone konsekwencje"
-       (TestsComposition.DozwoloneKonsekwencje) - nowa akcja bez wpisu w niej to blad.
+    3. ZGODNOSC Z AKCJAMI DEKLARUJE AKCJA (od kroku 9, etap K0; decyzja autora E0-1). Lista onlyWith klocka
+       akcji to KOMPLET jego aktorow i konsekwencji - konsekwencja spoza listy jest zabroniona, a akcja bez
+       konsekwencji na liscie jest akcja bez konsekwencji. Tutaj NIE ma list akcji: przy 62 akcjach (pelne
+       pokrycie toru, E-8) czarna lista po stronie konsekwencji wymagalaby wpisu przy kazdej nowej akcji, a nowa
+       konsekwencja przyklejalaby sie po cichu do wszystkich starych akcji. Do kroku 9 krawedzie byly
+       deklarowane tutaj (S4-S6); przeniesione bez zmiany zbioru par (bramka: 112 kombinacji, 120 krawedzi).
+       Walidator trzyma dalej jawna tabele "akcja -> dozwolone konsekwencje" (TestsComposition.DozwoloneKonsekwencje)
+       jako niezalezna wyrocznie, a CatalogGraphBuilder zglasza zakaz akcja-konsekwencja w incompatibleWith jako
+       drugie zrodlo prawdy.
 
     4. TEKST NIE OBIECUJE, CZEGO GRA NIE GWARANTUJE (regula "fakt w tekscie = warunek twardy").
        Klocek konsekwencji sklada sie z KAZDA zgodna akcja, wiec jego zdanie musi byc prawdziwe dla
@@ -78,17 +79,6 @@
          2026-09-23 doszla do 13 przy 2 walkach w ostatnich 20 dniach). Wendeta pyta o prog >= 1,
          czyli "ostatnia walka mniej niz 20 dni temu" - dla niej to jest dokladnie to samo co okno.
          Prog wyzszy niz 1 znaczylby "tyle walk w serii bez przerwy dluzszej niz 20 dni". -->
-    <incompatibleWith>
-      <li>PN_Akcja_Wedrowiec</li>
-      <li>PN_Akcja_Zrzut</li>
-      <li>PN_Akcja_Okup</li>
-      <li>PN_Akcja_Uchodzcy</li>
-      <li>PN_Akcja_Dzikus</li>
-      <li>PN_Akcja_Ambrozja</li>
-      <li>PN_Akcja_Meteoryt</li>
-      <li>PN_Akcja_Burza</li>
-      <li>PN_Akcja_Emanator</li>
-    </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -117,17 +107,6 @@
         <lifespanDays>20</lifespanDays>
       </li>
     </factsOnExecute>
-    <incompatibleWith>
-      <li>PN_Akcja_Wedrowiec</li>
-      <li>PN_Akcja_Zrzut</li>
-      <li>PN_Akcja_Okup</li>
-      <li>PN_Akcja_Uchodzcy</li>
-      <li>PN_Akcja_Dzikus</li>
-      <li>PN_Akcja_Ambrozja</li>
-      <li>PN_Akcja_Meteoryt</li>
-      <li>PN_Akcja_Burza</li>
-      <li>PN_Akcja_Emanator</li>
-    </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ============================ PO PRZYBYSZU ============================ -->
@@ -157,18 +136,6 @@
         <lifespanDays>30</lifespanDays>
       </li>
     </factsOnExecute>
-    <incompatibleWith>
-      <li>PN_Akcja_Napad</li>
-      <li>PN_Akcja_Szal</li>
-      <li>PN_Akcja_Rojenie</li>
-      <li>PN_Akcja_Zrzut</li>
-      <li>PN_Akcja_Okup</li>
-      <li>PN_Akcja_Ambrozja</li>
-      <li>PN_Akcja_Meteoryt</li>
-      <li>PN_Akcja_Burza</li>
-      <li>PN_Akcja_Emanator</li>
-      <li>PN_Akcja_Amok</li>
-    </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -197,20 +164,6 @@
     </factsOnExecute>
     <!-- Flaga, nie licznik: "czy mamy swieze wiesci" jest pytaniem zero-jedynkowym, a kazdy
          kolejny przybysz ma je ODSWIEZAC, nie sumowac. Set odswieza dzien ustawienia. -->
-    <incompatibleWith>
-      <li>PN_Akcja_Napad</li>
-      <li>PN_Akcja_Szal</li>
-      <li>PN_Akcja_Rojenie</li>
-      <li>PN_Akcja_Zrzut</li>
-      <li>PN_Akcja_Okup</li>
-      <li>PN_Akcja_Ambrozja</li>
-      <li>PN_Akcja_Meteoryt</li>
-      <li>PN_Akcja_Burza</li>
-      <li>PN_Akcja_Emanator</li>
-      <li>PN_Akcja_Amok</li>
-      <!-- Przeglad S10 (decyzja autora 2026-09-25): zdziczaly czlowiek nie przynosi wiesci. -->
-      <li>PN_Akcja_Dzikus</li>
-    </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ============================ PO TYM, CO SPADLO ============================ -->
@@ -237,21 +190,6 @@
         <lifespanDays>15</lifespanDays>
       </li>
     </factsOnExecute>
-    <incompatibleWith>
-      <!-- S6 wrak-uchodzcy: w 1.5 RefugeePodCrash to zadanie (QuestPart_DropPods, leaveSlag=false) -
-           kapsula znika bez wraku, wiec "zostaje to, co spadlo" i fakt wrak.lezy bylyby falszem. -->
-      <li>PN_Akcja_Uchodzcy</li>
-      <li>PN_Akcja_Napad</li>
-      <li>PN_Akcja_Szal</li>
-      <li>PN_Akcja_Rojenie</li>
-      <li>PN_Akcja_Wedrowiec</li>
-      <li>PN_Akcja_Okup</li>
-      <li>PN_Akcja_Dzikus</li>
-      <li>PN_Akcja_Ambrozja</li>
-      <li>PN_Akcja_Burza</li>
-      <li>PN_Akcja_Emanator</li>
-      <li>PN_Akcja_Amok</li>
-    </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ============================ PO ZNAKU NA NIEBIE ============================ -->
@@ -282,19 +220,112 @@
     </factsOnExecute>
     <!-- Czas zycia 40 dni jest dobrany do luku Znaki z nieba: jego odstep po zamknieciu to 40 dni,
          wiec fakt przezywa dokladnie tyle, ile trwa pamiec o poprzednim przebiegu watku. -->
-    <incompatibleWith>
-      <li>PN_Akcja_Napad</li>
-      <li>PN_Akcja_Szal</li>
-      <li>PN_Akcja_Rojenie</li>
-      <li>PN_Akcja_Wedrowiec</li>
-      <li>PN_Akcja_Zrzut</li>
-      <li>PN_Akcja_Okup</li>
-      <li>PN_Akcja_Uchodzcy</li>
-      <li>PN_Akcja_Dzikus</li>
-      <li>PN_Akcja_Ambrozja</li>
-      <li>PN_Akcja_Meteoryt</li>
-      <li>PN_Akcja_Amok</li>
-    </incompatibleWith>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ======================== KROK 9, K1: NOWE KONSEKWENCJE (decyzja E0-8) ======================== -->
+  <!-- Teksty zatwierdzone przez autora 2026-09-26 (Docs/K1_PROPOZYCJA.md, K1-i). Czytelnicy faktow: cztery nowe luki
+       (Kaprysy pogody, Ruch w dziczy, Szepty, Chude dni). -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Pogoda</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Kolonisci dlugo beda wspominac te pogode.</textFragment>
+    <textVariants>
+      <li>
+        <id>znow</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>pogoda.zla</key></li>
+        </conditions>
+        <text>Pogoda znow daje kolonii w kosc.</text>
+      </li>
+    </textVariants>
+    <factsOnExecute>
+      <li>
+        <key>pogoda.zla</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Zwierzyna</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Kolonisci zapamietaja to spotkanie z dzika zwierzyna.</textFragment>
+    <!-- Wariant: klucz zwierzeta.przybyly pisza tez zwierzeta hodowlane i oswojone (PN_Kons_Inwentarz), wiec zdanie
+         "znow" nie moze mowic o DZIKIEJ zwierzynie - sprostowanie propozycji przy wdrozeniu (2026-09-26). -->
+    <textVariants>
+      <li>
+        <id>znow</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>zwierzeta.przybyly</key></li>
+        </conditions>
+        <text>Zwierzeta znow daja o sobie znac.</text>
+      </li>
+    </textVariants>
+    <factsOnExecute>
+      <li>
+        <key>zwierzeta.przybyly</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Inwentarz</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Kolonia ma teraz o kogo dbac.</textFragment>
+    <!-- Ten sam klucz co PN_Kons_Zwierzyna (jak SladWalki i Trofea przy walka.byla): licznik "zwierzeta przybyly" nie
+         zalezy od remisu w losowaniu konsekwencji. -->
+    <factsOnExecute>
+      <li>
+        <key>zwierzeta.przybyly</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Straty</defName>
+    <blockType>Consequence</blockType>
+    <!-- Warunkowe ("jesli"): zwarcie bez baterii bywa tylko proba podpalenia, zaraza tylko probuje sie szerzyc. -->
+    <textFragment>Jesli cos przepadlo, kolonia to zapamieta.</textFragment>
+    <factsOnExecute>
+      <li>
+        <key>dobytek.straty</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Kons_Psychika</defName>
+    <blockType>Consequence</blockType>
+    <textFragment>Kolonisci dlugo beda pamietac te fale.</textFragment>
+    <textVariants>
+      <li>
+        <id>kolejna</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Fakt"><key>psychika.fala</key></li>
+        </conditions>
+        <text>Kolejna fala zostawia slad w pamieci kolonistow.</text>
+      </li>
+    </textVariants>
+    <factsOnExecute>
+      <li>
+        <key>psychika.fala</key>
+        <value>1</value>
+        <accumulate>true</accumulate>
+        <lifespanDays>30</lifespanDays>
+      </li>
+    </factsOnExecute>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
 </Defs>

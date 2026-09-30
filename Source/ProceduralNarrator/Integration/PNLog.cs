@@ -173,7 +173,12 @@ namespace ProceduralNarrator.Integration
         /// cechy na wspolnej skali, mocne strony, etykieta, kierunek d) i trzy na koncu czesci decyzyjnej
         /// (wartosc stylu zwyciezcy, jego premia, liczba kandydatow z niezerowym stylem w pasmie); linia
         /// [PN-GRACZ] poza kontraktem; pole "styl=" w [PN-LOAD] i [PN-RESET].
-        public const int DataFormatVersion = 9;
+        ///
+        /// v10 (krok 9, K0 - infrastruktura katalogu pod ewaluacje): dwie kolumny bramy Anomaly na koncu
+        /// preambuly (szansa gry na pule Anomaly - pusta bez DLC - i strona wylosowana w tej turze) oraz
+        /// "zablokowanychSilnik" na koncu grupy generowania (akcje odciete lustrem sprawdzen gry; pusta, gdy
+        /// lustro nie dzialalo).
+        public const int DataFormatVersion = 10;
 
         /// <summary>
         /// PELNA lista kolumn linii [PN-DATA] w ich OBOWIAZUJACEJ kolejnosci. Jedyne zrodlo
@@ -199,10 +204,14 @@ namespace ProceduralNarrator.Integration
             // --- krok 7 (v9): styl gracza w chwili decyzji ---
             "stylDni", "stylAktywny", "stylWalka", "stylGospodarka", "stylEkspansja", "stylReaktywnosc",
             "stylMocne", "stylEtykieta", "stylKierunek",
+            // --- krok 9 (v10): brama Anomaly w tej turze ---
+            "anomaliaSzansa", "anomaliaTura",
 
             // --- generowanie kandydatow (CandidateSet) ---
             "wygenerowanych", "budzet", "akcji", "limitNaAkcje", "przestrzen",
             "wyczerpano", "ucieto", "budzetPrzekroczony",
+            // --- krok 9 (v10): lustro sprawdzen gry ---
+            "zablokowanychSilnik",
 
             // --- decyzja: scoring i polityka wyboru (NarratorDecision.ToDataFragment) ---
             "decyzja", "wybor", "klucz", "wynik", "p", "pRunda",
@@ -1064,6 +1073,10 @@ namespace ProceduralNarrator.Integration
             Append(sb, "stylMocne", ks.Mocne);
             Append(sb, "stylEtykieta", ks.Etykieta);
             Append(sb, "stylKierunek", ks.Kierunek);
+            // KROK 9 (v10): brama Anomaly. Szansa PUSTA bez DLC (gra jej wtedy nie liczy - brak pomiaru, nie zero);
+            // strona to symbol enuma (Regular/Anomaly), bez DLC zawsze Regular (AnomalyGate.Draw).
+            Append(sb, "anomaliaSzansa", swiat == null || !swiat.AnomalyActive ? string.Empty : Num(swiat.AnomalyIncidentChance));
+            Append(sb, "anomaliaTura", zbior.AnomalySide.ToString());
 
             // ---- generowanie kandydatow ----
             // Kolumny budowane tutaj, a NIE przez CandidateSet.DataLogFragment(), mimo ze tamta
@@ -1083,6 +1096,9 @@ namespace ProceduralNarrator.Integration
             Append(sb, "wyczerpano", VariantEnumerationStats.Flag(zbior.Exhausted));
             Append(sb, "ucieto", VariantEnumerationStats.Flag(zbior.Truncated));
             Append(sb, "budzetPrzekroczony", VariantEnumerationStats.Flag(zbior.BudgetExceeded));
+            // KROK 9 (v10): akcje, ktore przeszly tag i wlasne warunki, a odpadly przez lustro sprawdzen gry. PUSTE,
+            // gdy lustro w tej turze nie dzialalo (bezpiecznik) - wtedy zero znaczyloby "nic nie zablokowano".
+            Append(sb, "zablokowanychSilnik", swiat != null && swiat.EngineMirrorActive ? Int(zbior.EngineBlocked) : string.Empty);
 
             // ---- decyzja (rdzen) ----
             string czescDecyzyjna = decision.ToDataFragment();

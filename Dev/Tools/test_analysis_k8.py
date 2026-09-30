@@ -190,6 +190,17 @@ def main():
         L[i] = ustaw_exec(L[i], 'list', 'wylaczony')
         return L
 
+    # Krok 9, K2-b: zdarzenie ukryte - list=ukryty bez liczonego listu jest poprawny, z liczonym listem nie.
+    def ukryty_poprawny(L):
+        i = pierwszy(L, lambda l: l.startswith('[PN-EXEC] ') and t8.pole(l, 'list') == 'dopisany')
+        L[i] = ustaw_exec(ustaw_exec(L[i], 'list', 'ukryty'), 'nowychListow', '0')
+        return L
+
+    def ukryty_z_listem(L):
+        i = pierwszy(L, lambda l: l.startswith('[PN-EXEC] ') and t8.pole(l, 'list') == 'dopisany')
+        L[i] = ustaw_exec(L[i], 'list', 'ukryty')
+        return L
+
     def cache_rozny_klamie(L):
         i = pierwszy(L, lambda l: l.startswith('[PN-CACHE] '))
         L[i] = t8.ustaw(L[i], 'rozny', 'false')
@@ -209,6 +220,8 @@ def main():
         ('list=brak na sciezce spoznionej', dopisany_na_sciezce_spoznionej, {'44'}),
         ('wykonane bez sladu wariantow', bez_wariantow, {'44'}),
         ('list=wylaczony przy zlozonyList=tak', wylaczony_przy_wlaczonym, {'44'}),
+        ('list=ukryty bez listu (K2-b) - poprawny', ukryty_poprawny, set()),
+        ('list=ukryty z liczonym listem', ukryty_z_listem, {'44'}),
         ('[PN-CACHE] rozny niespojne', cache_rozny_klamie, {'45'}),
         ('[PN-CACHE] poza tickiem decyzji', cache_poza_decyzja, {'45'}),
     ]

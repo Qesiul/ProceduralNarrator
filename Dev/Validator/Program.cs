@@ -16,7 +16,12 @@ class Program
     static readonly string[] Xml = {
         @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_Core.xml",
         @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_Extended.xml",
-        @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_Consequences.xml"
+        @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_Consequences.xml",
+        // Krok 9, K1: pelne pokrycie toru gry podstawowej (15 akcji, 3 aktorow).
+        @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_CoreTrack.xml",
+        // Krok 9, K2: Royalty (3 akcje) i Anomaly (31 akcji, 2 aktorow, 1 konsekwencja) - Defy z MayRequire.
+        @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_Royalty.xml",
+        @"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Blocks\Blocks_Anomaly.xml"
     };
 
     static readonly List<string> Tagi = new List<string> {
@@ -47,8 +52,23 @@ class Program
             // Mocne strony stylu gracza (krok 7).
             StyleStrongSides = s.StyleStrongSides,
             // Pora roku dla ludzi (krok 8, dlug 6) i skazone powietrze (przeglad S10).
-            SeasonAcceptableForHumans = s.SeasonAcceptableForHumans,
-            ToxicAirActive = s.ToxicAirActive
+            SeasonAcceptableForHumans = s.SeasonAcceptableForHumans, GrowthSeasonOutdoors = s.GrowthSeasonOutdoors,
+            // Rejestr wymagan snapshotu (krok 9, K1).
+            SeasonalTemp = s.SeasonalTemp, GameConditionsMap = s.GameConditionsMap, GameConditionsAll = s.GameConditionsAll,
+            WeatherOkRaces = s.WeatherOkRaces, ThingCounts = s.ThingCounts, MechanoidFactionExists = s.MechanoidFactionExists,
+            WildHerdMinCombatPower = s.WildHerdMinCombatPower, FarmAnimalKindAvailable = s.FarmAnimalKindAvailable,
+            SelfTameCandidates = s.SelfTameCandidates, BlightablePlants = s.BlightablePlants,
+            ShortCircuitPossible = s.ShortCircuitPossible,
+            // Rejestr wymagan snapshotu, czesc K2 (Royalty i Anomaly).
+            FactionDefsPresent = s.FactionDefsPresent, OngoingQuestScripts = s.OngoingQuestScripts,
+            PawnKindCounts = s.PawnKindCounts, WalkableWater = s.WalkableWater, IdleRevenantSpines = s.IdleRevenantSpines,
+            CubeCandidates = s.CubeCandidates, UnnaturalCorpseCandidates = s.UnnaturalCorpseCandidates,
+            MetalhorrorGateOpen = s.MetalhorrorGateOpen, InfectablePawns = s.InfectablePawns,
+            ToxicAirActive = s.ToxicAirActive,
+            // Lustro sprawdzen gry (krok 9, K0).
+            EngineBlockedPayloads = s.EngineBlockedPayloads, EngineMirrorActive = s.EngineMirrorActive,
+            // Brama Anomaly (krok 9, K0).
+            AnomalyActive = s.AnomalyActive, AnomalyIncidentChance = s.AnomalyIncidentChance
         };
     }
 
@@ -193,7 +213,8 @@ class Program
         foreach (var (nazwa, s) in scenariusze)
         {
             var k = Kombinacje(composer, s, 1200);
-            var inc = k.Select(x => blocks.First(b => b.Type == BlockType.Action && x.Contains(b.Id)).Payload)
+            // Dokladne dopasowanie id (krok 9, K1): PN_Akcja_Szal jest podciagiem PN_Akcja_SzalStada.
+            var inc = k.Select(x => blocks.First(b => b.Type == BlockType.Action && x.Split(new[] { " + " }, StringSplitOptions.None).Contains(b.Id)).Payload)
                        .Distinct().OrderBy(x => x).ToList();
             Console.WriteLine($"    {nazwa,-42} kombinacji: {k.Count,4}  incydentow: {inc.Count}");
 
@@ -318,7 +339,15 @@ class Program
         // przez Cond_MinDaysPassed. Sprawdzamy to BEHAWIORALNIE - przez to, co da sie zlozyc -
         // a nie przez zagladanie do XML, zeby test nie zmienil sie w kopie konfiguracji.
         Console.WriteLine("\n[5c] Progi startowe akcji");
-        var threatBig = new[] { "RaidEnemy", "Infestation", "ManhunterPack", "PsychicEmanatorShipPartCrash" };
+        // Krok 9, K1: + AnimalInsanityMass i DefoliatorShipPartCrash (kategoria ThreatBig w danych gry, TEST 20c).
+        // Krok 9, K2: + 2 Royalty i 15 Anomaly (kategoria ThreatBig w danych gry, raporty K2); ThreatSmall osobno nizej.
+        var threatBig = new[] { "RaidEnemy", "Infestation", "ManhunterPack", "PsychicEmanatorShipPartCrash",
+                                "AnimalInsanityMass", "DefoliatorShipPartCrash",
+                                "MechCluster", "ProblemCauser",
+                                "ShamblerSwarm", "ShamblerSwarmAnimals", "ShamblerAssault", "FleshbeastAttack", "GorehulkAssault",
+                                "DevourerAssault", "DevourerWaterAssault", "ChimeraAssault", "HateChanters", "PsychicRitualSiege",
+                                "SightstealerArrival", "SightstealerSwarm", "Revenant", "PitGate", "FleshmassHeart" };
+        var threatSmall = new[] { "AnimalInsanitySingle", "SmallShamblerSwarm", "GhoulAttack" };
         // ZNALEZIONE PRZEGLADEM ADWERSARIALNYM: te dwa snapshoty byly SLEPE na trzy akcje naraz.
         // Nie ustawialy MaddenableAnimalCount (domyslnie 0 -> Amok zablokowany) ani ThreatPoints
         // (domyslnie 0 -> Rojenie i Emanator zablokowane przez Cond_MinThreatPoints). Skutek:
@@ -330,11 +359,17 @@ class Program
         var snapD40 = new WorldSnapshot { DaysPassed=40, ColonistCount=6, ColonyWealth=40000, WealthRelative=1.5f, MountainRoofCellsNearColony=250, HasHostileFaction=true, Season=2, IsNight=true, WildAnimalCount=8, MaddenableAnimalCount=6, ThreatPoints=600f, DaysSinceLastEvent=6f, KidnappedColonistCount=2, HasPoweredCommsConsole=true };
 
         Func<WorldSnapshot, List<string>> incydenty = sn => Kombinacje(composer, sn, 1200)
-            .Select(x => blocks.First(b => b.Type == BlockType.Action && x.Contains(b.Id)).Payload)
+            .Select(x => blocks.First(b => b.Type == BlockType.Action && x.Split(new[] { " + " }, StringSplitOptions.None).Contains(b.Id)).Payload)
             .Distinct().OrderBy(x => x).ToList();
 
         var incD10 = incydenty(snapD10);
-        var incD40 = incydenty(snapD40);
+        // Krok 9, K1: pola rejestru ustawione na "dostepne"; fala mrozu i fala upalu wymagaja roznych temperatur
+        // sezonowych, wiec dzien 40 to SUMA dwoch por roku (10 C i 25 C) - zadna akcja nie moze wypasc po cichu.
+        TestsCoreContent.ZTrescia(snapD10);
+        TestsCoreContent.ZTrescia(snapD40);
+        incD10 = incydenty(snapD10);
+        var incD40 = incydenty(snapD40).Union(incydenty(TestsCoreContent.ZTrescia(Kopia(snapD40), 25f)))
+                                        .Distinct().OrderBy(x => x).ToList();
         int wszystkichPayloadow = blocks.Count(b => b.Type == BlockType.Action);
         // Mianownik JAWNIE w wydruku - bez niego lista dnia 40 czyta sie jak komplet katalogu,
         // a nie jak podzbior. Wczesniej brzmiala "wszystkie 12" przy dziesieciu z trzynastu.
@@ -354,9 +389,11 @@ class Program
         // nie mial zadnej asercji - zmiana <min>11</min> na <min>2</min> nie gasila niczego.
         // Sprawdzamy go tym samym behawioralnym sposobem co ThreatBig, w obie strony.
         T.Ok("[5c] w dniu 10 NIE powstaje ThreatSmall (prog 11 jak u Cassandry)",
-             !incD10.Contains("AnimalInsanitySingle"), "dzien 10: " + string.Join(", ", incD10));
-        T.Ok("[5c] w dniu 40 ThreatSmall JEST osiagalny",
-             incD40.Contains("AnimalInsanitySingle"), "dzien 40: " + string.Join(", ", incD40));
+             !threatSmall.Any(incD10.Contains), "dzien 10: " + string.Join(", ", incD10));
+        T.Ok("[5c] w dniu 40 KAZDY ThreatSmall JEST osiagalny",
+             threatSmall.All(incD40.Contains), "dzien 40: " + string.Join(", ", incD40));
+        T.Ok("[5c] w dniu 40 KAZDY ThreatBig JEST osiagalny", threatBig.All(incD40.Contains),
+             "brak: " + string.Join(", ", threatBig.Where(x => !incD40.Contains(x))));
 
         // STRAZNIK MIANOWNIKA: oba snapshoty maja dawac PELNY katalog w dniu 40. Gdyby ktore-
         // kolwiek nowe pole snapshotu znowu zostalo pominiete, akcja wypadnie z listy po cichu -
@@ -387,15 +424,19 @@ class Program
 
         float progMax = zProgiem.SelectMany(b => b.Conditions.OfType<Cond_MinThreatPoints>())
                                 .Select(c => c.min).DefaultIfEmpty(0f).Max();
+        // Krok 9, K2: progow jest kilka (148-370), wiec ubogi swiat lezy ponizej NAJNIZSZEGO, a bogaty powyzej
+        // NAJWYZSZEGO - dawniej jeden prog (296) sluzyl za oba.
+        float progMin = zProgiem.SelectMany(b => b.Conditions.OfType<Cond_MinThreatPoints>())
+                                .Select(c => c.min).DefaultIfEmpty(0f).Min();
 
         var snapUbogi = Kopia(snapD40);
-        snapUbogi.ThreatPoints = progMax - 1f;
+        snapUbogi.ThreatPoints = progMin - 1f;
         var snapBogaty = Kopia(snapD40);
         snapBogaty.ThreatPoints = progMax + 1f;
 
         var incUbogi = incydenty(snapUbogi);
         var incBogaty = incydenty(snapBogaty);
-        Console.WriteLine($"    punkty {progMax - 1f:0}: {incUbogi.Count} incydentow");
+        Console.WriteLine($"    punkty {progMin - 1f:0}: {incUbogi.Count} incydentow");
         Console.WriteLine($"    punkty {progMax + 1f:0}: {incBogaty.Count} incydentow");
 
         var chronione = zProgiem.Select(b => b.Payload).OrderBy(x => x).ToList();
@@ -459,6 +500,12 @@ class Program
         //  KROK 3 - WARSTWA DECYZYJNA. Testy wymagane przez plan (sekcja Weryfikacja).
         // ============================================================================
         var cfg = XmlConfig.Load(@"D:\Games\RimWorld\Mods\ProceduralNarrator\Defs\Storytellers\Storyteller_Generative.xml");
+        // Krok 9, K2: katalog bez Anomaly (decyzja autora K2-e: Hold = sredni ladunek katalogu BEZ Anomaly) i bez DLC
+        // (TEST 25: klocki DLC to te, ktore znikaja bez DLC - niezalezna droga do tabeli tekstow K2).
+        var (klockiBezAnomalii, _, _) = Loader.Load(Loader.Zestaw("ludeon.rimworld.royalty", "ludeon.rimworld.ideology",
+                                                                  "ludeon.rimworld.biotech"), Xml);
+        var (klockiBezDlc, _, _) = Loader.Load(Loader.BezDlc, Xml);
+        TestsAudit2.KatalogBezAnomalii = klockiBezAnomalii;
         TestsComposition.Run(blocks, graph, composer, cfg.candidateBudget);
         TestsDecision.Run(composer, cfg);
         TestsTension.Run(cfg);
@@ -474,6 +521,15 @@ class Program
         TestsFireDetector.Run();
         TestsCacheGuard.Run();
         TestsMinorDebts.Run(composer, cfg);
+        // Krok 9, K0: zestawy DLC i pokrycie toru.
+        TestsDlcCoverage.Run(Xml, cfg);
+        Loader.Load(Xml);
+        TestsOnlyWith.Run(blocks);
+        TestsEngineMirror.Run(composer);
+        TestsAnomalyGate.Run(composer, blocks);
+        TestsCoreContent.Run(composer, blocks, cfg);
+        // Krok 9, K2: tresc Royalty i Anomaly.
+        TestsDlcContent.Run(blocks, klockiBezDlc);
         TestKopiaSnapshotu();
 
         Console.WriteLine();

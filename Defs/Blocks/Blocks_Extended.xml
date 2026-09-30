@@ -108,12 +108,12 @@
         <to>4.0</to>
       </li>
     </preferences>
-    <incompatibleWith>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Obcy</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
-    </incompatibleWith>
+    <!-- Okup: bez konsekwencji (zadna z szesciu nie jest prawdziwa dla samego zadania okupu). -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Piraci</li>
+    </onlyWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -143,12 +143,15 @@
         <to>3</to>
       </li>
     </preferences>
-    <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
-    </incompatibleWith>
+    <!-- Bez PN_Kons_Wrak (S6, wrak-uchodzcy): w 1.5 RefugeePodCrash to zadanie (QuestPart_DropPods,
+         leaveSlag=false) - kapsula znika bez wraku, wiec "zostaje to, co spadlo" i fakt wrak.lezy bylyby falszem. -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_NowyCzlowiek</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -180,11 +183,14 @@
       <!-- Przeglad S10 (dlug 6): gra odmawia takze przy opadzie toksycznym i toksycznej mgle. -->
       <li Class="ProceduralNarrator.Core.Conditions.Cond_ToxicAir" />
     </conditions>
+    <!-- Bez PN_Kons_Plotki (przeglad S10, decyzja autora 2026-09-25): zdziczaly czlowiek nie przynosi wiesci. -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_NowyCzlowiek</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
       <li>PN_Trig_Bogactwo</li>
     </incompatibleWith>
     <!-- Jak przy wedrowcu: mala kolonia bardziej potrzebuje rak do pracy. -->
@@ -207,11 +213,19 @@
     <payload>AmbrosiaSprout</payload>
     <styleWeights><gospodarka>1</gospodarka></styleWeights>
     <textFragment>sprawia, ze w okolicy wysypuje sie ambrozja.</textFragment>
+    <!-- Krok 9 (decyzja autora K1-a, 2026-09-26): gra wysiewa ambrozje tylko w porze wegetacji
+         (IncidentWorker_AmbrosiaSprout.CanFireNowSub). W tescie dymnym K0 wszystkie odmowy gry (13) byly odmowami
+         ambrozji. Komorka na rosline zostaje akceptorowi - zalezy od mapy. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GrowthSeason" />
+    </conditions>
+    <!-- Ambrozja: bez konsekwencji. -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Obcy</li>
-      <li>PN_Aktor_Nieznane</li>
       <li>PN_Trig_Bogactwo</li>
     </incompatibleWith>
     <!-- Ambrozja to roslina - wysypuje sie w cieplej porze roku. -->
@@ -242,10 +256,14 @@
         <to>0.4</to>
       </li>
     </preferences>
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Wrak</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Obcy</li>
       <li>PN_Trig_Bogactwo</li>
     </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -258,7 +276,8 @@
     <scale>Moderate</scale>
     <intensity>Normal</intensity>
     <!-- "niebo": wspolny tag lukow PN_Luk_ZnakiZNieba (krok 5). Tag nie wplywa na scoring ani tekst. -->
-    <tags><li>pogoda</li><li>ogien</li><li>niebo</li></tags>
+    <!-- "nagle" (krok 9, K1-e): nagle zagrozenie - czytaja go fazy luku Niespokojne noce. -->
+    <tags><li>pogoda</li><li>ogien</li><li>niebo</li><li>nagle</li></tags>
     <payload>Flashstorm</payload>
     <styleWeights><gospodarka>1</gospodarka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <!-- Przeglad S10 kroku 8 (decyzja autora 2026-09-25): tekst przepisany - poprzedni stwierdzal cos, czego
@@ -285,11 +304,13 @@
         <season>1</season>
       </li>
     </preferences>
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Obcy</li>
-      <li>PN_Aktor_Nieznane</li>
       <li>PN_Trig_Bogactwo</li>
     </incompatibleWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -301,8 +322,11 @@
     <valence>Negative</valence>
     <scale>Major</scale>
     <intensity>High</intensity>
-    <tags><li>psychika</li><li>wrak</li><li>niebo</li></tags>
+    <!-- "nagle" (krok 9, K1-e): nagle zagrozenie - czytaja go fazy luku Niespokojne noce. -->
+    <tags><li>psychika</li><li>wrak</li><li>niebo</li><li>nagle</li></tags>
     <payload>PsychicEmanatorShipPartCrash</payload>
+    <!-- Brama Anomaly (krok 9, K0): zwykle zagrozenie - odpada w turach, w ktorych gra bierze pule Anomaly. -->
+    <anomalyGate>Regular</anomalyGate>
     <scalesWithPoints>true</scalesWithPoints>
     <styleWeights><walka>1</walka></styleWeights>
     <textFragment>roztrzaskuje sie o grunt, a z wraku zaczyna saczyc sie psychiczny szum.</textFragment>
@@ -333,11 +357,13 @@
         <min>296</min>
       </li>
     </conditions>
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Obcy</li>
-      <li>PN_Aktor_Natura</li>
       <li>PN_Trig_Bogactwo</li>
     </incompatibleWith>
     <!-- Warunek twardy wpuszcza wrak od 20 dnia; preferencja sprawia, ze narasta dalej,
@@ -391,6 +417,8 @@
     <intensity>Low</intensity>
     <tags><li>zwierzeta</li></tags>
     <payload>AnimalInsanitySingle</payload>
+    <!-- Brama Anomaly (krok 9, K0): zwykle zagrozenie - odpada w turach, w ktorych gra bierze pule Anomaly. -->
+    <anomalyGate>Regular</anomalyGate>
     <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <!-- Tekst nie mowi ILU zwierzat dotyczy ani GDZIE sie to dzieje. Oba przemilczenia sa
          celowe. Liczba: waniliowy worker wybiera DOKLADNIE JEDNO zwierze, wiec liczba mnoga
@@ -430,11 +458,14 @@
     </conditions>
     <!-- Oszalec moze tylko zwierze, wiec aktor jest przesadzony. Bogactwo kolonii nie ma
          z tym nic wspolnego - ta sama logika co przy PN_Akcja_Szal. -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Trofea</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Obcy</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
       <li>PN_Trig_Bogactwo</li>
     </incompatibleWith>
     <!-- DWIE preferencje, dobrane tak, zeby klocek nie byl wolny od kary - regula z etapu 3

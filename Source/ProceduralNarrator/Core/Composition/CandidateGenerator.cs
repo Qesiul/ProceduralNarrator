@@ -34,12 +34,11 @@ namespace ProceduralNarrator.Core.Composition
         /// w calosci z duzym zapasem, a jednoczesnie zeby przy katalogu rzedu 50 akcji limit na
         /// akcje nie spadl ponizej kilku wariantow.
         ///
-        /// Sugestia poza zakresem kroku 3, zapisana zeby nie zaginela: gdy m przekroczy okolo 40,
-        /// warto przejsc na B = max(400, 8*m), zeby K nie spadlo ponizej 8. Stala 400 przy
-        /// 100 akcjach daje K = 4, co jeszcze dziala (kazda akcja ma reprezentanta), ale
-        /// eksploracja wariantow robi sie plytka.
+        /// Krok 9 (K0): 400 -> 1600, razem z blokiem XML - pelne pokrycie toru daje 62 akcje, a przy 400
+        /// K spadloby do 6, ponizej maksimum wariantow na akcje. Stala to wartosc AWARYJNA (budzet z XML
+        /// niepoprawny albo nieustawiony), wiec ma byc ta sama co w XML.
         /// </summary>
-        public const int DefaultBudget = 400;
+        public const int DefaultBudget = 1600;
 
         private readonly EventComposer composer;
 
@@ -71,8 +70,11 @@ namespace ProceduralNarrator.Core.Composition
             }
 
             // B1. Akcje dostepne w tym kontekscie, w kolejnosci kanonicznej.
-            List<Block> actions = composer.AvailableActions(snapshot, recipe);
+            int zablokowanych;
+            List<Block> actions = composer.AvailableActions(snapshot, recipe, out zablokowanych);
             int m = actions.Count;
+            set.EngineBlocked = zablokowanych;
+            set.AnomalySide = recipe == null ? AnomalyGateKind.None : recipe.AnomalySide;
 
             int B = budget > 0 ? budget : DefaultBudget;
             set.Budget = B;

@@ -94,7 +94,7 @@
 
              Wartosc jest opisowa i ma sie zmieniac razem z kalibracja - dzieki temu w serii
              ewaluacyjnej widac w logu, na ktorej wersji konfiguracji powstal dany wiersz. -->
-        <configStamp>krok8-mod</configStamp>
+        <configStamp>krok9-k2</configStamp>
         <allowedTargetTags>
           <li>Map_PlayerHome</li>
         </allowedTargetTags>
@@ -117,9 +117,10 @@
              tego asercja walidatora "budzet z XML" i ostrzezenie audytu startowego),
              wiec decyzja jest w 100% enumeracyjna i nie zuzywa ANI JEDNEGO losowania
              przy generowaniu kandydatow - to najlepszy mozliwy punkt wyjscia do ewaluacji.
-             Przy okolo 40 akcjach warto przejsc na B = max(400, 8 * akcji),
-             zeby limit na akcje nie spadl ponizej 8 wariantow. -->
-        <candidateBudget>400</candidateBudget>
+             KROK 9 (K0, plan ewaluacji): 400 -> 1600. Pelne pokrycie toru (E-8) daje 62 akcje przy wszystkich
+             DLC; K = 1600 / 62 = 25 >= maksimum wariantow na akcje, a przy 400 byloby K = 6 < 16 (losowanie
+             zamiast pelnej enumeracji). Koszt liczy sie od WYGENEROWANYCH kandydatow, nie od B. -->
+        <candidateBudget>1600</candidateBudget>
 
         <!-- Prog BEZWZGLEDNY jakosci. Kandydat slabszy niz to nie wchodzi do
              losowania NIGDY, niezaleznie od tego, jak slaba jest reszta stawki.

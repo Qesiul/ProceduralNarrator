@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Blackboard;
+using ProceduralNarrator.Core.Conditions;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.Tension;
 using RimWorld;
@@ -92,6 +93,9 @@ namespace ProceduralNarrator.Integration
                 SeasonAcceptableForHumans = map.mapTemperature == null || map.mapTemperature.SeasonAcceptableFor(ThingDefOf.Human),
                 // Przeglad S10 (dlug 6): skazone powietrze - dwa kolejne warunki tego samego CanFireNowSub.
                 ToxicAirActive = SkazonePowietrze(map),
+                // Krok 9, K1-a: ten sam odczyt co CanFireNowSub gry (czysty odczyt ticku, bez RNG).
+                GrowthSeasonOutdoors = map.weatherManager == null || map.weatherManager.growthSeasonMemory == null
+                                       || map.weatherManager.growthSeasonMemory.GrowthSeasonOutdoorsNow,
                 WildAnimalCount = CountWildAnimals(map),
                 MaddenableAnimalCount = CountMaddenableAnimals(map),
                 AcuteDownedCount = CountAcutelyDownedColonists(map),
@@ -103,8 +107,325 @@ namespace ProceduralNarrator.Integration
                 // gracza, wiec 84 wywolania na ture bylyby marnotrawstwem.
                 ThreatPoints = StorytellerUtility.DefaultThreatPointsNow(map),
                 KidnappedColonistCount = CountKidnappedColonists(),
-                HasPoweredCommsConsole = CommsConsoleUtility.PlayerHasPoweredCommsConsole(map)
+                HasPoweredCommsConsole = CommsConsoleUtility.PlayerHasPoweredCommsConsole(map),
+                // Brama Anomaly (krok 9, K0): szansa jak w StorytellerComp.UsableIncidentsInCategory (bez RNG).
+                AnomalyActive = ModsConfig.AnomalyActive,
+                AnomalyIncidentChance = ModsConfig.AnomalyActive && Find.Storyteller != null
+                    ? Find.Storyteller.AnomalyIncidentChanceNow : 0f,
+                // Rejestr wymagan snapshotu (krok 9, K1): czyste odczyty gry, bez RNG. Rasy i rzeczy tylko z rejestru.
+                SeasonalTemp = map.mapTemperature == null ? 10f : map.mapTemperature.SeasonalTemp,
+                GameConditionsMap = WarunkiGry(map, false),
+                GameConditionsAll = WarunkiGry(map, true),
+                WeatherOkRaces = RasyZnoszacePogode(map),
+                ThingCounts = LiczbyRzeczy(map),
+                MechanoidFactionExists = Faction.OfMechanoids != null,
+                WildHerdMinCombatPower = NajslabszeStado(map),
+                FarmAnimalKindAvailable = JestGatunekHodowlany(map),
+                SelfTameCandidates = KandydaciDoOswojenia(map),
+                BlightablePlants = UprawyPodatneNaZaraze(map),
+                ShortCircuitPossible = ShortCircuitUtility.GetShortCircuitablePowerConduits(map).Any(),
+                // Rejestr, czesc K2 (Royalty i Anomaly): te same zasady - czyste odczyty gry, bez RNG, bez zmiany stanu.
+                // Odczyty Anomaly tylko z aktywnym DLC (bez niego klocki Anomaly nie sa zaladowane).
+                FactionDefsPresent = FrakcjeZRejestru(),
+                OngoingQuestScripts = TrwajaceZadania(),
+                PawnKindCounts = LiczbyRodzajow(map),
+                WalkableWater = ModsConfig.AnomalyActive && ChodliwaWoda(map),
+                IdleRevenantSpines = ModsConfig.AnomalyActive ? CicheKregoslupy(map) : 0,
+                CubeCandidates = ModsConfig.AnomalyActive ? KandydaciLadunku(false) : 0,
+                UnnaturalCorpseCandidates = ModsConfig.AnomalyActive ? KandydaciLadunku(true) : 0,
+                MetalhorrorGateOpen = ModsConfig.AnomalyActive && Find.Anomaly != null
+                                      && Find.Anomaly.CanNewMetalhorrorBiosignatureImplantOccur,
+                InfectablePawns = ModsConfig.AnomalyActive ? ZdolniDoZakazenia(map) : 0
             };
+        }
+
+        /// <summary>Frakcje z rejestru, ktore istnieja (FactionManager.FirstFactionOfDef - tak gra bierze np. OfHoraxCult).</summary>
+        private static string FrakcjeZRejestru()
+        {
+            var sa = new List<string>();
+            if (Find.FactionManager == null)
+            {
+                return string.Empty;
+            }
+            foreach (string f in Requirements.Factions)
+            {
+                FactionDef d = DefDatabase<FactionDef>.GetNamedSilentFail(f);
+                if (d != null && Find.FactionManager.FirstFactionOfDef(d) != null)
+                {
+                    sa.Add(f);
+                }
+            }
+            return CanonicalSet.Of(sa);
+        }
+
+        /// <summary>Skrypty zadan z rejestru, ktorych zadanie trwa (QuestState.Ongoing - jak QuestNode_QuestUnique).</summary>
+        private static string TrwajaceZadania()
+        {
+            var trwa = new List<string>();
+            if (Requirements.QuestScripts.Count == 0 || Find.QuestManager == null)
+            {
+                return string.Empty;
+            }
+            foreach (Quest q in Find.QuestManager.QuestsListForReading)
+            {
+                if (q != null && q.State == QuestState.Ongoing && q.root != null && Requirements.QuestScripts.Contains(q.root.defName))
+                {
+                    trwa.Add(q.root.defName);
+                }
+            }
+            return CanonicalSet.Of(trwa);
+        }
+
+        /// <summary>Liczby pionkow rodzajow z rejestru na mapie (MapPawns.AllPawns - jak IncidentWorker_Nociosphere).</summary>
+        private static string LiczbyRodzajow(Map map)
+        {
+            var liczby = new Dictionary<string, int>();
+            foreach (string k in Requirements.PawnKinds)
+            {
+                PawnKindDef d = DefDatabase<PawnKindDef>.GetNamedSilentFail(k);
+                int n = 0;
+                if (d != null)
+                {
+                    List<Pawn> pionki = map.mapPawns.AllPawns;
+                    for (int i = 0; i < pionki.Count; i++)
+                    {
+                        if (pionki[i] != null && pionki[i].kindDef == d)
+                        {
+                            n++;
+                        }
+                    }
+                }
+                liczby[k] = n;
+            }
+            return CanonicalSet.OfCounts(liczby);
+        }
+
+        /// <summary>
+        /// Chodliwe pole rzeki albo morza (TerrainDef.IsRiver/IsOcean i Walkable - pierwsze dwa czlony predykatu
+        /// PawnsArrivalModeWorker_EmergeFromWater; zasieg do kolonii i wielkosc zbiornika zostaja przy grze).
+        /// </summary>
+        private static bool ChodliwaWoda(Map map)
+        {
+            if (map.terrainGrid == null)
+            {
+                return false;
+            }
+            foreach (IntVec3 c in map.AllCells)
+            {
+                TerrainDef t = map.terrainGrid.TerrainAt(c);
+                if (t != null && (t.IsRiver || t.IsOcean) && c.Walkable(map))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Kregoslupy zjawy, ktore jeszcze nie buczy (IncidentWorker_RevenantEmergence: spawnTick &lt; 0).</summary>
+        private static int CicheKregoslupy(Map map)
+        {
+            ThingDef d = ThingDefOf.RevenantSpine;
+            if (d == null)
+            {
+                return 0;
+            }
+            int n = 0;
+            List<Thing> rzeczy = map.listerThings.ThingsOfDef(d);
+            for (int i = 0; i < rzeczy.Count; i++)
+            {
+                CompSpawnsRevenant comp = rzeczy[i] == null ? null : rzeczy[i].TryGetComp<CompSpawnsRevenant>();
+                if (comp != null && comp.spawnTick < 0)
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Kandydaci tajemniczego ladunku (QuestUtility.TryGetIdealColonist na poziomie najluzniejszym, bez losowania
+        /// wyboru): pionki ludzkie na mapach, nie niemowleta, grywalni kolonisci albo niewolnicy kolonii, i walidator
+        /// ladunku - szescian: bez zainteresowania i spiaczki szescianu; zwloki: rasa z nienaturalnymi zwlokami i bez nich.
+        /// Pionki swiata nigdy nie przechodza (IsColonistPlayerControlled wymaga pionka na mapie).
+        /// </summary>
+        private static int KandydaciLadunku(bool zwloki)
+        {
+            int n = 0;
+            if (Find.Maps == null || Find.Anomaly == null)
+            {
+                return 0;
+            }
+            foreach (Map m in Find.Maps)
+            {
+                List<Pawn> pionki = m.mapPawns.AllHumanlikeSpawned;
+                for (int i = 0; i < pionki.Count; i++)
+                {
+                    Pawn p = pionki[i];
+                    if (p == null || p.DevelopmentalStage.Baby() || !(p.IsColonist || p.IsSlaveOfColony) || !p.IsColonistPlayerControlled)
+                    {
+                        continue;
+                    }
+                    bool ok = zwloki
+                        ? p.RaceProps.unnaturalCorpseDef != null && !Find.Anomaly.PawnHasUnnaturalCorpse(p)
+                        : !p.health.hediffSet.HasHediff(HediffDefOf.CubeInterest) && !p.health.hediffSet.HasHediff(HediffDefOf.CubeComa);
+                    if (ok)
+                    {
+                        n++;
+                    }
+                }
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Pionki zdolne przyjac implant metalhorroru (IncidentWorker_MetalhorrorImplantation.GetPossiblePawns - ten sam
+        /// predykat, ale BEZ usuwania z listy gry: worker gry modyfikuje wspoldzielona liste, my tylko liczymy).
+        /// </summary>
+        private static int ZdolniDoZakazenia(Map map)
+        {
+            int n = 0;
+            List<Pawn> pionki = map.mapPawns.FreeColonistsAndPrisoners;
+            for (int i = 0; i < pionki.Count; i++)
+            {
+                Pawn p = pionki[i];
+                if (p != null && MetalhorrorUtility.CanBeInfected(p) && p.infectionVectors != null
+                    && p.infectionVectors.AnyPathwayForHediff(HediffDefOf.MetalhorrorImplant))
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Rejestr wymagan snapshotu (krok 9, K1): rasy i rzeczy, o ktore pytaja warunki katalogu. Ustawia go comp po
+        /// zaladowaniu katalogu (EnsureRuntime); bez niego pola z kluczami zostaja puste (warunki niespelnione).
+        /// </summary>
+        public static SnapshotRequirements Requirements = new SnapshotRequirements();
+
+        /// <summary>Nazwy aktywnych warunkow gry: sama mapa albo mapa z rodzicem (swiatem) - jak GetActiveCondition.</summary>
+        private static string WarunkiGry(Map map, bool zRodzicem)
+        {
+            var nazwy = new List<string>();
+            GameConditionManager m = map.gameConditionManager;
+            while (m != null)
+            {
+                foreach (GameCondition c in m.ActiveConditions)
+                {
+                    if (c != null && c.def != null)
+                    {
+                        nazwy.Add(c.def.defName);
+                    }
+                }
+                m = zRodzicem ? m.Parent : null;
+            }
+            return CanonicalSet.Of(nazwy);
+        }
+
+        private static string RasyZnoszacePogode(Map map)
+        {
+            var rasy = new List<string>();
+            if (map.mapTemperature == null)
+            {
+                return string.Empty;
+            }
+            foreach (string r in Requirements.Races)
+            {
+                ThingDef d = DefDatabase<ThingDef>.GetNamedSilentFail(r);
+                if (d != null && d.race != null && map.mapTemperature.SeasonAndOutdoorTemperatureAcceptableFor(d))
+                {
+                    rasy.Add(r);
+                }
+            }
+            return CanonicalSet.Of(rasy);
+        }
+
+        private static string LiczbyRzeczy(Map map)
+        {
+            var liczby = new Dictionary<string, int>();
+            foreach (string r in Requirements.Things)
+            {
+                ThingDef d = DefDatabase<ThingDef>.GetNamedSilentFail(r);
+                liczby[r] = d == null ? 0 : map.listerThings.ThingsOfDef(d).Count;
+            }
+            return CanonicalSet.OfCounts(liczby);
+        }
+
+        /// <summary>
+        /// Najmniejsze combatPower gatunku zwierzat, ktorego co najmniej 3 osobniki spelniaja AnimalUsable gry
+        /// (IncidentWorker_AnimalInsanityMass.TryExecuteWorker, 1.5.4063); brak = +nieskonczonosc.
+        /// </summary>
+        private static float NajslabszeStado(Map map)
+        {
+            var liczby = new Dictionary<PawnKindDef, int>();
+            foreach (Pawn p in map.mapPawns.AllPawnsSpawned)
+            {
+                if (p.kindDef != null && p.kindDef.RaceProps != null && p.kindDef.RaceProps.Animal
+                    && IncidentWorker_AnimalInsanityMass.AnimalUsable(p))
+                {
+                    int n;
+                    liczby.TryGetValue(p.kindDef, out n);
+                    liczby[p.kindDef] = n + 1;
+                }
+            }
+            float min = float.PositiveInfinity;
+            foreach (var kv in liczby)
+            {
+                if (kv.Value >= 3 && kv.Key.combatPower < min)
+                {
+                    min = kv.Key.combatPower;
+                }
+            }
+            return min;
+        }
+
+        /// <summary>IncidentWorker_FarmAnimalsWanderIn.TryFindRandomPawnKind (wagi wyboru zawsze dodatnie, wiec "istnieje").</summary>
+        private static bool JestGatunekHodowlany(Map map)
+        {
+            if (map.mapTemperature == null)
+            {
+                return false;
+            }
+            foreach (PawnKindDef x in DefDatabase<PawnKindDef>.AllDefsListForReading)
+            {
+                if (x.RaceProps != null && x.RaceProps.Animal && x.RaceProps.wildness < 0.35f
+                    && map.mapTemperature.SeasonAndOutdoorTemperatureAcceptableFor(x.race)
+                    && !x.race.tradeTags.NullOrEmpty() && x.race.tradeTags.Contains("AnimalFarm") && !x.RaceProps.Dryad)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>IncidentWorker_SelfTame.Candidates (prywatna w grze - ten sam predykat).</summary>
+        private static int KandydaciDoOswojenia(Map map)
+        {
+            int n = 0;
+            foreach (Pawn x in map.mapPawns.AllPawnsSpawned)
+            {
+                if (x.IsNonMutantAnimal && x.Faction == null && !x.Position.Fogged(x.Map) && !x.InMentalState && !x.Downed
+                    && x.RaceProps.wildness > 0f)
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>IncidentWorker_CropBlight.TryFindRandomBlightablePlant - liczba zamiast losowania.</summary>
+        private static int UprawyPodatneNaZaraze(Map map)
+        {
+            int n = 0;
+            foreach (Thing t in map.listerThings.ThingsInGroup(ThingRequestGroup.Plant))
+            {
+                var p = t as Plant;
+                if (p != null && p.BlightableNow)
+                {
+                    n++;
+                }
+            }
+            return n;
         }
 
         /// <summary>Promien wokol srodka kolonii, w ktorym szukamy gorskiego stropu.</summary>

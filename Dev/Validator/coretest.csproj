@@ -12,6 +12,7 @@
     <Compile Include="Loader.cs" />
     <Compile Include="Harness.cs" />
     <Compile Include="TestsComposition.cs" />
+    <Compile Include="TestsDlcContent.cs" />
     <Compile Include="TestsDecision.cs" />
     <Compile Include="TestsTension.cs" />
     <Compile Include="TestsAudit2.cs" />
@@ -26,6 +27,11 @@
     <Compile Include="TestsFireDetector.cs" />
     <Compile Include="TestsCacheGuard.cs" />
     <Compile Include="TestsMinorDebts.cs" />
+    <Compile Include="TestsDlcCoverage.cs" />
+    <Compile Include="TestsOnlyWith.cs" />
+    <Compile Include="TestsEngineMirror.cs" />
+    <Compile Include="TestsAnomalyGate.cs" />
+    <Compile Include="TestsCoreContent.cs" />
 
   </ItemGroup>
 </Project>

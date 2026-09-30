@@ -1,22 +1,24 @@
 # -*- coding: utf-8 -*-
-# Uprzaz regresji analizatora (krok 7, S7; krok 8, S9): kazda mutacja regul 32-41 w analysis_v7.py musi wywrocic
-# test_analysis_v9.py, a regul 42-45 - test_analysis_k8.py (czwarty element pozycji). Oryginal przywracany w finally.
+# Uprzaz regresji analizatora (krok 7, S7; krok 8, S9; krok 9, K0): kazda mutacja regul 32-41 w analysis_v7.py musi
+# wywrocic test_analysis_v9.py, regul 42-45 - test_analysis_k8.py, a reguly 46 i bramek v10 - test_analysis_v10.py
+# (czwarty element pozycji). Oryginal przywracany w finally.
 # Uzycie: python Dev/Tools/analysis_harness.py
 import io, subprocess, sys
 
 A = 'D:/Games/RimWorld/Mods/ProceduralNarrator/Dev/Tools/analysis_v7.py'
 T = 'D:/Games/RimWorld/Mods/ProceduralNarrator/Dev/Tools/test_analysis_v9.py'
 T8 = 'D:/Games/RimWorld/Mods/ProceduralNarrator/Dev/Tools/test_analysis_k8.py'
+T10 = 'D:/Games/RimWorld/Mods/ProceduralNarrator/Dev/Tools/test_analysis_v10.py'
 
 MUT = [
-    ('bramka v9 wylaczona', "            if r.get('wersjaLogu') == '9':\n                styl_wiersza(", "            if r.get('wersjaLogu') == 'X':\n                styl_wiersza("),
-    ('stare bramki bez v9', "            if r.get('wersjaLogu') in ('7', '8', '9'):\n                if not r['_ksztalt_ok']:", "            if r.get('wersjaLogu') in ('7', '8'):\n                if not r['_ksztalt_ok']:"),
+    ('bramka v9 wylaczona', "            if r.get('wersjaLogu') in ('9', '10'):\n                styl_wiersza(", "            if r.get('wersjaLogu') == 'X':\n                styl_wiersza("),
+    ('stare bramki bez v9', "            if r.get('wersjaLogu') in ('7', '8', '9', '10'):\n                if not r['_ksztalt_ok']:", "            if r.get('wersjaLogu') in ('7', '8'):\n                if not r['_ksztalt_ok']:"),
     ('32 bez mnoznika v', "oczek = 0.0 if tlumiona else (f(r, 'best') - f(r, 'pasmo')) * f(r, 'stylWartosc')", "oczek = 0.0 if tlumiona else (f(r, 'best') - f(r, 'pasmo'))"),
     ('36 bez orientacji', "cfg['wO'] * prof.get('o', 0.0) + cfg['wR']", "cfg['wO'] * 0.0 + cfg['wR']"),
     ('37 prog pominiety', "        if c >= prog:\n            mocne.add(CECHY[i])", "        if c > 0:\n            mocne.add(CECHY[i])"),
     ('37 tolerancja szeroka', 'return 0.001 / skala + 1e-4', 'return 0.5'),
     ('38 remis dokladny = niepewny', 'abs(odl[j] - odl[k]) <= TOL_ODL and rozne_na_znanych(j)', 'abs(odl[j] - odl[k]) <= TOL_ODL'),
-    ('39 wiersz nieszukany', "        if r is None or r.get('wersjaLogu') != '9':\n            continue\n        mocne = zbior_mocnych", "        if True:\n            continue\n        mocne = zbior_mocnych"),
+    ('39 wiersz nieszukany', "        if r is None or r.get('wersjaLogu') not in ('9', '10'):\n            continue\n        mocne = zbior_mocnych", "        if True:\n            continue\n        mocne = zbior_mocnych"),
     # ---- przeglad S8: galezie, ktorych pierwsza wersja uprzezy nie pilnowala ----
     ('[PN-GRACZ] bez sprawdzen', "    for g in gracze:\n        styl_gracza(g, g['_styl'], narusz)", "    for g in gracze:\n        pass"),
     ('34 warstwa nieobecna bez sprawdzenia', "    if dni == '':\n        pelne = [k for k in KOLUMNY_STYLU if r.get(k, '') != '']\n        if pelne:",
@@ -63,7 +65,10 @@ MUT = [
      "        if False:", T8),
     # ---- przeglad S10: regresje, ktore przechodzily (recenzent: 15 z 16), i nowe reguly ----
     ('44 niewykonane dowolne', "        else:\n            ok = li == 'niewykonane'", "        else:\n            ok = True", T8),
-    ('44 wykonane dowolne', "            ok = li in ('dopisany', 'odroczony', 'brak', 'wylaczony', 'pustyOpis', 'blad')", "            ok = True", T8),
+    ('44 wykonane dowolne', "            ok = li in ('dopisany', 'odroczony', 'brak', 'wylaczony', 'pustyOpis', 'blad', 'ukryty')", "            ok = True", T8),
+    # Krok 9, K2-b: zdarzenie ukryte z liczonym listem ma byc naruszeniem.
+    ('44 ukryty z listem przepuszczony', "        if li == 'ukryty' and (int(e.get('nowychListow') or 0) != 0 or not e.get('tekstListu')):",
+     "        if False:", T8),
     ('44 dopisany bez listu przepuszczony', "        if li in ('dopisany', 'odroczony') and (int(e.get('nowychListow') or 0) < 1 or not e.get('tekstListu')):",
      "        if False:", T8),
     ('44 format warianty wylaczony', "        if war not in ('-', '') and any(w.count(':') != 1 for w in war.split(',')):", "        if False:", T8),
@@ -92,6 +97,19 @@ MUT = [
      "            profile, stc, luki, styl_cfg = {}, {}, {}, {}", T8),
     ('[PN-FIRED] bez trybu gra', "            d['tryb'] = 'gra'\n            extras['[PN-FIRED]'].append(d)",
      "            extras['[PN-FIRED]'].append(d)", T8),
+    # ---- krok 9, K0: format v10 (test_analysis_v10.py) ----
+    ('46 strona dowolna', "                if tura not in ('Regular', 'Anomaly'):", "                if False:", T10),
+    ('46 bez DLC dowolna strona', "                elif sz == '' and tura != 'Regular':", "                elif False:", T10),
+    ('46 szansa bez zakresu', "                if sz != '' and not (0.0 <= f(r, 'anomaliaSzansa') <= 1.0):", "                if False:", T10),
+    ('46 lustro bez sprawdzenia', "                if zb != '' and not (zb.isdigit()):", "                if False:", T10),
+    ('bramka v10 wylaczona', "            if r.get('wersjaLogu') == '10':\n                tura,", "            if r.get('wersjaLogu') == 'X':\n                tura,", T10),
+    ('luki bez v10', "            if r.get('wersjaLogu') in ('7', '8', '9', '10'):\n                if not r['_ksztalt_ok']:",
+     "            if r.get('wersjaLogu') in ('7', '8', '9'):\n                if not r['_ksztalt_ok']:", T10),
+    ('fakty bez v10', "            if r.get('wersjaLogu') in ('8', '9', '10'):\n                if r.get('faktow', '')",
+     "            if r.get('wersjaLogu') in ('8', '9'):\n                if r.get('faktow', '')", T10),
+    ('styl bez v10', "            if r.get('wersjaLogu') in ('9', '10'):\n                styl_wiersza(", "            if r.get('wersjaLogu') == '9':\n                styl_wiersza(", T10),
+    ('25 bez v10', "        if r.get('wersjaLogu') in ('7', '8', '9', '10') and r['decyzja'] != 'PASS':",
+     "        if r.get('wersjaLogu') in ('7', '8', '9') and r['decyzja'] != 'PASS':", T10),
 ]
 
 oryginal = io.open(A, encoding='utf-8', newline='').read()

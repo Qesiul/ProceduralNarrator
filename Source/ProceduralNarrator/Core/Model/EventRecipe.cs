@@ -19,9 +19,15 @@ namespace ProceduralNarrator.Core.Model
         /// <summary>Wymagany tag klocka akcji (np. "militarny"). null = dowolny.</summary>
         public string RequiredActionTag;
 
+        /// <summary>
+        /// Strona bramy Anomaly wylosowana na ture (krok 9, K0; Decision/AnomalyGate). None = bez filtra.
+        /// To jest ograniczenie kompozycji, a nie waga: gra w tej samej sytuacji nie widzi drugiej puli wcale.
+        /// </summary>
+        public AnomalyGateKind AnomalySide = AnomalyGateKind.None;
+
         public override string ToString()
         {
-            return "Recipe(tag=" + (RequiredActionTag ?? "any") + ")";
+            return "Recipe(tag=" + (RequiredActionTag ?? "any") + ", anomalia=" + AnomalySide + ")";
         }
     }
 }

@@ -12,18 +12,102 @@ using ProceduralNarrator.Core.Model;
 /// <summary>Czyta prawdziwy Blocks_Core.xml tak, jak zrobilby to RimWorld.</summary>
 static class Loader
 {
+    // ------------------------------------------------------------------------------------------------
+    //  ZESTAWY DLC (krok 9, K0). Gra pomija Defy i elementy <li> z niespelnionym MayRequire /
+    //  MayRequireAnyOf (Verse/LoadedModManager.cs:394, Verse/DirectXmlToObject.cs:405). Walidator
+    //  wczytuje katalog dla zadanego zestawu aktywnych modow, zeby sprawdzic go takze BEZ DLC
+    //  (decyzja autora E-8: mod dziala bez DLC, klocki DLC znikaja).
+    // ------------------------------------------------------------------------------------------------
+
+    /// <summary>packageId gry podstawowej (zawsze aktywny).</summary>
+    public const string Core = "ludeon.rimworld";
+
+    /// <summary>packageId czterech DLC (malymi literami, jak porownuje gra).</summary>
+    public static readonly string[] Dlc =
+        { "ludeon.rimworld.royalty", "ludeon.rimworld.ideology", "ludeon.rimworld.biotech", "ludeon.rimworld.anomaly" };
+
+    public static HashSet<string> Zestaw(params string[] dlc)
+    {
+        var s = new HashSet<string>(StringComparer.Ordinal) { Core };
+        foreach (var d in dlc) s.Add(d.ToLowerInvariant());
+        return s;
+    }
+
+    public static readonly HashSet<string> WszystkieDlc = Zestaw(Dlc);
+    public static readonly HashSet<string> BezDlc = Zestaw();
+
+    /// <summary>Wezly usuniete przez MayRequire w ostatnim Load/LoadArcs (najwyzsze w drzewie).</summary>
+    public static int Przycietych;
+
+    /// <summary>
+    /// Usuwa z dokumentu Defy i elementy &lt;li&gt;, ktorych MayRequire (wszystkie wymienione mody aktywne) albo
+    /// MayRequireAnyOf (ktorykolwiek aktywny) nie jest spelnione - ta sama semantyka co ModsConfig.AreAllActive
+    /// i IsAnyActiveOrEmpty. Tryb SCISLY (nasze Defy): atrybut w innym miejscu niz Def albo &lt;li&gt; to wyjatek
+    /// (gra by go po cichu zignorowala), a nieznany packageId to wyjatek (gra loguje "Faulty MayRequire").
+    /// Tryb LAGODNY (dane gry): inne miejsca tez przycinamy, nieznany packageId = nieaktywny.
+    /// Zwraca liczbe usunietych wezlow najwyzszego poziomu.
+    /// </summary>
+    public static int Prune(XDocument doc, ISet<string> aktywne, string zrodlo, bool scisle = true)
+    {
+        var doUsuniecia = new List<XElement>();
+        foreach (var el in doc.Root.Descendants().ToList())
+        {
+            var mr = el.Attribute("MayRequire");
+            var mra = el.Attribute("MayRequireAnyOf");
+            if (mr == null && mra == null) continue;
+            bool naDefie = el.Parent == doc.Root;
+            bool naLi = el.Name.LocalName == "li";
+            if (scisle && !naDefie && !naLi)
+                throw new Exception("MayRequire na wezle <" + el.Name.LocalName + "> (" + zrodlo
+                                    + "): gra honoruje go tylko na Defie i na <li>, tu zignorowalaby go po cichu");
+            bool ok = true;
+            if (mr != null && !string.IsNullOrWhiteSpace(mr.Value)) ok &= Identyfikatory(mr.Value, zrodlo, scisle).All(aktywne.Contains);
+            if (mra != null && !string.IsNullOrWhiteSpace(mra.Value)) ok &= Identyfikatory(mra.Value, zrodlo, scisle).Any(aktywne.Contains);
+            if (!ok) doUsuniecia.Add(el);
+        }
+        var zbior = new HashSet<XElement>(doUsuniecia);
+        int najwyzszych = doUsuniecia.Count(e => !e.Ancestors().Any(zbior.Contains));
+        foreach (var el in doUsuniecia) el.Remove();
+        return najwyzszych;
+    }
+
+    static List<string> Identyfikatory(string wartosc, string zrodlo, bool scisle)
+    {
+        var ids = wartosc.Split(',').Select(x => x.Trim().ToLowerInvariant()).Where(x => x.Length > 0).ToList();
+        foreach (var id in ids)
+        {
+            if (scisle && id != Core && Array.IndexOf(Dlc, id) < 0)
+                throw new Exception("Nieznany packageId w MayRequire: '" + id + "' (" + zrodlo + ") - gra: Faulty MayRequire");
+        }
+        return ids;
+    }
+
     public static (List<Block>, CompatibilityGraph, List<(string,string)>) Load(params string[] paths)
     {
+        return Load(WszystkieDlc, paths);
+    }
+
+    /// <summary>Problemy list onlyWith z ostatniego Load (CatalogGraphBuilder) - walidator wymaga zera.</summary>
+    public static List<string> ProblemyOnlyWith = new List<string>();
+
+    public static (List<Block>, CompatibilityGraph, List<(string,string)>) Load(ISet<string> aktywne, params string[] paths)
+    {
+        Przycietych = 0;
         var blocks0 = new List<Block>();
         var graph0 = new CompatibilityGraph();
         var inc0 = new List<(string, string)>();
-        foreach (var path in paths) { var (b, g, i) = LoadOne(path, graph0); blocks0.AddRange(b); inc0.AddRange(i); }
+        foreach (var path in paths) { var (b, g, i) = LoadOne(path, graph0, aktywne); blocks0.AddRange(b); inc0.AddRange(i); }
+        // Listy dozwolonych (krok 9, K0) - ta sama funkcja co w grze, po wszystkich plikach (odwolania miedzy plikami).
+        List<string> problemy;
+        foreach (var para in CatalogGraphBuilder.ExpandOnlyWith(blocks0, graph0, out problemy)) inc0.Add((para.Key, para.Value));
+        ProblemyOnlyWith = problemy;
         return (blocks0, graph0, inc0);
     }
 
-    static (List<Block>, CompatibilityGraph, List<(string,string)>) LoadOne(string path, CompatibilityGraph graph)
+    static (List<Block>, CompatibilityGraph, List<(string,string)>) LoadOne(string path, CompatibilityGraph graph, ISet<string> aktywne)
     {
         var doc = XDocument.Load(path);
+        Przycietych += Prune(doc, aktywne, path);
         var blocks = new List<Block>();
         var incompat = new List<(string, string)>();
 
@@ -55,6 +139,10 @@ static class Loader
                 TextFragment = (string)n.Element("textFragment"),
                 CarriesFaction = n.Element("carriesFaction") != null && bool.Parse(n.Element("carriesFaction").Value.Trim()),
                 ScalesWithPoints = n.Element("scalesWithPoints") != null && bool.Parse(n.Element("scalesWithPoints").Value.Trim()),
+                StyleNeutral = n.Element("styleNeutral") != null && bool.Parse(n.Element("styleNeutral").Value.Trim()),
+                WorkerMinPoints = n.Element("workerMinPoints") == null ? 0f
+                    : float.Parse(n.Element("workerMinPoints").Value.Trim(), System.Globalization.CultureInfo.InvariantCulture),
+                AnomalyGate = Enum2<AnomalyGateKind>(n, "anomalyGate", AnomalyGateKind.None),
             };
             // Warianty tekstu (krok 8) - czytane SCISLE przez XmlObj (nieznane pole = wyjatek), potem ta sama
             // walidacja co w grze (BlockCatalogLoader -> TextComposer.Validate). Problemy zbiera TEST 16.
@@ -65,6 +153,12 @@ static class Loader
             }
             var tags = n.Element("tags");
             if (tags != null) foreach (var li in tags.Elements("li")) b.Tags.Add(li.Value);
+            var onlyWith = n.Element("onlyWith");
+            if (onlyWith != null) foreach (var li in onlyWith.Elements())
+            {
+                if (li.Name.LocalName != "li") throw new Exception("Klocek " + id + ": onlyWith zawiera <" + li.Name.LocalName + "> zamiast <li>");
+                b.OnlyWith.Add(li.Value.Trim());
+            }
 
             b.Conditions.AddRange(Conds(n.Element("conditions")));
             b.Preferences.AddRange(Conds(n.Element("preferences")));
@@ -137,10 +231,12 @@ static class Loader
                 if (fi == null) throw new Exception($"{cls} nie ma pola {f.Name.LocalName}");
                 // Enum obsluzony jawnie: gra parsuje go sama, ale ten mini-parser podstawilby surowy
                 // string i wywrocil sie dopiero na SetValue, z komunikatem nie wskazujacym przyczyny.
+                // Lista tekstow (krok 9, K1: Cond_GameConditionAbsent.defs) - elementy <li>, jak w DirectXmlToObject.
                 object val = fi.FieldType == typeof(bool)  ? bool.Parse(f.Value)
                            : fi.FieldType == typeof(int)   ? int.Parse(f.Value)
                            : fi.FieldType == typeof(float) ? float.Parse(f.Value, CultureInfo.InvariantCulture)
                            : fi.FieldType.IsEnum           ? Enum.Parse(fi.FieldType, f.Value, false)
+                           : fi.FieldType == typeof(List<string>) ? f.Elements("li").Select(x => x.Value.Trim()).ToList()
                            : (object)f.Value;
                 fi.SetValue(inst, val);
             }
@@ -155,8 +251,14 @@ static class Loader
     /// </summary>
     public static List<ProceduralNarrator.Core.Arcs.ArcDefinition> LoadArcs(string path)
     {
+        return LoadArcs(path, WszystkieDlc);
+    }
+
+    public static List<ProceduralNarrator.Core.Arcs.ArcDefinition> LoadArcs(string path, ISet<string> aktywne)
+    {
         var wynik = new List<ProceduralNarrator.Core.Arcs.ArcDefinition>();
         var doc = XDocument.Load(path);
+        Przycietych = Prune(doc, aktywne, path);
         foreach (var n in doc.Root.Elements().Where(e => e.Name.LocalName.EndsWith("NarrativeArcDef")))
         {
             wynik.Add((ProceduralNarrator.Core.Arcs.ArcDefinition)XmlObj.Read(typeof(ProceduralNarrator.Core.Arcs.ArcDefinition), n));

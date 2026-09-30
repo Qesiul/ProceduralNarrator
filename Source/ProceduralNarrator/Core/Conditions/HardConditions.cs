@@ -280,6 +280,26 @@ namespace ProceduralNarrator.Core.Conditions
     }
 
     /// <summary>
+    /// Pora wegetacji na zewnatrz (krok 9, decyzja autora K1-a) - odwzorowanie sprawdzenia
+    /// TemperatureMemory.GrowthSeasonOutdoorsNow z CanFireNowSub gry (IncidentWorker_AmbrosiaSprout i nowe akcje K1 o tym
+    /// samym wymogu). Wspolny warunek zamiast jednego na akcje - precedens: Cond_SeasonAcceptableForHumans.
+    /// </summary>
+    public class Cond_GrowthSeason : NarrativeCondition
+    {
+        public bool wantGrowth = true;
+
+        public override bool IsMet(WorldSnapshot s)
+        {
+            return s.GrowthSeasonOutdoors == wantGrowth;
+        }
+
+        public override string Describe()
+        {
+            return wantGrowth ? "pora wegetacji" : "poza pora wegetacji";
+        }
+    }
+
+    /// <summary>
     /// Skazone powietrze (przeglad S10, dlug 6): domyslnie WYMAGA czystego powietrza - odwzorowanie odmow
     /// IncidentWorker_WildManWandersIn.CanFireNowSub przy opadzie toksycznym i toksycznej mgle.
     /// </summary>

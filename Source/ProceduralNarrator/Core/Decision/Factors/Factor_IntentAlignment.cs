@@ -76,10 +76,14 @@ namespace ProceduralNarrator.Core.Decision
         /// niewrazliwy na stala addytywna. Skrajne wartosci Escalate i Breathe walidator
         /// porownuje z min/max ladunku wyprowadzonym z WCZYTANEGO katalogu akcji.
         ///
-        /// Hold celuje w -0.30, a nie w 0.00: katalog jest przechylony ku zdarzeniom negatywnym
-        /// i "utrzymaj poziom" ma znaczyc utrzymanie TEGO rozkladu, a nie dryf ku rzadkim
-        /// zdarzeniom neutralnym. -0.30 to srednia ladunku katalogu (-0.31 po akcjach, -0.30 po
-        /// kandydatach), a NIE srodek przedzialu [-1.00, +0.25] (to byloby -0.375). Najblizsza
+        /// Hold celuje w srednia ladunku katalogu, a nie w 0.00: katalog jest przechylony ku zdarzeniom
+        /// negatywnym i "utrzymaj poziom" ma znaczyc utrzymanie TEGO rozkladu, a nie dryf ku rzadkim
+        /// zdarzeniom neutralnym. Do kroku 9 bylo to -0.30 (13 akcji: -0.31 po akcjach, -0.30 po kandydatach);
+        /// od K1 (28 akcji, 10 nowych negatywnych) srednia po akcjach wynosi -0.368, wiec -0.37 (decyzja autora
+        /// K1-j, 2026-09-26; ostateczna kalibracja nalezy do etapu KAL). Od K2 (62 akcje z DLC) srednia CALEGO
+        /// katalogu spada do -0.535, ale Hold liczy sie wobec katalogu BEZ Anomaly: gra podstawowa -0.368, z Royalty
+        /// -0.397 (decyzja autora K2-e, 2026-09-28) - przy nieaktywnym monolicie narrator widzi 5 z 31 akcji Anomaly.
+        /// To NIE jest srodek przedzialu [-1.00, +0.25] (-0.375) - zbieznosc z nim po K1 jest przypadkowa. Najblizsza
         /// klasa to dzis Negative/Minor (-0.25, dopasowanie 0.975) - PN_Akcja_Amok dodano
         /// wlasnie po to, zeby rozbic remis 0.850 przy Hold (Blocks_Extended.xml). Walidator
         /// pilnuje porzadku Escalate &lt; Hold &lt; Breathe; sama wartosc Hold jest kalibracja.
@@ -97,7 +101,7 @@ namespace ProceduralNarrator.Core.Decision
                 case Intent.Breathe:
                     return 0.25f;
                 case Intent.Hold:
-                    return -0.30f;
+                    return -0.37f;
                 case Intent.Pass:
                     // Intencja zarezerwowana - IntentSelector jej nie zwraca (patrz tam).
                     // Gdyby jednak dotarla tu z zapisu w starszym formacie albo z testu,
@@ -106,7 +110,7 @@ namespace ProceduralNarrator.Core.Decision
                 default:
                     // Nowa wartosc enuma dodana bez aktualizacji tej tablicy. Neutralny
                     // srodek realnego zakresu jest jedyna odpowiedzia, ktora nie klamie.
-                    return -0.30f;
+                    return -0.37f;
             }
         }
 

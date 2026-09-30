@@ -60,10 +60,25 @@ namespace ProceduralNarrator.Integration.Defs
         /// </summary>
         public ProceduralNarrator.Core.PlayerModel.StyleWeights styleWeights = new ProceduralNarrator.Core.PlayerModel.StyleWeights();
 
+        /// <summary>Akcja swiadomie bez wag stylu (krok 9, K1-h) - patrz Block.StyleNeutral.</summary>
+        public bool styleNeutral;
+
+        /// <summary>Minimum punktow sprawdzane przez sam worker gry (krok 9, K2) - patrz Block.WorkerMinPoints.</summary>
+        public float workerMinPoints;
+
         /// <summary>Warianty tekstu (krok 8) - patrz Core/Model/TextVariant.</summary>
         public List<TextVariant> textVariants = new List<TextVariant>();
 
         /// <summary>Tylko klocek akcji: incydent skaluje sie punktami (audyt wobec IncidentDef.pointsScaleable).</summary>
         public bool scalesWithPoints;
+
+        /// <summary>
+        /// Tylko klocek akcji (krok 9, K0): komplet zgodnych aktorow i konsekwencji - patrz Block.OnlyWith
+        /// i Core/Composition/CatalogGraphBuilder. Wpisy klockow DLC oznaczac MayRequire na &lt;li&gt;.
+        /// </summary>
+        public List<string> onlyWith = new List<string>();
+
+        /// <summary>Tylko klocek akcji (krok 9, K0): brama Anomaly - patrz Block.AnomalyGate (audyt wobec IncidentDef).</summary>
+        public AnomalyGateKind anomalyGate = AnomalyGateKind.None;
     }
 }

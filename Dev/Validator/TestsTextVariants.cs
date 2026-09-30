@@ -18,7 +18,15 @@ using ProceduralNarrator.Core.Util;
 static class TestsTextVariants
 {
     /// <summary>Payloady incydentow z IncidentDef.pointsScaleable=true w wanilii 1.5 (Data/Core, sprawdzone 2026-09-25).</summary>
-    static readonly string[] SkalujaceSie = { "Infestation", "ManhunterPack", "PsychicEmanatorShipPartCrash", "RaidEnemy" };
+    // Krok 9, K1: + AnimalInsanityMass, CropBlight, DefoliatorShipPartCrash (pointsScaleable true w Data/Core, raport K1).
+    // Krok 9, K2: + 16 incydentow DLC z pointsScaleable=true (Data/Royalty i Data/Anomaly z dziedziczeniem ParentName,
+    // skrypt rozpoznania K2 2026-09-28).
+    static readonly string[] SkalujaceSie = { "AnimalInsanityMass", "ChimeraAssault", "CropBlight", "DefoliatorShipPartCrash",
+                                               "DevourerAssault", "DevourerWaterAssault", "FleshbeastAttack", "FleshmassHeart",
+                                               "GorehulkAssault", "HateChanters", "Infestation", "ManhunterPack", "MechCluster",
+                                               "ProblemCauser", "PsychicEmanatorShipPartCrash", "PsychicRitualSiege", "RaidEnemy",
+                                               "ShamblerAssault", "ShamblerSwarm", "ShamblerSwarmAnimals", "SightstealerArrival",
+                                               "SightstealerSwarm", "SmallShamblerSwarm" };
 
     static TextVariant V(string id, string text) { return new TextVariant { id = id, text = text }; }
 
@@ -117,6 +125,97 @@ static class TestsTextVariants
         ("PN_Kons_Plotki", "kolejne", "Cond_Fakt{key=wiesci.zrodlo}", "Do kolonii docieraja kolejne wiesci z zewnatrz."),
         ("PN_Kons_Wrak", "znow", "Cond_Fakt{key=wrak.lezy}", "Znow na ziemi zostaje to, co spadlo."),
         ("PN_Kons_ZnakNaNiebie", "znow", "Cond_Fakt{key=niebo.znak}", "Niebo znow daje kolonii znak."),
+        // ---- Krok 9, K1 (Docs/K1_PROPOZYCJA.md, zatwierdzone przez autora 2026-09-26, decyzje K1-g i K1-i) ----
+        ("PN_Aktor_Maszyny", "z1", "", "Mechaniczny roj"),
+        ("PN_Aktor_Hodowlane", "z1", "", "Gromadka zwierzat gospodarskich"),
+        ("PN_Aktor_Los", "z1", "", "Zwykly pech"),
+        ("PN_Akcja_Mroz", "z1", "", "przynosi fale mrozu."),
+        ("PN_Akcja_Upal", "z1", "", "rozpala okolice upalem."),
+        ("PN_Akcja_Opad", "z1", "", "zsyla na okolice toksyczny opad."),
+        // Decyzja autora K1-k: slonce tylko za dnia.
+        ("PN_Akcja_ZimaWulkaniczna", "dzien", "Cond_Night{wantNight=False}", "zasnuwa niebo popiolem, ktory przeslania slonce."),
+        ("PN_Akcja_SzalStada", "z1", "", "wpada w szal, porazona psychiczna fala."),
+        ("PN_Akcja_Alfabobry", "stado", "Cond_Colonists{min=2}", "naslaje na okoliczne drzewa stado alfabobrow."),
+        ("PN_Akcja_Hodowlane", "z1", "", "przychodzi do kolonii i do niej dolacza."),
+        ("PN_Akcja_Migracja", "z1", "", "wedruje przez okolice stadem."),
+        ("PN_Akcja_Oswojenie", "z1", "", "sama z siebie przystaje do kolonii."),
+        ("PN_Akcja_Thrumbo", "z1", "", "przysyla w okolice rzadkie thrumbo."),
+        ("PN_Akcja_Zaraza", "z1", "", "sprawia, ze na polach szerzy sie zaraza."),
+        ("PN_Akcja_Zwarcie", "z1", "", "wywoluje zwarcie w sieci elektrycznej."),
+        ("PN_Akcja_FalaPsychiczna", "z1", "", "rozsiewa po okolicy dreczacy szum psychiczny."),
+        ("PN_Akcja_KojacaFala", "z1", "", "rozsiewa po okolicy uspokajajacy szum psychiczny."),
+        ("PN_Akcja_Defoliator", "z1", "", "roztrzaskuje w okolicy wrak, ktory zabija rosliny wokol siebie."),
+        ("PN_Kons_Pogoda", "znow", "Cond_Fakt{key=pogoda.zla}", "Pogoda znow daje kolonii w kosc."),
+        // Sprostowanie przy wdrozeniu (zgloszone autorowi): klucz pisza tez zwierzeta hodowlane i oswojone, wiec "znow"
+        // mowi o zwierzetach w ogole, nie o dzikiej zwierzynie.
+        ("PN_Kons_Zwierzyna", "znow", "Cond_Fakt{key=zwierzeta.przybyly}", "Zwierzeta znow daja o sobie znac."),
+        ("PN_Kons_Psychika", "kolejna", "Cond_Fakt{key=psychika.fala}", "Kolejna fala zostawia slad w pamieci kolonistow."),
+        // Krok 9, K2 (zatwierdzone 2026-09-28, K2-h; dwa odstepstwa z prawdy tekstu przy wdrozeniu - RojZwierzat, Ciemnosc).
+        ("PN_Aktor_Otchlan", "z1", "", "Mroczna otchlan"),
+        ("PN_Aktor_Kult", "z1", "", "Sekta kultystow"),
+        ("PN_Kons_Groza", "znow", "Cond_Fakt{key=anomalia.byla}", "Kolonia znow styka sie z czyms nienaturalnym."),
+        ("PN_Akcja_KlasterMaszyn", "z1", "", "sprowadza z nieba w okolice uspione skupisko maszyn."),
+        ("PN_Akcja_ZrodloKlopotow", "z1", "", "stawia gdzies w okolicy maszyne, ktora szkodzi kolonii."),
+        ("PN_Akcja_Abazja", "z1", "", "spada w kapsule transportowej niedaleko kolonii."),
+        ("PN_Akcja_RojTrupow", "z1", "", "wypuszcza na okolice to, co powinno lezec w grobie."),
+        ("PN_Akcja_RojZwierzat", "z1", "", "sprawia, ze martwa zwierzyna wstaje i chodzi po okolicy."),
+        ("PN_Akcja_GarstkaTrupow", "z1", "", "wypuszcza na okolice garstke nieumarlych."),
+        ("PN_Akcja_SzturmTrupow", "z1", "", "posyla na kolonie szturm chodzacych trupow."),
+        ("PN_Akcja_Miesobestie", "z1", "", "sprawia, ze ziemia sie zapada, a z glebi wypelza zywe mieso."),
+        ("PN_Akcja_Kolcarze", "z1", "", "napuszcza na kolonie kolczaste poczwary podobne do ludzi."),
+        ("PN_Akcja_Pozeracze", "z1", "", "posyla na kolonie zarloczne zlo o ogromnej paszczy."),
+        ("PN_Akcja_PozeraczeZWody", "z1", "", "sprawia, ze z wody wynurza sie zarloczne zlo."),
+        ("PN_Akcja_Chimery", "z1", "", "podsyla w poblize kolonii zwierzoksztaltne chimery, ktore czekaja na okazje."),
+        ("PN_Akcja_Ghul", "z1", "", "posyla na kolonie oszalalego ghula."),
+        ("PN_Akcja_PiesnNienawisci", "z1", "", "stawia pod kolonia chor kultystow gotowy do piesni nienawisci."),
+        ("PN_Akcja_RytualKultu", "z1", "", "wyprawia pod kolonie kultystow z rytualem wymierzonym w kolonistow."),
+        ("PN_Akcja_Oczyslepy", "z1", "", "sprowadza w okolice istoty, ktorych nie widac."),
+        ("PN_Akcja_Wrzaski", "z1", "", "niesie po okolicy dalekie, nieludzkie wrzaski."),
+        ("PN_Akcja_Zjawa", "z1", "", "sprowadza w okolice cos, co poluje niewidzialne."),
+        ("PN_Akcja_Kregoslup", "z1", "", "budzi kregoslup zjawy, ktory zaczyna niepokojaco buczec."),
+        ("PN_Akcja_Wszczep", "z1", "", "ukrywa w ciele jednego z kolonistow metalowego pasozyta."),
+        ("PN_Akcja_BramaOtchlani", "z1", "", "sprawia, ze ziemia w okolicy zaczyna zapadac sie w glab."),
+        ("PN_Akcja_SerceZMiesa", "z1", "", "budzi pod ziemia cos, co ryje ku gorze."),
+        ("PN_Akcja_Nocisfera", "z1", "", "zostawia pod kolonia uspiona metalowa kule."),
+        ("PN_Akcja_ObeliskA", "z1", "", "ciska z nieba w okolice dziwny obelisk."),
+        ("PN_Akcja_ObeliskD", "z1", "", "ciska z nieba w okolice dziwny obelisk."),
+        ("PN_Akcja_ObeliskM", "z1", "", "ciska z nieba w okolice dziwny obelisk."),
+        ("PN_Akcja_LadunekC", "z1", "", "oferuje kolonii nieznana przesylke."),
+        ("PN_Akcja_LadunekS", "z1", "", "oferuje kolonii nieznana przesylke."),
+        ("PN_Akcja_LadunekZ", "z1", "", "oferuje kolonii nieznana przesylke."),
+        ("PN_Akcja_KrwawyDeszcz", "z1", "", "sprawia, ze z nieba zaczyna padac krew."),
+        ("PN_Akcja_Calun", "z1", "", "zasnuwa okolice mgla, w ktorej niepogrzebani moga wstac."),
+        ("PN_Akcja_Ciemnosc", "z1", "", "sprawia, ze niebo nad kolonia zaczyna gasnac."),
+        ("PN_Akcja_Przybysz", "z1", "", "podchodzi pod kolonie i prosi o rozmowe."),
+        ("PN_Akcja_PrzybyszM", "z1", "", "podchodzi pod kolonie i prosi o rozmowe."),
+    };
+
+    /// <summary>Teksty BAZOWE klockow K1 (krok 9) - zatwierdzone slowo w slowo 2026-09-26.</summary>
+    static readonly (string blok, string tekst)[] BazoweK1 =
+    {
+        ("PN_Aktor_Maszyny", "Roj maszyn"),
+        ("PN_Aktor_Hodowlane", "Stadko zwierzat hodowlanych"),
+        ("PN_Aktor_Los", "Los"),
+        ("PN_Akcja_Mroz", "sprowadza na okolice nagly mroz."),
+        ("PN_Akcja_Upal", "sprowadza na okolice fale upalow."),
+        ("PN_Akcja_Opad", "sprawia, ze z nieba zaczyna padac toksyczny pyl."),
+        ("PN_Akcja_ZimaWulkaniczna", "zasnuwa niebo gestym popiolem."),
+        ("PN_Akcja_SzalStada", "traci rozum pod wplywem psychicznej fali."),
+        ("PN_Akcja_Alfabobry", "naslaje na okoliczne drzewa zarlocznego szkodnika."),
+        ("PN_Akcja_Hodowlane", "przybleka sie do kolonii i w niej zostaje."),
+        ("PN_Akcja_Migracja", "przeciaga przez okolice calym stadem."),
+        ("PN_Akcja_Oswojenie", "z wlasnej woli przylacza sie do kolonii."),
+        ("PN_Akcja_Thrumbo", "sprowadza w okolice wedrujace thrumbo."),
+        ("PN_Akcja_Zaraza", "zsyla na uprawy zaraze."),
+        ("PN_Akcja_Zwarcie", "sprawia, ze w sieci elektrycznej dochodzi do zwarcia."),
+        ("PN_Akcja_FalaPsychiczna", "wysyla na okolice przygnebiajaca fale psychiczna."),
+        ("PN_Akcja_KojacaFala", "wysyla na okolice kojaca fale psychiczna."),
+        ("PN_Akcja_Defoliator", "zrzuca w okolicy wrak, wokol ktorego obumieraja rosliny."),
+        ("PN_Kons_Pogoda", "Kolonisci dlugo beda wspominac te pogode."),
+        ("PN_Kons_Zwierzyna", "Kolonisci zapamietaja to spotkanie z dzika zwierzyna."),
+        ("PN_Kons_Inwentarz", "Kolonia ma teraz o kogo dbac."),
+        ("PN_Kons_Straty", "Jesli cos przepadlo, kolonia to zapamieta."),
+        ("PN_Kons_Psychika", "Kolonisci dlugo beda pamietac te fale."),
     };
 
     /// <summary>Teksty BAZOWE przepisane w rundzie 3 (przeglad S10) - zatwierdzone slowo w slowo; puste = brak tekstu.</summary>
@@ -163,7 +262,7 @@ static class TestsTextVariants
                          .SelectMany(b => b.TextVariants.Select(v => (blok: b.Id, id: v.id, warunki: Opis(v), tekst: v.text)))
                          .OrderBy(x => x.blok, StringComparer.Ordinal).ThenBy(x => x.id, StringComparer.Ordinal).ToList();
         var spec = Zatwierdzone.OrderBy(x => x.blok, StringComparer.Ordinal).ThenBy(x => x.id, StringComparer.Ordinal).ToList();
-        T.EqI("16g liczba wariantow w XML == zatwierdzonych (29 po rundzie 3)", wXml.Count, spec.Count);
+        T.EqI("16g liczba wariantow w XML == zatwierdzonych (29 po rundzie 3 + 21 z K1 + 37 z K2)", wXml.Count, spec.Count);
         var brak = spec.Except(wXml).ToList();
         var nadmiar = wXml.Except(spec).ToList();
         T.Ok("16g kazdy zatwierdzony wariant jest w XML slowo w slowo", brak.Count == 0,
@@ -181,6 +280,20 @@ static class TestsTextVariants
             bazowych++;
         }
         T.EqI("16g sprawdzono wszystkie przepisane teksty bazowe", bazowych, BazoweS10.Length);
+        int bazowychK1 = 0;
+        foreach (var (blok, tekst) in BazoweK1)
+        {
+            Block b = klocki.FirstOrDefault(x => x.Id == blok);
+            T.EqS("16g tekst bazowy K1: " + blok, b == null ? "(brak klocka)" : (b.TextFragment ?? ""), tekst);
+            bazowychK1++;
+        }
+        T.EqI("16g sprawdzono wszystkie teksty bazowe K1", bazowychK1, BazoweK1.Length);
+        // Kazdy klocek pliku K1 ma tekst bazowy w tabeli: nowy klocek bez zatwierdzonego tekstu zapala test.
+        var klockiK1 = klocki.Where(x => x.Id != null && BazoweK1.All(p => p.blok != x.Id)
+                                         && (x.Id.StartsWith("PN_Kons_Pogoda") || x.Id.StartsWith("PN_Kons_Zwierzyna")
+                                             || x.Id.StartsWith("PN_Kons_Inwentarz") || x.Id.StartsWith("PN_Kons_Straty")
+                                             || x.Id.StartsWith("PN_Kons_Psychika"))).Select(x => x.Id).ToList();
+        T.Ok("16g kazda nowa konsekwencja K1 ma zatwierdzony tekst bazowy", klockiK1.Count == 0, string.Join(",", klockiK1));
 
         // ---- 16h. Straznicy leksykalni zasady "fakt w tekscie = warunek twardy" - dla KAZDEGO tekstu katalogu
         // (bazowego i wariantu). Slowo o nocy/ciemnosci wymaga Cond_Night{wantNight} (wariantu albo klocka), slowo

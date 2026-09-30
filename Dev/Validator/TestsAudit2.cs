@@ -22,6 +22,9 @@ using ProceduralNarrator.Core.Util;
 /// </summary>
 static class TestsAudit2
 {
+    /// <summary>Katalog wczytany BEZ DLC Anomaly (krok 9, K2-e) - ustawia Program przed Run.</summary>
+    public static List<Block> KatalogBezAnomalii;
+
     public static void Run(XmlConfig cfg, List<Block> blocks)
     {
         TestPlannerWejscia(cfg);
@@ -263,8 +266,17 @@ static class TestsAudit2
                           + " | srednia po " + akcje.Count + " akcjach: " + F(sredni));
         T.Eq("zadany ladunek Escalate == NAJNIZSZY ladunek wczytanego katalogu", lE, minL, 1e-6);
         T.Eq("zadany ladunek Breathe == NAJWYZSZY ladunek wczytanego katalogu", lB, maxL, 1e-6);
-        T.Ok("zadany ladunek Hold ~ srednia ladunku katalogu (|roznica| <= 0.05; uzasadnienie w komentarzu)",
-             Math.Abs(lH - sredni) <= 0.05, F(lH) + " wobec " + F(sredni));
+        // Decyzja autora K2-e (2026-09-28): Hold = sredni ladunek katalogu BEZ Anomaly. Z Anomaly srednia spada do ok. -0,54,
+        // ale przy nieaktywnym monolicie (gry L2) narrator widzi 5 z 31 akcji Anomaly - pelna srednia opisywalaby katalog,
+        // ktorego nie uzywa. Gra podstawowa (-0,368) i Royalty (-0,397) mieszcza sie w +-0,05 od -0,37.
+        T.Ok("STRAZNIK: katalog bez Anomaly ustawiony i mniejszy od pelnego (K2-e)",
+             KatalogBezAnomalii != null && KatalogBezAnomalii.Count(b => b.Type == BlockType.Action) > 0
+             && KatalogBezAnomalii.Count(b => b.Type == BlockType.Action) < akcje.Count, "");
+        double sredniBez = KatalogBezAnomalii == null ? double.NaN
+            : KatalogBezAnomalii.Where(b => b.Type == BlockType.Action).Select(b => (double)Factor_DramaticContrast.Charge(b.Valence, b.Scale)).Average();
+        Console.WriteLine("      srednia ladunku bez Anomaly (K2-e): " + F(sredniBez) + " | pelnego katalogu: " + F(sredni));
+        T.Ok("zadany ladunek Hold ~ srednia ladunku katalogu BEZ Anomaly (|roznica| <= 0.05; decyzja K2-e)",
+             Math.Abs(lH - sredniBez) <= 0.05, F(lH) + " wobec " + F(sredniBez));
     }
 
     // =====================================================================================

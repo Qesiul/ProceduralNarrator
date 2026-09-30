@@ -74,6 +74,105 @@ namespace ProceduralNarrator.Core.Model
         /// </summary>
         public bool ToxicAirActive;
 
+        /// <summary>
+        /// Pora wegetacji na zewnatrz (krok 9, K1-a): TemperatureMemory.GrowthSeasonOutdoorsNow - temperatura na zewnatrz
+        /// w przedziale (0, 58) C w ciagu ostatnich 30000 tickow. Wymaga jej m.in. IncidentWorker_AmbrosiaSprout.CanFireNowSub.
+        /// Domyslnie true: snapshot bez mapy (testy kompozycji) nie ma pory roku, ktora mogla by wykluczyc akcje.
+        /// </summary>
+        public bool GrowthSeasonOutdoors = true;
+
+        // ---- Rejestr wymagan snapshotu (krok 9, K1). Pola czyta WorldSnapshotBuilder czystym odczytem gry, bez RNG;
+        //      warunki w Core/Conditions/RegistryConditions.cs. Wartosci domyslne opisuja snapshot BEZ MAPY (testy). ----
+
+        /// <summary>Temperatura sezonowa (MapTemperature.SeasonalTemp). Domyslnie 10 C - lagodna pora, bez znaczenia.</summary>
+        public float SeasonalTemp = 10f;
+
+        /// <summary>Aktywne warunki gry na MAPIE, postac kanoniczna CanonicalSet (";ColdSnap;HeatWave;").</summary>
+        public string GameConditionsMap = string.Empty;
+
+        /// <summary>Aktywne warunki gry na mapie I na swiecie (tak sprawdza GameConditionManager.ConditionIsActive).</summary>
+        public string GameConditionsAll = string.Empty;
+
+        /// <summary>Rasy z rejestru, dla ktorych pogoda jest znosna (SeasonAndOutdoorTemperatureAcceptableFor).</summary>
+        public string WeatherOkRaces = string.Empty;
+
+        /// <summary>Liczby rzeczy z rejestru na mapie (";DefoliatorShipPart=0;"); brak klucza = 0.</summary>
+        public string ThingCounts = string.Empty;
+
+        /// <summary>Czy istnieje frakcja mechanoidow (Faction.OfMechanoids).</summary>
+        public bool MechanoidFactionExists;
+
+        /// <summary>
+        /// Najmniejsze combatPower gatunku, ktorego co najmniej 3 zdrowe dzikie osobniki stoja na mapie
+        /// (IncidentWorker_AnimalInsanityMass); brak takiego gatunku = +nieskonczonosc.
+        /// </summary>
+        public float WildHerdMinCombatPower = float.PositiveInfinity;
+
+        /// <summary>Czy istnieje gatunek hodowlany znoszacy pogode (IncidentWorker_FarmAnimalsWanderIn).</summary>
+        public bool FarmAnimalKindAvailable;
+
+        /// <summary>Liczba dzikich zwierzat zdolnych same dolaczyc do kolonii (IncidentWorker_SelfTame).</summary>
+        public int SelfTameCandidates;
+
+        /// <summary>Liczba upraw podatnych na zaraze (Plant.BlightableNow).</summary>
+        public int BlightablePlants;
+
+        /// <summary>Czy jest zwykly przewod w sieci z aktywnym zrodlem energii (ShortCircuitUtility).</summary>
+        public bool ShortCircuitPossible;
+
+        // ---- Rejestr wymagan snapshotu, czesc K2 (Royalty i Anomaly, 2026-09-28). Te same zasady co wyzej; bez DLC
+        //      pola zostaja domyslne (warunki niespelnione, a klocki DLC i tak nie sa zaladowane). ----
+
+        /// <summary>Frakcje z rejestru, ktore istnieja w swiecie (FactionManager.FirstFactionOfDef), ";HoraxCult;".</summary>
+        public string FactionDefsPresent = string.Empty;
+
+        /// <summary>Skrypty zadan z rejestru, ktorych zadanie TRWA (QuestState.Ongoing), ";ProblemCauser;".</summary>
+        public string OngoingQuestScripts = string.Empty;
+
+        /// <summary>Liczby pionkow rodzajow z rejestru na mapie (MapPawns.AllPawns, takze trzymane), ";Nociosphere=0;".</summary>
+        public string PawnKindCounts = string.Empty;
+
+        /// <summary>Czy na mapie jest chodliwe pole rzeki albo morza (warunek konieczny wynurzenia z wody).</summary>
+        public bool WalkableWater;
+
+        /// <summary>Liczba kregoslupow zjawy na mapie, ktore jeszcze nie buczy (CompSpawnsRevenant.spawnTick &lt; 0).</summary>
+        public int IdleRevenantSpines;
+
+        /// <summary>Kolonisci zdolni przyjac zloty szescian (walidator QuestNode_Root_MysteriousCargoUnnaturalCube).</summary>
+        public int CubeCandidates;
+
+        /// <summary>Kolonisci zdolni dostac nienaturalne zwloki (walidator QuestNode_Root_MysteriousCargoUnnaturalCorpse).</summary>
+        public int UnnaturalCorpseCandidates;
+
+        /// <summary>Minelo 30 dni od ostatniej nowej biosygnatury metalhorroru (GameComponent_Anomaly).</summary>
+        public bool MetalhorrorGateOpen;
+
+        /// <summary>Pionki mapy zdolne przyjac implant metalhorroru (IncidentWorker_MetalhorrorImplantation).</summary>
+        public int InfectablePawns;
+
+        /// <summary>
+        /// Lustro sprawdzen gry (krok 9, K0): payloady, ktore gra i tak by teraz odrzucila niezaleznie od punktow
+        /// (odstep od poprzedniego razu, najwczesniejszy dzien, biom, poziom Anomaly...). Postac kanoniczna
+        /// ";A;B;" - patrz Core/Composition/EngineMirror. Pusta = nic nie zablokowane (domyslnie).
+        /// </summary>
+        public string EngineBlockedPayloads = string.Empty;
+
+        /// <summary>
+        /// Czy lustro sprawdzen gry w tej turze w ogole dzialalo (krok 9, K0). Bez tego pusty EngineBlockedPayloads
+        /// znaczylby dwie rozne rzeczy: "nic nie zablokowane" i "nie mierzono" (lustro wylaczone bezpiecznikiem).
+        /// Czyta je tylko log danych (kolumna zablokowanychSilnik pusta = brak pomiaru); decyzji nie zmienia.
+        /// </summary>
+        public bool EngineMirrorActive;
+
+        /// <summary>Aktywne DLC Anomaly (krok 9, K0) - bez niego brama Anomaly zawsze wybiera strone zwykla.</summary>
+        public bool AnomalyActive;
+
+        /// <summary>
+        /// Szansa, ze gra wezmie zagrozenie z puli Anomaly (Storyteller.AnomalyIncidentChanceNow: poziom monolitu
+        /// i ostatnie incydenty Anomaly). 0 bez DLC. Wejscie bramy Anomaly (Decision/AnomalyGate).
+        /// </summary>
+        public float AnomalyIncidentChance;
+
         /// <summary>Liczba dzikich zwierzat na mapie.</summary>
         public int WildAnimalCount;
 

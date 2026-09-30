@@ -241,8 +241,11 @@
     <valence>Negative</valence>
     <scale>Major</scale>
     <intensity>Normal</intensity>
-    <tags><li>militarny</li></tags>
+    <!-- "nagle" (krok 9, K1-e): nagle zagrozenie - czytaja go fazy luku Niespokojne noce. -->
+    <tags><li>militarny</li><li>nagle</li></tags>
     <payload>RaidEnemy</payload>
+    <!-- Brama Anomaly (krok 9, K0): zwykle zagrozenie - odpada w turach, w ktorych gra bierze pule Anomaly. -->
+    <anomalyGate>Regular</anomalyGate>
     <scalesWithPoints>true</scalesWithPoints>
     <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <!-- Krok 5: jedyny incydent katalogu, ktory honoruje parms.faction (IncidentWorker_RaidEnemy,
@@ -278,12 +281,13 @@
       </li>
     </conditions>
     <!-- Zbrojny napad prowadzi tylko wrogi oddzial ludzi -->
-    <incompatibleWith>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Obcy</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
-    </incompatibleWith>
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Piraci</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Trofea</li>
+    </onlyWith>
     <!-- Napady rosna z dojrzaloscia kolonii - ten sam kierunek, w ktorym vanilla skaluje
          zagrozenie przez pointsFactorFromDaysPassed. Bez wlasnej preferencji caly contextFit
          napadu pochodzil od klocka aktora, przez co napad przegrywal z wydarzeniami, ktore
@@ -303,8 +307,11 @@
     <valence>Negative</valence>
     <scale>Moderate</scale>
     <intensity>Low</intensity>
-    <tags><li>militarny</li><li>zwierzeta</li></tags>
+    <!-- "nagle" (krok 9, K1-e): nagle zagrozenie - czytaja go fazy luku Niespokojne noce. -->
+    <tags><li>militarny</li><li>zwierzeta</li><li>nagle</li></tags>
     <payload>ManhunterPack</payload>
+    <!-- Brama Anomaly (krok 9, K0): zwykle zagrozenie - odpada w turach, w ktorych gra bierze pule Anomaly. -->
+    <anomalyGate>Regular</anomalyGate>
     <scalesWithPoints>true</scalesWithPoints>
     <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <textFragment>wpada w szal i rusza na osade.</textFragment>
@@ -332,12 +339,15 @@
       </li>
     </conditions>
     <!-- W szal wpadaja zwierzeta, nie ludzie; bogactwo kolonii nie ma tu nic do rzeczy -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Trofea</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Obcy</li>
       <li>PN_Trig_Bogactwo</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
     </incompatibleWith>
     <!-- Zwierzeta atakuja czlowieka, gdy brakuje zeru - zima jest po temu najlepsza pora. -->
     <preferences>
@@ -354,8 +364,11 @@
     <valence>Negative</valence>
     <scale>Major</scale>
     <intensity>High</intensity>
-    <tags><li>militarny</li><li>insekty</li></tags>
+    <!-- "nagle" (krok 9, K1-e): nagle zagrozenie - czytaja go fazy luku Niespokojne noce. -->
+    <tags><li>militarny</li><li>insekty</li><li>nagle</li></tags>
     <payload>Infestation</payload>
+    <!-- Brama Anomaly (krok 9, K0): zwykle zagrozenie - odpada w turach, w ktorych gra bierze pule Anomaly. -->
+    <anomalyGate>Regular</anomalyGate>
     <scalesWithPoints>true</scalesWithPoints>
     <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
     <textFragment>wygryza sie spod podlogi.</textFragment>
@@ -399,14 +412,18 @@
         <min>296</min>
       </li>
     </conditions>
+    <!-- Bez PN_Aktor_Dzikie (przeglad S10, decyzja autora 2026-09-25): rojenie to owady z tuneli (Faction.OfInsects),
+         a Cond_WildAnimals aktora liczy inne zwierzeta - "Dzika zwierzyna wygryza sie spod podlogi" stwierdzalo
+         nieprawde. -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Trofea</li>
+    </onlyWith>
     <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Obcy</li>
       <li>PN_Trig_Bogactwo</li>
-      <li>PN_Aktor_Natura</li>
-      <!-- Przeglad S10 (decyzja autora 2026-09-25): rojenie to owady z tuneli (Faction.OfInsects), a Cond_WildAnimals
-           aktora liczy inne zwierzeta - "Dzika zwierzyna wygryza sie spod podlogi" stwierdzalo nieprawde. -->
-      <li>PN_Aktor_Dzikie</li>
     </incompatibleWith>
     <!-- Infestacja to zagrozenie fazy sredniej i poznej: zanim kolonia rozbuduje sie pod gora,
          nie ma czego atakowac. Warunek twardy pilnuje stropu, preferencja - dojrzalosci. -->
@@ -452,12 +469,13 @@
       </li>
     </preferences>
     <!-- O przyjecie prosi czlowiek z zewnatrz, nie piraci i nie zwierze -->
-    <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Natura</li>
-      <li>PN_Aktor_Nieznane</li>
-    </incompatibleWith>
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_NowyCzlowiek</li>
+      <li>PN_Kons_Plotki</li>
+    </onlyWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
@@ -489,16 +507,15 @@
         <to>0.4</to>
       </li>
     </preferences>
-    <incompatibleWith>
-      <li>PN_Aktor_Piraci</li>
-      <li>PN_Aktor_Dzikie</li>
-      <li>PN_Aktor_Nieznane</li>
-      <!-- Natura nie zostawia po sobie kapsul z zaopatrzeniem. Bez tej krawedzi powstawalo
-           zdanie "Natura zostawia po sobie rozbita kapsule z zaopatrzeniem" - 8 z 84
-           kandydatow. Meteoryt zostaje przy Naturze CELOWO: kruszec faktycznie spada z nieba
-           sam z siebie, wiec tam atrybucja jest prawdziwa. -->
-      <li>PN_Aktor_Natura</li>
-    </incompatibleWith>
+    <!-- Bez PN_Aktor_Natura: Natura nie zostawia po sobie kapsul z zaopatrzeniem. Bez tego ograniczenia powstawalo
+         zdanie "Natura zostawia po sobie rozbita kapsule z zaopatrzeniem" - 8 z 84 kandydatow. Meteoryt zostaje przy
+         Naturze CELOWO: kamien faktycznie spada z nieba sam z siebie, wiec tam atrybucja jest prawdziwa. -->
+    <!-- Lista dozwolonych (krok 9, K0; decyzja autora E0-1): KOMPLET zgodnych aktorow i konsekwencji tej akcji.
+         Kazdy inny aktor i kazda inna konsekwencja jest zabroniona (CatalogGraphBuilder). -->
+    <onlyWith>
+      <li>PN_Aktor_Obcy</li>
+      <li>PN_Kons_Wrak</li>
+    </onlyWith>
   </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
 
   <!-- ================================== CELE ================================== -->

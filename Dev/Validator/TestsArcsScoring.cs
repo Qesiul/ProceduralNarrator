@@ -184,9 +184,14 @@ static class TestsArcsScoring
         var fm = dm.BuildFocus(lm, Intent.Escalate, 30f, null);
         var ocm = Ocen(cfg, composer, fm, Intent.Escalate);
         T.Ok("STRAZNIK: faza mieszana steruje przy Escalate", fm.Entries.Count == 1 && fm.Entries[0].Active, fm.DataPhases());
-        T.Ok("faza mieszana przy Escalate: negatywni 1, pozytywni i neutralni 0 (walencja KANDYDATA)",
-             ocm.Where(k => !k.Vetoed).All(k => k.ArcValue == (k.Event.Valence == Valence.Negative ? 1f : 0f))
+        // Krok 9, K2-b: kandydat ZDARZENIA UKRYTEGO nie pasuje do zadnej fazy, wiec ma 0 mimo walencji negatywnej.
+        Func<ScoredCandidate, bool> ukryty = k => ArcEventView.FromCandidate(k.Event, null).IsHidden;
+        T.Ok("faza mieszana przy Escalate: negatywni 1, pozytywni, neutralni i ukryci 0 (walencja KANDYDATA)",
+             ocm.Where(k => !k.Vetoed).All(k => k.ArcValue == (k.Event.Valence == Valence.Negative && !ukryty(k) ? 1f : 0f))
              && ocm.Any(k => !k.Vetoed && k.Event.Valence == Valence.Positive), null);
+        T.Ok("STRAZNIK K2-b: wsrod ocenionych sa kandydaci zdarzen ukrytych i dostaja 0",
+             ocm.Any(k => !k.Vetoed && ukryty(k)) && ocm.Where(k => !k.Vetoed && ukryty(k)).All(k => k.ArcValue == 0f),
+             "ukrytych: " + ocm.Count(k => !k.Vetoed && ukryty(k)));
 
         var bezFokusu = Ocen(cfg, composer, null, Intent.Escalate);
         T.Ok("bez fokusu (brak lukow) wszyscy maja -1, SelectionScore == Utility",

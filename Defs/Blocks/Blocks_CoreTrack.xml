@@ -1,0 +1,722 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+  <!--
+    PELNE POKRYCIE TORU GRY PODSTAWOWEJ (krok 9, etap K1; decyzja autora E-8). 15 akcji dla incydentow Core, ktorych
+    katalog nie mial (lista z wyroczni toru, TEST 20c), i trzech nowych aktorow (decyzja E0-7). Tresc zatwierdzona
+    przez autora 2026-09-26 (Docs/K1_PROPOZYCJA.md, decyzje K1-a...K1-i).
+
+    WARUNKI: kazda akcja odwzorowuje systematyczna czesc CanFireNowSub swojego incydentu (rejestr wymagan snapshotu,
+    Core/Conditions/RegistryConditions.cs). Dzien, biom, trudnosc i odstep od poprzedniego razu sprawdza lustro gry (K0).
+    Zostaja przy grze (akceptor): komorki wejscia na mape, miejsce ladowania wraku, losowanie zanieczyszczenia migracji.
+
+    Wszystkie akcje tego pliku zabraniaja wyzwalacza Bogactwo: "wiesc o zamoznosci" nie sprowadza pogody, zwierzat
+    ani wraku. ThreatBig (Szal stada, Defoliator): brama Anomaly Regular i prog dnia 11 (parytet z Cassandra).
+  -->
+
+  <!-- ============================== AKTORZY (decyzja E0-7) ============================== -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Aktor_Maszyny</defName>
+    <blockType>Actor</blockType>
+    <intensity>High</intensity>
+    <tags><li>mechanoidy</li><li>wrogi</li></tags>
+    <textFragment>Roj maszyn</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Mechaniczny roj</text>
+      </li>
+    </textVariants>
+    <!-- Fakt w tekscie: maszyny istnieja - frakcja mechanoidow jest w swiecie. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MechanoidFaction" />
+    </conditions>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>20</from>
+        <to>60</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Aktor_Hodowlane</defName>
+    <blockType>Actor</blockType>
+    <intensity>Normal</intensity>
+    <tags><li>zwierzeta</li></tags>
+    <textFragment>Stadko zwierzat hodowlanych</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Gromadka zwierzat gospodarskich</text>
+      </li>
+    </textVariants>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Colonists">
+        <from>12</from>
+        <to>3</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Aktor_Los</defName>
+    <blockType>Actor</blockType>
+    <intensity>Normal</intensity>
+    <tags><li>los</li><li>bezosobowy</li></tags>
+    <textFragment>Los</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>Zwykly pech</text>
+      </li>
+    </textVariants>
+    <!-- Para przeciwstawna z Natura (rampa 90 -> 10) przy Zarazie: pech narasta z dojrzaloscia kolonii. -->
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>10</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================== POGODA I WARUNKI GRY ============================== -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Mroz</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>pogoda</li><li>zimno</li></tags>
+    <payload>ColdSnap</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: sezonowo 0-15 C minus 20 C daje mroz; gra obniza temperature w ok. 5 h (12000 tickow). -->
+    <textFragment>sprowadza na okolice nagly mroz.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>przynosi fale mrozu.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_ColdSnap: 0 < SeasonalTemp < 15; IncidentWorker_MakeGameCondition: ten sam warunek nie trwa
+         (mapa i swiat), a zaden warunek NA MAPIE nie wyklucza fali mrozu (ColdSnap.exclusiveConditions = HeatWave). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_SeasonalTemp">
+        <greaterThan>0</greaterThan>
+        <lessThan>15</lessThan>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>ColdSnap</li></defs>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>HeatWave</li></defs>
+        <mapOnly>true</mapOnly>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_Pogoda</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>2</season>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Upal</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>pogoda</li><li>upal</li></tags>
+    <payload>HeatWave</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: sezonowo co najmniej 20 C plus 17 C daje co najmniej 37 C. -->
+    <textFragment>sprowadza na okolice fale upalow.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>rozpala okolice upalem.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_HeatWave: SeasonalTemp >= 20; HeatWave.exclusiveConditions = ColdSnap, VolcanicWinter (mapa). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_SeasonalTemp">
+        <atLeast>20</atLeast>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>HeatWave</li></defs>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>ColdSnap</li><li>VolcanicWinter</li></defs>
+        <mapOnly>true</mapOnly>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_Pogoda</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>1</season>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Opad</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <!-- Tag niszczy (K2-f): zdarzenie, ktore na pewno niszczy dobytek - Kulminacja Chudych dni. -->
+    <tags><li>pogoda</li><li>niebo</li><li>toksyny</li><li>niszczy</li></tags>
+    <payload>ToxicFallout</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Opis gry: toksyczny pyl "z jakiegos odleglego zrodla" - stad tylko aktor Cos nieznanego, bez Natury. -->
+    <textFragment>sprawia, ze z nieba zaczyna padac toksyczny pyl.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>zsyla na okolice toksyczny opad.</text>
+      </li>
+    </textVariants>
+    <!-- Dzien 60, trudnosc z pogoda ekstremalna i odstep 90 dni sprawdza lustro gry (K0). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>ToxicFallout</li></defs>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Pogoda</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>60</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_ZimaWulkaniczna</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>pogoda</li></tags>
+    <payload>VolcanicWinter</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Opis gry: popiol z "odleglego wulkanu albo pozaru" - stad bez slowa "wulkaniczny". Decyzja autora K1-k: slonce
+         tylko w wariancie DZIENNYM (w nocy slonca nie widac - fakt w tekscie = warunek twardy). -->
+    <textFragment>zasnuwa niebo gestym popiolem.</textFragment>
+    <textVariants>
+      <li>
+        <id>dzien</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Night"><wantNight>false</wantNight></li>
+        </conditions>
+        <text>zasnuwa niebo popiolem, ktory przeslania slonce.</text>
+      </li>
+    </textVariants>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>VolcanicWinter</li></defs>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_Pogoda</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>60</from>
+        <to>120</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ================================== ZWIERZETA ================================== -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_SzalStada</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>militarny</li><li>zwierzeta</li><li>nagle</li></tags>
+    <payload>AnimalInsanityMass</payload>
+    <anomalyGate>Regular</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka><reaktywnosc>0.5</reaktywnosc></styleWeights>
+    <!-- Gra nazywa to fala psychiczna (list "Some sort of psychic wave"). Bez "calego stada": przy malej liczbie punktow
+         w szal wpada jedno zwierze. -->
+    <textFragment>traci rozum pod wplywem psychicznej fali.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wpada w szal, porazona psychiczna fala.</text>
+      </li>
+    </textVariants>
+    <conditions>
+      <!-- Gra sprawdza stado dopiero przy wykonaniu (TryExecuteWorker): gatunek z co najmniej 3 zdrowymi dzikimi
+           osobnikami, combatPower nie wiekszy niz punkty po korekcie. pointsFactor 1.35 = maksymalny mnoznik
+           intensywnosci (IntensityTable, VeryHigh) - sito zgrubne jak Cond_MinThreatPoints 296 = 400 / 1.35. -->
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_WildHerd">
+        <pointsFactor>1.35</pointsFactor>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Kons_SladWalki</li>
+      <li>PN_Kons_Trofea</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WildAnimals">
+        <from>5</from>
+        <to>30</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Alfabobry</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Negative</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zwierzeta</li><li>szkodniki</li></tags>
+    <payload>Alphabeavers</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Decyzja autora K1-g: gra wysyla 1-10 alfabobrow (liczba wolnych kolonistow x 1-1,5), wiec tekst bazowy bez
+         liczby; przy co najmniej 2 kolonistach gra wysyla zawsze co najmniej 2 - wtedy wariant "stado". -->
+    <textFragment>naslaje na okoliczne drzewa zarlocznego szkodnika.</textFragment>
+    <textVariants>
+      <li>
+        <id>stado</id>
+        <conditions>
+          <li Class="ProceduralNarrator.Core.Conditions.Cond_Colonists"><min>2</min></li>
+        </conditions>
+        <text>naslaje na okoliczne drzewa stado alfabobrow.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_Alphabeavers: pogoda znosna dla alfabobrow; biom (tundra, suche zarosla) sprawdza lustro. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_RaceWeatherOk">
+        <race>Alphabeaver</race>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_Zwierzyna</li>
+      <li>PN_Kons_Straty</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>30</from>
+        <to>0</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Hodowlane</defName>
+    <blockType>Action</blockType>
+    <theme>Economic</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zwierzeta</li><li>zasoby</li></tags>
+    <payload>FarmAnimalsWanderIn</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: 2-10 zwierzat dolacza do kolonii od razu (SetFaction(OfPlayer)). -->
+    <textFragment>przybleka sie do kolonii i w niej zostaje.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>przychodzi do kolonii i do niej dolacza.</text>
+      </li>
+    </textVariants>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_FarmAnimalKind" />
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Hodowlane</li>
+      <li>PN_Kons_Inwentarz</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WealthRelative">
+        <from>2.5</from>
+        <to>0.4</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Migracja</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Neutral</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zwierzeta</li></tags>
+    <payload>HerdMigration</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: 3-5 zwierzat przechodzi przez mape i odchodzi. Biom sprawdza lustro; losowanie zanieczyszczenia
+         (Biotech) i komorki wejscia zostaja przy grze. -->
+    <textFragment>przeciaga przez okolice calym stadem.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wedruje przez okolice stadem.</text>
+      </li>
+    </textVariants>
+    <onlyWith>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Kons_Zwierzyna</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>0</season>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Oswojenie</defName>
+    <blockType>Action</blockType>
+    <theme>Economic</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zwierzeta</li></tags>
+    <payload>SelfTame</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: jedno zwierze dolacza od razu. Liczba pojedyncza "zwierzyny" jak przy Amoku. requireColonistsPresent
+         pilnuje akceptor (od S6 kroku 6). -->
+    <textFragment>z wlasnej woli przylacza sie do kolonii.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sama z siebie przystaje do kolonii.</text>
+      </li>
+    </textVariants>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_SelfTameCandidate" />
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Dzikie</li>
+      <li>PN_Kons_Inwentarz</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_WildAnimals">
+        <from>2</from>
+        <to>20</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Thrumbo</defName>
+    <blockType>Action</blockType>
+    <theme>Natural</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>zwierzeta</li><li>okazja</li></tags>
+    <payload>ThrumboPasses</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <!-- Prawda: 2-6 thrumbo, odchodza po 1,5-2,5 dnia. -->
+    <textFragment>sprowadza w okolice wedrujace thrumbo.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>przysyla w okolice rzadkie thrumbo.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_ThrumboPasses: brak opadu toksycznego i toksycznej mgly, pogoda znosna dla thrumbo. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ToxicAir" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_RaceWeatherOk">
+        <race>Thrumbo</race>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_Zwierzyna</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>10</from>
+        <to>60</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <!-- ============================ KOLONIA, PSYCHIKA, MASZYNY ============================ -->
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Zaraza</defName>
+    <blockType>Action</blockType>
+    <!-- Decyzja autora K1-c: os Disease ("choroby i plagi"). Tor chorob ludzi zostaje wanilii. -->
+    <theme>Disease</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>uprawy</li></tags>
+    <payload>CropBlight</payload>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <textFragment>zsyla na uprawy zaraze.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>sprawia, ze na polach szerzy sie zaraza.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_CropBlight: jest zasiana uprawa podatna na zaraze (Plant.BlightableNow). -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_BlightablePlants" />
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Los</li>
+      <li>PN_Aktor_Natura</li>
+      <li>PN_Kons_Straty</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_Season">
+        <season>1</season>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Zwarcie</defName>
+    <blockType>Action</blockType>
+    <theme>Economic</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>technika</li><li>ogien</li></tags>
+    <payload>ShortCircuit</payload>
+    <styleWeights><gospodarka>1</gospodarka></styleWeights>
+    <textFragment>sprawia, ze w sieci elektrycznej dochodzi do zwarcia.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>wywoluje zwarcie w sieci elektrycznej.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_ShortCircuit: zwykly przewod w sieci z aktywnym zrodlem energii. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ShortCircuitPossible" />
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Los</li>
+      <li>PN_Kons_Straty</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>5</from>
+        <to>40</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_FalaPsychiczna</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Negative</valence>
+    <scale>Moderate</scale>
+    <intensity>Normal</intensity>
+    <tags><li>psychika</li></tags>
+    <payload>PsychicDrone</payload>
+    <!-- Decyzja autora K1-h: fale psychiczne dotycza nastroju, nie zadnej z czterech cech stylu - wagi zerowe. -->
+    <styleNeutral>true</styleNeutral>
+    <!-- Bez plci w tekscie: gra losuje ja dopiero przy wykonaniu. -->
+    <textFragment>wysyla na okolice przygnebiajaca fale psychiczna.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>rozsiewa po okolicy dreczacy szum psychiczny.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_PsychicEmanation: zadna fala nie trwa (mapa i swiat), brak wraku-emanatora, sa kolonisci. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>PsychicDrone</li><li>PsychicSoothe</li></defs>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ThingCount">
+        <thing>PsychicDronerShipPart</thing>
+        <max>0</max>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_Colonists">
+        <min>1</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Psychika</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>10</from>
+        <to>60</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_KojacaFala</defName>
+    <blockType>Action</blockType>
+    <theme>Supernatural</theme>
+    <valence>Positive</valence>
+    <scale>Minor</scale>
+    <intensity>Low</intensity>
+    <tags><li>psychika</li></tags>
+    <payload>PsychicSoothe</payload>
+    <styleNeutral>true</styleNeutral>
+    <textFragment>wysyla na okolice kojaca fale psychiczna.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>rozsiewa po okolicy uspokajajacy szum psychiczny.</text>
+      </li>
+    </textVariants>
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_GameConditionAbsent">
+        <defs><li>PsychicDrone</li><li>PsychicSoothe</li></defs>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ThingCount">
+        <thing>PsychicDronerShipPart</thing>
+        <max>0</max>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_Colonists">
+        <min>1</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_Psychika</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>60</from>
+        <to>10</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+  <ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+    <defName>PN_Akcja_Defoliator</defName>
+    <blockType>Action</blockType>
+    <!-- Decyzja autora K1-d: os Military ("sprawy zbrojne bez ataku") - mechanoidy strzega wraku i nie atakuja. -->
+    <theme>Military</theme>
+    <valence>Negative</valence>
+    <scale>Major</scale>
+    <intensity>High</intensity>
+    <tags><li>militarny</li><li>wrak</li><li>niebo</li><li>mechanoidy</li><li>niszczy</li></tags>
+    <payload>DefoliatorShipPartCrash</payload>
+    <anomalyGate>Regular</anomalyGate>
+    <scalesWithPoints>true</scalesWithPoints>
+    <styleWeights><walka>1</walka></styleWeights>
+    <!-- Prawda: wrak zabija rosliny w rosnacym promieniu. O mechanoidach tekst milczy - sa uspione, walka niepewna. -->
+    <textFragment>zrzuca w okolicy wrak, wokol ktorego obumieraja rosliny.</textFragment>
+    <textVariants>
+      <li>
+        <id>z1</id>
+        <text>roztrzaskuje w okolicy wrak, ktory zabija rosliny wokol siebie.</text>
+      </li>
+    </textVariants>
+    <!-- IncidentWorker_CrashedShipPart: frakcja mechanoidow, brak innego defoliatora na mapie; minThreatPoints 400
+         (sito zgrubne 296 = 400 / 1.35, dokladne w IncidentParmsBuilder). Wspolny 15-dniowy odstep z Emanatorem
+         (refireCheckTags MechanoidShip) sprawdza lustro gry. Prog dnia 11: parytet z Cassandra. -->
+    <conditions>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MechanoidFaction" />
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_ThingCount">
+        <thing>DefoliatorShipPart</thing>
+        <max>0</max>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinThreatPoints">
+        <min>296</min>
+      </li>
+      <li Class="ProceduralNarrator.Core.Conditions.Cond_MinDaysPassed">
+        <min>11</min>
+      </li>
+    </conditions>
+    <onlyWith>
+      <li>PN_Aktor_Maszyny</li>
+      <li>PN_Aktor_Nieznane</li>
+      <li>PN_Kons_ZnakNaNiebie</li>
+      <li>PN_Kons_Straty</li>
+    </onlyWith>
+    <incompatibleWith>
+      <li>PN_Trig_Bogactwo</li>
+    </incompatibleWith>
+    <preferences>
+      <li Class="ProceduralNarrator.Core.Conditions.Pref_GameAge">
+        <from>11</from>
+        <to>90</to>
+      </li>
+    </preferences>
+  </ProceduralNarrator.Integration.Defs.NarrativeBlockDef>
+
+</Defs>

@@ -56,6 +56,59 @@ static class TestsComposition
         { "PN_Akcja_Ambrozja", 4 },
         { "PN_Akcja_Burza", 4 },
         { "PN_Akcja_Emanator", 4 },
+        // KROK 9, K1 (pelne pokrycie toru Core): zadna nowa akcja nie przyjmuje wyzwalacza Bogactwo, wiec baza
+        // = 1 wyzwalacz (Cisza) x 2 cele x 2 modyfikatory = 4 NA AKTORA, razy liczba aktorow i konsekwencji z onlyWith.
+        { "PN_Akcja_Mroz", 4 },              // Natura x Pogoda
+        { "PN_Akcja_Upal", 4 },              // Natura x Pogoda
+        { "PN_Akcja_Opad", 8 },              // Nieznane x (Pogoda, ZnakNaNiebie)
+        { "PN_Akcja_ZimaWulkaniczna", 4 },   // Natura x Pogoda
+        { "PN_Akcja_SzalStada", 8 },         // Dzikie x (SladWalki, Trofea)
+        { "PN_Akcja_Alfabobry", 8 },         // Natura x (Zwierzyna, Straty)
+        { "PN_Akcja_Hodowlane", 4 },         // Hodowlane x Inwentarz
+        { "PN_Akcja_Migracja", 4 },          // Dzikie x Zwierzyna
+        { "PN_Akcja_Oswojenie", 4 },         // Dzikie x Inwentarz
+        { "PN_Akcja_Thrumbo", 4 },           // Natura x Zwierzyna
+        { "PN_Akcja_Zaraza", 8 },            // (Los, Natura) x Straty
+        { "PN_Akcja_Zwarcie", 4 },           // Los x Straty
+        { "PN_Akcja_FalaPsychiczna", 4 },    // Nieznane x Psychika
+        { "PN_Akcja_KojacaFala", 4 },        // Nieznane x Psychika
+        { "PN_Akcja_Defoliator", 16 },       // (Maszyny, Nieznane) x (ZnakNaNiebie, Straty)
+        // KROK 9, K2 (Royalty i Anomaly, Docs/K2_PROPOZYCJA.md): ta sama baza 4 NA AKTORA (bez wyzwalacza Bogactwo),
+        // razy aktorzy i konsekwencje z onlyWith; akcja bez konsekwencji (zdarzenia ukryte, K2-b) zostaje przy bazie.
+        { "PN_Akcja_KlasterMaszyn", 4 },     // Maszyny x ZnakNaNiebie
+        { "PN_Akcja_ZrodloKlopotow", 4 },    // Nieznane x Plotki
+        { "PN_Akcja_Abazja", 8 },            // Obcy x (NowyCzlowiek, Plotki)
+        { "PN_Akcja_RojTrupow", 4 },         // Otchlan x Groza
+        { "PN_Akcja_RojZwierzat", 4 },       // Otchlan x Groza
+        { "PN_Akcja_GarstkaTrupow", 4 },     // Otchlan x Groza
+        { "PN_Akcja_SzturmTrupow", 8 },      // Otchlan x (SladWalki, Groza)
+        { "PN_Akcja_Miesobestie", 8 },       // Otchlan x (SladWalki, Groza)
+        { "PN_Akcja_Kolcarze", 8 },          // Otchlan x (SladWalki, Groza)
+        { "PN_Akcja_Pozeracze", 8 },         // Otchlan x (SladWalki, Groza)
+        { "PN_Akcja_PozeraczeZWody", 8 },    // Otchlan x (SladWalki, Groza)
+        { "PN_Akcja_Chimery", 4 },           // Otchlan x Groza
+        { "PN_Akcja_Ghul", 8 },              // Otchlan x (SladWalki, Groza)
+        { "PN_Akcja_PiesnNienawisci", 4 },   // Kult x Groza
+        { "PN_Akcja_RytualKultu", 4 },       // Kult x Groza
+        { "PN_Akcja_Oczyslepy", 4 },         // Otchlan, bez konsekwencji (ukryte)
+        { "PN_Akcja_Wrzaski", 8 },           // (Otchlan, Nieznane) x Groza
+        { "PN_Akcja_Zjawa", 4 },             // Otchlan, bez konsekwencji (ukryte)
+        { "PN_Akcja_Kregoslup", 4 },         // Otchlan x Groza
+        { "PN_Akcja_Wszczep", 4 },           // Otchlan, bez konsekwencji (ukryte)
+        { "PN_Akcja_BramaOtchlani", 4 },     // Otchlan x Groza
+        { "PN_Akcja_SerceZMiesa", 4 },       // Otchlan x Groza
+        { "PN_Akcja_Nocisfera", 4 },         // Otchlan x Groza
+        { "PN_Akcja_ObeliskA", 16 },         // (Otchlan, Nieznane) x (Groza, ZnakNaNiebie)
+        { "PN_Akcja_ObeliskD", 16 },         // jw. (bliznieta)
+        { "PN_Akcja_ObeliskM", 16 },         // jw. (bliznieta)
+        { "PN_Akcja_LadunekC", 4 },          // Obcy x Plotki
+        { "PN_Akcja_LadunekS", 4 },          // jw. (bliznieta)
+        { "PN_Akcja_LadunekZ", 4 },          // jw. (bliznieta)
+        { "PN_Akcja_KrwawyDeszcz", 8 },      // Otchlan x (Pogoda, Groza)
+        { "PN_Akcja_Calun", 4 },             // Otchlan x Groza
+        { "PN_Akcja_Ciemnosc", 4 },          // Otchlan x Groza
+        { "PN_Akcja_Przybysz", 4 },          // Obcy x NowyCzlowiek
+        { "PN_Akcja_PrzybyszM", 4 },         // jw. (bliznieta)
     };
 
     /// <summary>
@@ -80,6 +133,57 @@ static class TestsComposition
         { "PN_Akcja_Emanator", new[] { "PN_Kons_ZnakNaNiebie" } },
         { "PN_Akcja_Okup", new string[0] },
         { "PN_Akcja_Ambrozja", new string[0] },
+        // Krok 9, K1 (decyzje autora K1-i, E0-8): nowe konsekwencje wedlug rodzin zdarzen.
+        { "PN_Akcja_Mroz", new[] { "PN_Kons_Pogoda" } },
+        { "PN_Akcja_Upal", new[] { "PN_Kons_Pogoda" } },
+        { "PN_Akcja_Opad", new[] { "PN_Kons_Pogoda", "PN_Kons_ZnakNaNiebie" } },
+        { "PN_Akcja_ZimaWulkaniczna", new[] { "PN_Kons_Pogoda" } },
+        { "PN_Akcja_SzalStada", new[] { "PN_Kons_SladWalki", "PN_Kons_Trofea" } },
+        { "PN_Akcja_Alfabobry", new[] { "PN_Kons_Zwierzyna", "PN_Kons_Straty" } },
+        { "PN_Akcja_Hodowlane", new[] { "PN_Kons_Inwentarz" } },
+        { "PN_Akcja_Migracja", new[] { "PN_Kons_Zwierzyna" } },
+        { "PN_Akcja_Oswojenie", new[] { "PN_Kons_Inwentarz" } },
+        { "PN_Akcja_Thrumbo", new[] { "PN_Kons_Zwierzyna" } },
+        { "PN_Akcja_Zaraza", new[] { "PN_Kons_Straty" } },
+        { "PN_Akcja_Zwarcie", new[] { "PN_Kons_Straty" } },
+        { "PN_Akcja_FalaPsychiczna", new[] { "PN_Kons_Psychika" } },
+        { "PN_Akcja_KojacaFala", new[] { "PN_Kons_Psychika" } },
+        { "PN_Akcja_Defoliator", new[] { "PN_Kons_ZnakNaNiebie", "PN_Kons_Straty" } },
+        // Krok 9, K2 (decyzje autora K2-b, K2-d, K2-h): rodzina "anomalia" pisze Groza; zdarzenia ukryte - nic.
+        { "PN_Akcja_KlasterMaszyn", new[] { "PN_Kons_ZnakNaNiebie" } },
+        { "PN_Akcja_ZrodloKlopotow", new[] { "PN_Kons_Plotki" } },
+        { "PN_Akcja_Abazja", new[] { "PN_Kons_NowyCzlowiek", "PN_Kons_Plotki" } },
+        { "PN_Akcja_RojTrupow", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_RojZwierzat", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_GarstkaTrupow", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_SzturmTrupow", new[] { "PN_Kons_SladWalki", "PN_Kons_Groza" } },
+        { "PN_Akcja_Miesobestie", new[] { "PN_Kons_SladWalki", "PN_Kons_Groza" } },
+        { "PN_Akcja_Kolcarze", new[] { "PN_Kons_SladWalki", "PN_Kons_Groza" } },
+        { "PN_Akcja_Pozeracze", new[] { "PN_Kons_SladWalki", "PN_Kons_Groza" } },
+        { "PN_Akcja_PozeraczeZWody", new[] { "PN_Kons_SladWalki", "PN_Kons_Groza" } },
+        { "PN_Akcja_Chimery", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Ghul", new[] { "PN_Kons_SladWalki", "PN_Kons_Groza" } },
+        { "PN_Akcja_PiesnNienawisci", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_RytualKultu", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Oczyslepy", new string[0] },
+        { "PN_Akcja_Wrzaski", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Zjawa", new string[0] },
+        { "PN_Akcja_Kregoslup", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Wszczep", new string[0] },
+        { "PN_Akcja_BramaOtchlani", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_SerceZMiesa", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Nocisfera", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_ObeliskA", new[] { "PN_Kons_Groza", "PN_Kons_ZnakNaNiebie" } },
+        { "PN_Akcja_ObeliskD", new[] { "PN_Kons_Groza", "PN_Kons_ZnakNaNiebie" } },
+        { "PN_Akcja_ObeliskM", new[] { "PN_Kons_Groza", "PN_Kons_ZnakNaNiebie" } },
+        { "PN_Akcja_LadunekC", new[] { "PN_Kons_Plotki" } },
+        { "PN_Akcja_LadunekS", new[] { "PN_Kons_Plotki" } },
+        { "PN_Akcja_LadunekZ", new[] { "PN_Kons_Plotki" } },
+        { "PN_Akcja_KrwawyDeszcz", new[] { "PN_Kons_Pogoda", "PN_Kons_Groza" } },
+        { "PN_Akcja_Calun", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Ciemnosc", new[] { "PN_Kons_Groza" } },
+        { "PN_Akcja_Przybysz", new[] { "PN_Kons_NowyCzlowiek" } },
+        { "PN_Akcja_PrzybyszM", new[] { "PN_Kons_NowyCzlowiek" } },
     };
 
     /// <summary>
@@ -91,6 +195,13 @@ static class TestsComposition
         { "walka.byla", new[] { "PN_Kons_SladWalki", "PN_Kons_Trofea" } },
         { "niebo.znak", new[] { "PN_Kons_ZnakNaNiebie" } },
         { "wiesci.zrodlo", new[] { "PN_Kons_Plotki" } },
+        // Krok 9, K1: czytaja je nowe luki (Kaprysy pogody, Ruch w dziczy, Szepty, Chude dni).
+        { "pogoda.zla", new[] { "PN_Kons_Pogoda" } },
+        { "zwierzeta.przybyly", new[] { "PN_Kons_Zwierzyna", "PN_Kons_Inwentarz" } },
+        { "dobytek.straty", new[] { "PN_Kons_Straty" } },
+        { "psychika.fala", new[] { "PN_Kons_Psychika" } },
+        // Krok 9, K2 (decyzja autora K2-d): czyta go luk "Cos sie budzi".
+        { "anomalia.byla", new[] { "PN_Kons_Groza" } },
     };
 
     /// <summary>
@@ -136,8 +247,64 @@ static class TestsComposition
         { "PN_Akcja_Meteoryt", new[] { 0f, 1f, 0f, 0f } },
         { "PN_Akcja_Wedrowiec", new[] { 0f, 0f, 1f, 0f } },
         { "PN_Akcja_Uchodzcy", new[] { 0f, 0f, 1f, 0f } },
-        { "PN_Akcja_Dzikus", new[] { 0f, 0f, 1f, 0f } }
+        { "PN_Akcja_Dzikus", new[] { 0f, 0f, 1f, 0f } },
+        // Krok 9, K1 (tabela z Docs/K1_PROPOZYCJA.md, zatwierdzona K1-i).
+        { "PN_Akcja_Mroz", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Upal", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Opad", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_ZimaWulkaniczna", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_SzalStada", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Alfabobry", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Hodowlane", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Migracja", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Oswojenie", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Thrumbo", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Zaraza", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Zwarcie", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_Defoliator", new[] { 1f, 0f, 0f, 0f } },
+        // Decyzja autora K1-h: bez wag (flaga styleNeutral w XML) - nastroj nie jest zadna z czterech cech.
+        { "PN_Akcja_FalaPsychiczna", new[] { 0f, 0f, 0f, 0f } },
+        { "PN_Akcja_KojacaFala", new[] { 0f, 0f, 0f, 0f } },
+        // Krok 9, K2 (tabele z Docs/K2_PROPOZYCJA.md sekcja 5, zatwierdzone K2-h).
+        { "PN_Akcja_KlasterMaszyn", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_ZrodloKlopotow", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_Abazja", new[] { 0f, 0f, 1f, 0f } },
+        { "PN_Akcja_RojTrupow", new[] { 0.5f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_RojZwierzat", new[] { 0.5f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_GarstkaTrupow", new[] { 0.5f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_SzturmTrupow", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Miesobestie", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Kolcarze", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Pozeracze", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_PozeraczeZWody", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Chimery", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_Ghul", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_PiesnNienawisci", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_RytualKultu", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Oczyslepy", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_Wrzaski", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Zjawa", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_Kregoslup", new[] { 0f, 0f, 0f, 1f } },
+        { "PN_Akcja_BramaOtchlani", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_SerceZMiesa", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_Nocisfera", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_ObeliskA", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_ObeliskD", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_ObeliskM", new[] { 1f, 0f, 0f, 0f } },
+        { "PN_Akcja_LadunekC", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_LadunekS", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_LadunekZ", new[] { 0f, 1f, 0f, 0f } },
+        { "PN_Akcja_KrwawyDeszcz", new[] { 0f, 0f, 0f, 1f } },
+        { "PN_Akcja_Calun", new[] { 0f, 0f, 0f, 1f } },
+        { "PN_Akcja_Ciemnosc", new[] { 1f, 0f, 0f, 0.5f } },
+        { "PN_Akcja_Przybysz", new[] { 0f, 0f, 1f, 0f } },
+        { "PN_Akcja_PrzybyszM", new[] { 0f, 0f, 1f, 0f } },
+        // Wszczep (zdarzenie ukryte): bez wag - gracz nie wie o zdarzeniu, wiec nie ma na co zareagowac.
+        { "PN_Akcja_Wszczep", new[] { 0f, 0f, 0f, 0f } },
     };
+
+    /// <summary>Akcje swiadomie bez wag stylu (decyzje autora K1-h i K2-h) - jedyne, ktorym wolno miec sume wag 0.</summary>
+    public static readonly string[] BezStylu = { "PN_Akcja_FalaPsychiczna", "PN_Akcja_KojacaFala", "PN_Akcja_Wszczep" };
 
     public static void KontraktTresci(List<Block> blocks, CompatibilityGraph graph, XmlConfig cfg, string[] plikiKlockow)
     {
@@ -220,9 +387,15 @@ static class TestsComposition
             float[] spec = WagiStyluAkcji[b.Id];
             bool zgodne = b.StyleWeights != null && b.StyleWeights.walka == spec[0] && b.StyleWeights.gospodarka == spec[1]
                           && b.StyleWeights.ekspansja == spec[2] && b.StyleWeights.reaktywnosc == spec[3];
-            T.Ok("wagi stylu " + b.Id + " == specyfikacja", zgodne && b.StyleWeights.Total() > 0f,
+            bool neutralna = BezStylu.Contains(b.Id);
+            T.Ok("wagi stylu " + b.Id + " == specyfikacja", zgodne && (neutralna ? b.StyleWeights.Total() == 0f : b.StyleWeights.Total() > 0f),
                  b.StyleWeights == null ? "null" : b.StyleWeights.Describe());
         }
+        // Flaga styleNeutral w XML == tabela BezStylu: akcja bez wag to decyzja zapisana w danych, nie przeoczenie.
+        var neutralneXml = blocks.Where(x => x.StyleNeutral).Select(x => x.Id).OrderBy(x => x, StringComparer.Ordinal).ToList();
+        T.EqS("flaga styleNeutral == tabela BezStylu (decyzja K1-h)", string.Join(",", neutralneXml),
+              string.Join(",", BezStylu.OrderBy(x => x, StringComparer.Ordinal)));
+        T.Ok("styleNeutral tylko na akcjach", blocks.All(x => !x.StyleNeutral || x.Type == BlockType.Action), "");
         var zWagami = blocks.Where(x => x.Type != BlockType.Action && x.StyleWeights != null && x.StyleWeights.Total() != 0f).ToList();
         T.Ok("wagi stylu deklaruje WYLACZNIE klocek akcji", zWagami.Count == 0, string.Join(",", zWagami.Select(x => x.Id)));
         var zeStylem = blocks.Where(x => (x.Conditions ?? new List<NarrativeCondition>()).Concat(x.Preferences ?? new List<NarrativeCondition>())
@@ -236,7 +409,9 @@ static class TestsComposition
     /// sygnatury zostaje pusty (pusty slot opcjonalny wylacznie jako WYMUSZONY).
     /// Czesc specyfikacji katalogu, trzymana obok tabeli rozbicia.
     /// </summary>
-    public static readonly string[] BezKonsekwencji = { "PN_Akcja_Okup", "PN_Akcja_Ambrozja" };
+    // Krok 9, K2-b: zdarzenia ukryte nie maja konsekwencji (nie pisza faktow).
+    public static readonly string[] BezKonsekwencji = { "PN_Akcja_Okup", "PN_Akcja_Ambrozja", "PN_Akcja_Oczyslepy", "PN_Akcja_Zjawa",
+                                                        "PN_Akcja_Wszczep" };
 
     /// <summary>Calkowita przestrzen kombinacji - SUMA specyfikacji, nie osobny literal.</summary>
     public static int Lacznie
@@ -255,7 +430,10 @@ static class TestsComposition
     /// z tabeli rozbicia (tamta zna wylacznie sloty akcji), wiec zostaje literalem -
     /// ale jednym, nazwanym i w tym samym miejscu co reszta specyfikacji.
     /// </summary>
-    public const int OczekiwanychKlockow = 30;
+    // Krok 9, K1: 30 + 3 aktorow (Maszyny, Hodowlane, Los) + 15 akcji toru Core + 5 konsekwencji = 53.
+    // Krok 9, K2: + 3 akcje Royalty + 31 akcji Anomaly + 2 aktorow (Otchlan, Kult) + 1 konsekwencja (Groza) = 90
+    // (katalog wczytany ze WSZYSTKIMI DLC; bez DLC walidator wraca do 53 - TEST 20).
+    public const int OczekiwanychKlockow = 90;
 
     /// <summary>
     /// Liczba wariantow najwiekszej akcji. Uzywana przez test granicy enumeracja/probkowanie,
@@ -279,7 +457,10 @@ static class TestsComposition
         var tagi = new List<string> { null, "militarny", "spoleczny", "zasoby", "pogoda", "psychika", "szantaz", "dzicz" };
         foreach (var tag in tagi)
         {
-            for (int s = 0; s < 3000; s++)
+            // Krok 9, K2: 3000 -> 12000 prob. Przy 408 kombinacjach 3000 ziaren gubilo 5 najrzadszych (wariant akcji
+            // z 16 wariantami ma szanse ok. 1/62 * 1/16 na probe bez tagu, czyli ok. 3 trafienia na 3000 - e^-3 = 5% braku
+            // na kombinacje). 12000 daje ok. 12 trafien i szanse braku e^-12 na kombinacje.
+            for (int s = 0; s < 12000; s++)
             {
                 ComposedEvent e = composer.TryCompose(new EventRecipe { RequiredActionTag = tag }, new SeededRandom(s), null);
                 if (e != null) przezTryCompose.Add(e.Signature);
@@ -290,7 +471,20 @@ static class TestsComposition
         // 117 = stan po S5; +1 = zakaz Wrak x Uchodzcy (S6); +2 = zakazy Dzikie x Rojenie i Plotki x Dzikus
         // (przeglad S10 kroku 8). Literal zostaje (wyprowadzenie z tych samych danych, ktore laduje graf, byloby
         // tautologia przy loaderze gubiacym krawedzie), ale jest rozpisany.
-        T.EqI("graf: 117 + 1 + 2 zabronionych krawedzi", graph.ForbiddenEdgeCount, 117 + 1 + 2);
+        // KROK 9, K1: +368. Kazda nowa akcja z listy onlyWith zakazuje wszystkich aktorow i konsekwencji spoza listy,
+        // plus wyzwalacz Bogactwo w incompatibleWith. Po K1 katalog ma 8 aktorow i 11 konsekwencji (19 klockow
+        // objetych listami), wiec akcja z a aktorami i k konsekwencjami na liscie dostaje 19 - a - k zakazow z listy
+        // i 1 zakaz wyzwalacza: 20 - a - k. Suma po 15 akcjach (a + k z tabeli DozwoloneKonsekwencje i list aktorow):
+        //   Mroz 18, Upal 18, Opad 17, Zima 18, SzalStada 17, Alfabobry 17, Hodowlane 18, Migracja 18, Oswojenie 18,
+        //   Thrumbo 18, Zaraza 17, Zwarcie 18, FalaPsychiczna 18, KojacaFala 18, Defoliator 16 = 264.
+        // Do tego nowe klocki zmieniaja listy STARYCH akcji: 3 nowych aktorow i 5 nowych konsekwencji jest poza
+        // listami 13 starych akcji (13 x 8 = 104). 264 + 104 = 368.
+        // KROK 9, K2: +702 +84. Po K2 katalog (wszystkie DLC) ma 10 aktorow i 12 konsekwencji (22 klocki objete listami),
+        // wiec nowa akcja z a aktorami i k konsekwencjami dostaje 22 - a - k zakazow z listy i 1 zakaz wyzwalacza:
+        // 23 - a - k. Suma po 34 akcjach: 34 x 23 - suma a - suma k = 782 - 38 - 42 = 702, gdzie suma a = 38 (31 akcji
+        // z jednym aktorem, Wrzaski i trzy obeliski z dwoma) i suma k = 42 (z tabeli DozwoloneKonsekwencje).
+        // 28 akcji sprzed K2 dostaje po 3 zakazy nowych klockow (Otchlan, Kult, Groza): 84. 488 + 702 + 84 = 1274.
+        T.EqI("graf: 117 + 1 + 2 + 368 + 702 + 84 zabronionych krawedzi", graph.ForbiddenEdgeCount, 117 + 1 + 2 + 368 + 702 + 84);
         T.EqI("klockow akcji: " + Akcji, blocks.Count(b => b.Type == BlockType.Action), Akcji);
         // Liczba segmentow sygnatury bierze sie z LICZBY TYPOW SLOTOW, a nie z przepisanej liczby:
         // krok 6 dolozyl slot Consequence, wiec segmentow jest szesc. Pusty jest DOKLADNIE ten
@@ -394,7 +588,7 @@ static class TestsComposition
 
         // Legalnosc grafu i ksztalt kandydata na calym zbiorze.
         var gen = new CandidateGenerator(composer);
-        CandidateSet pelny = gen.Generate(new EventRecipe(), null, new SeededRandom(1), 400);
+        CandidateSet pelny = gen.Generate(new EventRecipe(), null, new SeededRandom(1), budzetZXml);
         int zlamania = 0, zleSloty = 0;
         foreach (ComposedEvent e in pelny.Candidates)
         {
@@ -414,21 +608,44 @@ static class TestsComposition
         T.EqI("unikalnych sygnatur w CandidateSet", pelny.Candidates.Select(c => c.Signature).Distinct().Count(), Lacznie);
 
         // ---------------------------------------------------------------- TEST 1
-        T.Section("TEST 1 - BUDZET OCEN: 400 -> pelna enumeracja, 40 -> probkowanie");
+        // Krok 9 (K0): budzety testu wyprowadzane z KATALOGU, a nie wpisane (dawniej 400 i 40 przy 13 akcjach) -
+        // pelne pokrycie toru zmieni liczbe akcji z 13 na 62, a literaly przestalyby znaczyc to, co znaczyly.
+        //   bPelny = Akcji * maksimum wariantow - najmniejszy budzet generowania BEZ LOSOWAN (K = maksimum; pelny
+        //            zestaw zachodzi juz od budzetu = liczba wariantow - rozroznienie nizej, wlasnosci (1) i (2));
+        //   bMaly  = 3 * Akcji + Akcji / 2      - probkowanie: K = 3 i reszta dla polowy akcji.
+        int maxWariantow = gen.Generate(new EventRecipe(), null, new SeededRandom(7), 1000000).PerAction.Max(p => p.VariantsSeen);
+        int bPelny = Akcji * maxWariantow;
+        int bMaly = 3 * Akcji + Akcji / 2;
+        T.Section("TEST 1 - BUDZET OCEN: pelny (" + bPelny + ") -> pelna enumeracja, maly (" + bMaly + ") -> probkowanie");
         var licznik400 = new CountingRandom(1);
-        CandidateSet b400 = gen.Generate(new EventRecipe(), null, licznik400, 400);
-        T.EqI("budzet 400: liczba kandydatow", b400.Candidates.Count, Lacznie);
-        T.Ok("budzet 400: wyczerpano == true", b400.Exhausted, "Exhausted=" + b400.Exhausted);
-        T.EqI("budzet 400: ActionCount", b400.ActionCount, Akcji);
-        T.EqI("budzet 400: PerActionQuota K = floor(400/" + Akcji + ")", b400.PerActionQuota, 400 / Akcji);
-        T.EqI("budzet 400: TotalVariants", b400.TotalVariants, Lacznie);
-        T.Ok("budzet 400: BudgetExceeded == false", !b400.BudgetExceeded, null);
-        T.Ok("budzet 400: Truncated == false", !b400.Truncated, null);
-        T.EqI("budzet 400: ZERO wywolan rng.Next", licznik400.NextCalls, 0);
-        T.EqI("budzet 400: ZERO wywolan rng.Pick", licznik400.PickCalls, 0);
-        T.EqI("budzet 400: PerAction.Count == ActionCount", b400.PerAction.Count, b400.ActionCount);
-        T.EqI("budzet 400: suma Returned == Candidates.Count", b400.PerAction.Sum(p => p.Returned), b400.Candidates.Count);
-        T.EqI("budzet 400: suma VariantsSeen == TotalVariants", b400.PerAction.Sum(p => p.VariantsSeen), b400.TotalVariants);
+        CandidateSet b400 = gen.Generate(new EventRecipe(), null, licznik400, bPelny);
+        T.EqI("budzet pelny: liczba kandydatow", b400.Candidates.Count, Lacznie);
+        T.Ok("budzet pelny: wyczerpano == true", b400.Exhausted, "Exhausted=" + b400.Exhausted);
+        T.EqI("budzet pelny: ActionCount", b400.ActionCount, Akcji);
+        T.EqI("budzet pelny: PerActionQuota K = maksimum wariantow", b400.PerActionQuota, maxWariantow);
+        T.EqI("budzet pelny: TotalVariants", b400.TotalVariants, Lacznie);
+        T.Ok("budzet pelny: BudgetExceeded == false", !b400.BudgetExceeded, null);
+        T.Ok("budzet pelny: Truncated == false", !b400.Truncated, null);
+        T.EqI("budzet pelny: ZERO wywolan rng.Next", licznik400.NextCalls, 0);
+        T.EqI("budzet pelny: ZERO wywolan rng.Pick", licznik400.PickCalls, 0);
+        T.EqI("budzet pelny: PerAction.Count == ActionCount", b400.PerAction.Count, b400.ActionCount);
+        T.EqI("budzet pelny: suma Returned == Candidates.Count", b400.PerAction.Sum(p => p.Returned), b400.Candidates.Count);
+        T.EqI("budzet pelny: suma VariantsSeen == TotalVariants", b400.PerAction.Sum(p => p.VariantsSeen), b400.TotalVariants);
+        // DWIE ROZNE WLASNOSCI (sprostowanie przy K0, 2026-09-25 - pierwsza wersja tej asercji je mylila):
+        //  (1) ZERO LOSOWAN przy generowaniu zachodzi dokladnie od K = maksimum wariantow: przy K o jeden mniejszym
+        //      przebieg 1 losuje probke najwiekszej akcji (reservoir), nawet jesli przebieg 2 potem ja uzupelni;
+        //  (2) PELNY ZESTAW kandydatow zachodzi juz od budzetu = liczba wszystkich wariantow, bo przebieg 2
+        //      rozdziela niewykorzystana reszte (BudgetSplitter) - ponizej tego progu zestaw jest niepelny.
+        var licznikMniej = new CountingRandom(1);
+        CandidateSet bJedenMniej = gen.Generate(new EventRecipe(), null, licznikMniej, bPelny - Akcji);
+        T.Ok("(1) przy K = maksimum - 1 generowanie juz losuje (zero losowan wymaga K >= maksimum)",
+             licznikMniej.NextCalls + licznikMniej.PickCalls > 0, "Next=" + licznikMniej.NextCalls + " Pick=" + licznikMniej.PickCalls);
+        CandidateSet bRowno = gen.Generate(new EventRecipe(), null, new SeededRandom(1), Lacznie);
+        CandidateSet bBrakJednego = gen.Generate(new EventRecipe(), null, new SeededRandom(1), Lacznie - 1);
+        T.Ok("(2) budzet = liczba wariantow: pelny zestaw (reszta rozdzielona w przebiegu 2)",
+             bRowno.Exhausted && bRowno.Candidates.Count == Lacznie, "n=" + bRowno.Candidates.Count);
+        T.Ok("(2) budzet o jeden mniejszy: zestaw niepelny", !bBrakJednego.Exhausted && bBrakJednego.Candidates.Count == Lacznie - 1,
+             "n=" + bBrakJednego.Candidates.Count);
 
         // WLASNOSC "RANKING NIE ZUZYWA ANI JEDNEGO LOSOWANIA" ZALEZY OD KONFIGURACJI, nie od literalu
         // 400 powyzej. Trzyma sie dokladnie dopoki K = budzet / liczba_akcji jest >= maksimum
@@ -440,7 +657,7 @@ static class TestsComposition
         int kZXml = budzetZXml / Akcji;
         T.Ok("STRAZNIK: katalog ma akcje z wariantami (inaczej asercja budzetu jest pusta)",
              maxNaAkcje > 0 && bezLimitu.PerAction.Count > 0, "max na akcje " + maxNaAkcje);
-        T.Ok("budzet z XML: K >= maksimum wariantow na akcje (warunek pelnej enumeracji)",
+        T.Ok("budzet z XML: K >= maksimum wariantow na akcje (warunek generowania bez losowan)",
              kZXml >= maxNaAkcje,
              "budzet " + budzetZXml + " / akcji " + Akcji + " = K " + kZXml + ", max na akcje " + maxNaAkcje);
         var licznikKonf = new CountingRandom(3);
@@ -470,26 +687,26 @@ static class TestsComposition
         T.Ok("granica sanitarna kosztu generowania: < 50 ms na ture (offline)", msNaTure < 50.0,
              msNaTure.ToString("0.000", CultureInfo.InvariantCulture) + " ms");
 
-        CandidateSet b40 = gen.Generate(new EventRecipe(), null, new SeededRandom(1), 40);
-        T.Ok("budzet 40: kandydatow <= 40", b40.Candidates.Count <= 40, "kandydatow=" + b40.Candidates.Count);
-        T.EqI("budzet 40: kandydatow == 40 (SPEC: K=" + (40 / Akcji) + " x " + Akcji
-              + " + " + (40 % Akcji) + " z reszty)", b40.Candidates.Count, 40);
-        T.Ok("budzet 40: wyczerpano == false", !b40.Exhausted, "Exhausted=" + b40.Exhausted);
-        T.EqI("budzet 40: PerActionQuota K = floor(40/" + Akcji + ")", b40.PerActionQuota, 40 / Akcji);
-        T.EqI("budzet 40: TotalVariants nadal " + Lacznie, b40.TotalVariants, Lacznie);
-        T.EqI("budzet 40: brak duplikatow (przebieg 2 PODMIENIA, nie doklej)",
+        CandidateSet b40 = gen.Generate(new EventRecipe(), null, new SeededRandom(1), bMaly);
+        T.Ok("budzet maly: kandydatow <= budzet", b40.Candidates.Count <= bMaly, "kandydatow=" + b40.Candidates.Count);
+        T.EqI("budzet maly: kandydatow == budzet (SPEC: K=" + (bMaly / Akcji) + " x " + Akcji
+              + " + " + (bMaly % Akcji) + " z reszty)", b40.Candidates.Count, bMaly);
+        T.Ok("budzet maly: wyczerpano == false", !b40.Exhausted, "Exhausted=" + b40.Exhausted);
+        T.EqI("budzet maly: PerActionQuota K = floor(budzet/" + Akcji + ") = 3", b40.PerActionQuota, 3);
+        T.EqI("budzet maly: TotalVariants nadal " + Lacznie, b40.TotalVariants, Lacznie);
+        T.EqI("budzet maly: brak duplikatow (przebieg 2 PODMIENIA, nie doklej)",
               b40.Candidates.Select(c => c.Signature).Distinct().Count(), b40.Candidates.Count);
         // Reszta z dzielenia idzie do PIERWSZYCH ordynalnie akcji. Zbior uprzywilejowanych
         // WYPROWADZAMY z tabeli specyfikacji, zamiast wpisywac nazwy z reki - inaczej kazda
         // dosypka katalogu wymagalaby recznej korekty tej listy, a pomylka w niej wygladalaby
         // jak blad water-fillingu.
-        int kwota40 = 40 / Akcji;
-        int nadwyzka40 = 40 % Akcji;
+        int kwota40 = bMaly / Akcji;
+        int nadwyzka40 = bMaly % Akcji;
         var uprzywilejowane = new HashSet<string>(
             Oczekiwane.Keys.OrderBy(x => x, StringComparer.Ordinal).Take(nadwyzka40));
         bool rozdzialOk = b40.PerAction.All(
             p => p.Returned == (uprzywilejowane.Contains(p.ActionId) ? kwota40 + 1 : kwota40));
-        T.Ok("budzet 40: " + nadwyzka40 + " pierwszych akcji ordynalnie dostaje po " + (kwota40 + 1)
+        T.Ok("budzet maly: " + nadwyzka40 + " pierwszych akcji ordynalnie dostaje po " + (kwota40 + 1)
              + ", reszta po " + kwota40, rozdzialOk,
              string.Join(", ", b40.PerAction.Select(p => p.ActionId.Replace("PN_Akcja_", "") + "=" + p.Returned)));
 
@@ -497,7 +714,7 @@ static class TestsComposition
         var licznikiWariantow = new Dictionary<string, int>();
         for (int seed = 0; seed < 200; seed++)
         {
-            CandidateSet cs = gen.Generate(new EventRecipe(), null, new SeededRandom(seed), 40);
+            CandidateSet cs = gen.Generate(new EventRecipe(), null, new SeededRandom(seed), bMaly);
             foreach (ComposedEvent e in cs.Candidates)
             {
                 if (e.ActionBlockId != NazwaNajwiekszej) continue;
@@ -510,20 +727,25 @@ static class TestsComposition
         int minL = roznych == 0 ? 0 : licznikiWariantow.Values.Min();
         int maxL = roznych == 0 ? 0 : licznikiWariantow.Values.Max();
         T.EqI("rozproszenie: kazdy z " + NajwiekszaAkcja + " wariantow " + NazwaNajwiekszej
-              + " wystapil (200 ziaren, K=" + (40 / Akcji) + ")", roznych, NajwiekszaAkcja);
-        T.Ok("rozproszenie: licznosci w pasmie 10..90 (wartosc oczekiwana 37.5)", minL >= 10 && maxL <= 90,
-             "min=" + minL + " max=" + maxL);
+              + " wystapil (200 ziaren, K=" + kwota40 + ")", roznych, NajwiekszaAkcja);
+        // Wartosc oczekiwana = 200 ziaren * K / liczba wariantow (przy 16 wariantach i K = 3: 37,5); pasmo jak dawniej
+        // 10..90 przy 37,5, czyli wzglednie 0,27..2,4 wartosci oczekiwanej.
+        double oczekiwana = 200.0 * kwota40 / NajwiekszaAkcja;
+        T.Ok("rozproszenie: licznosci w pasmie 0,27..2,4 wartosci oczekiwanej (" + oczekiwana.ToString("0.0", CultureInfo.InvariantCulture) + ")",
+             minL >= 0.27 * oczekiwana && maxL <= 2.4 * oczekiwana, "min=" + minL + " max=" + maxL);
 
         // Skrajne przypadki budzetu.
         CandidateSet b5 = gen.Generate(new EventRecipe(), null, new SeededRandom(1), 5);
         T.Ok("budzet 5 (m>B): K wymuszone na 1, " + Akcji + " kandydatow, BudgetExceeded",
              b5.PerActionQuota == 1 && b5.Candidates.Count == Akcji && b5.BudgetExceeded && !b5.Exhausted,
              "K=" + b5.PerActionQuota + " n=" + b5.Candidates.Count + " przekr=" + b5.BudgetExceeded);
-        CandidateSet bBrak = gen.Generate(new EventRecipe { RequiredActionTag = "tag-ktorego-nie-ma" }, null, new SeededRandom(1), 400);
+        CandidateSet bBrak = gen.Generate(new EventRecipe { RequiredActionTag = "tag-ktorego-nie-ma" }, null, new SeededRandom(1), budzetZXml);
         T.Ok("tag nieistniejacy: 0 kandydatow, ActionCount 0, Exhausted true",
              bBrak.Candidates.Count == 0 && bBrak.ActionCount == 0 && bBrak.Exhausted, bBrak.Trace);
 
-        T.Ok("budzet z XML == 400 (zgodny z budzetem testu)", budzetZXml == 400, "XML candidateBudget=" + budzetZXml);
+        T.Ok("budzet z XML == 1600 (krok 9, K0: K >= maksimum wariantow przy 62 akcjach pelnego pokrycia)",
+             budzetZXml == 1600, "XML candidateBudget=" + budzetZXml);
+        T.EqI("stala awaryjna CandidateGenerator.DefaultBudget == budzet z XML", CandidateGenerator.DefaultBudget, budzetZXml);
 
         // Niezaleznosc od kolejnosci katalogu (sortowanie ordynalne w konstruktorze).
         var rndPerm = new Random(4242);
@@ -534,7 +756,7 @@ static class TestsComposition
             List<Block> shuffled = blocks.OrderBy(x => rndPerm.Next()).ToList();
             var comp2 = new EventComposer(shuffled, graph);
             var gen2 = new CandidateGenerator(comp2);
-            CandidateSet cs = gen2.Generate(new EventRecipe(), null, new SeededRandom(1), 400);
+            CandidateSet cs = gen2.Generate(new EventRecipe(), null, new SeededRandom(1), budzetZXml);
             if (string.Join(";", cs.Candidates.Select(c => c.Signature)) != wzorzec) permOk = false;
         }
         T.Ok("20 permutacji katalogu daje identyczna liste sygnatur", permOk, null);

@@ -44,12 +44,15 @@ static class TestsArcs
 
         // Zestaw lukow to DECYZJE AUTORA: nr 9 kroku 5 (2026-09-22) i nr 15/18 kroku 7 (2026-09-24, cztery
         // luki pod styl gracza) - zmiana SPECYFIKACJI, wiec porownujemy z nowa lista, a nie luzujemy testu.
+        // Krok 9, K1 (decyzja autora K1-f, 2026-09-26): + cztery luki czytajace nowe fakty.
         var oczekiwane = new[]
         {
-            "PN_Luk_Dostatek", "PN_Luk_GniewNatury", "PN_Luk_NiespokojneNoce", "PN_Luk_Scigani",
-            "PN_Luk_SlawaTwierdzy", "PN_Luk_Wendeta", "PN_Luk_ZiemiaObiecana", "PN_Luk_ZnakiZNieba"
+            "PN_Luk_ChudeDni", "PN_Luk_CosSieBudzi", "PN_Luk_Dostatek", "PN_Luk_GniewNatury", "PN_Luk_KaprysyPogody",
+            "PN_Luk_NiespokojneNoce", "PN_Luk_RuchWDziczy", "PN_Luk_Scigani", "PN_Luk_SlawaTwierdzy", "PN_Luk_Szepty",
+            "PN_Luk_Wendeta", "PN_Luk_ZiemiaObiecana", "PN_Luk_ZnakiZNieba"
         };
-        T.EqS("katalog = osiem lukow z decyzji autora (4 z kroku 5 + 4 pod styl z kroku 7)",
+        // Krok 9, K2 (decyzja autora K2-d): + Cos sie budzi (tylko z DLC Anomaly, MayRequire).
+        T.EqS("katalog = trzynascie lukow z decyzji autora (4 z kroku 5 + 4 pod styl z kroku 7 + 4 z K1 + 1 z K2)",
               string.Join(",", kat.Arcs.Select(a => a.defName).OrderBy(x => x, StringComparer.Ordinal)),
               string.Join(",", oczekiwane));
 
@@ -274,13 +277,14 @@ static class TestsArcs
     {
         // Pelny swiat dnia 40: kazdy warunek twardy katalogu jest spelnialny naraz (ten sam
         // uklad co snapD40 w sekcji [5c], ktorej asercja wymaga osiagalnosci CALEGO katalogu).
-        return new WorldSnapshot
+        // Krok 9, K1: pola rejestru ustawione na "dostepne" (TestsCoreContent.ZTrescia).
+        return TestsCoreContent.ZTrescia(new WorldSnapshot
         {
             DaysPassed = 40, ColonistCount = 6, ColonyWealth = 40000, WealthRelative = 1.5f,
             MountainRoofCellsNearColony = 250, HasHostileFaction = true, Season = 2, IsNight = noc,
             WildAnimalCount = 8, MaddenableAnimalCount = 6, ThreatPoints = 600f, DaysSinceLastEvent = 6f,
             KidnappedColonistCount = 2, HasPoweredCommsConsole = true
-        };
+        });
     }
 
     static List<ComposedEvent> Warianty(EventComposer composer, WorldSnapshot s)
@@ -360,9 +364,18 @@ static class TestsArcs
         var dzienBezGor = Scena(false);
         dzienBezGor.MountainRoofCellsNearColony = 0;
         int trafNoc = trafienKulm(nocBezGor);
-        int trafDzien = trafienKulm(dzienBezGor);
         T.Ok("kulminacja Gniewu natury osiagalna NOCA bez dachu gorskiego (R4-3: kazda mapa)", trafNoc > 0, "wariantow: " + trafNoc);
-        T.EqI("kulminacja Gniewu natury NIEosiagalna za dnia bez dachu gorskiego (Mod_Slabo -1)", trafDzien, 0);
+        // KROK 9, K1: za dnia kulminacja jest juz osiagalna, ale WYLACZNIE nowymi akcjami skali Major (szal stada,
+        // opad toksyczny, zima wulkaniczna). Alternatywa "Moderate z moca >= Normal" dalej nie daje za dnia nic, bo
+        // Mod_Slabo (-1) zajmuje slot modyfikatora - to jest fakt, na ktorym stoi decyzja R4-3.
+        var trafieniaDnia = Warianty(composer, dzienBezGor)
+            .Where(k => kulm != null && kulm.expectations.Any(e => e.Matches(widok(k), null, out w2))).ToList();
+        T.Ok("za dnia bez dachu gorskiego kulminacje Gniewu natury daja tylko zdarzenia skali Major",
+             trafieniaDnia.Count > 0 && trafieniaDnia.All(k => k.Scale == EventScale.Major),
+             "wariantow: " + trafieniaDnia.Count + ", skale: " + string.Join(",", trafieniaDnia.Select(k => k.Scale).Distinct()));
+        T.EqS("za dnia bez dachu gorskiego kulminacje daja dokladnie: szal stada, opad, zima wulkaniczna",
+              string.Join(",", trafieniaDnia.Select(k => k.ActionBlockId).Distinct().OrderBy(x => x, StringComparer.Ordinal)),
+              "PN_Akcja_Opad,PN_Akcja_SzalStada,PN_Akcja_ZimaWulkaniczna");
     }
 
     // =====================================================================================
@@ -374,9 +387,15 @@ static class TestsArcs
         var akcje = blocks.Where(b => b.Type == BlockType.Action).ToList();
         Func<string, string> zTagiem = tag => string.Join(",", akcje.Where(b => b.Tags.Contains(tag)).Select(b => b.Id)
                                                                      .OrderBy(x => x, StringComparer.Ordinal));
-        T.EqS("tag 'niebo' = Meteoryt, Zrzut, Burza, Emanator (katalog Znakow z nieba)", zTagiem("niebo"),
-              "PN_Akcja_Burza,PN_Akcja_Emanator,PN_Akcja_Meteoryt,PN_Akcja_Zrzut");
-        T.EqS("tag 'kapsula' = Uchodzcy", zTagiem("kapsula"), "PN_Akcja_Uchodzcy");
+        // Krok 9, K1: + Opad toksyczny i Defoliator (oba "spadaja z nieba"; komunikaty Znakow z nieba sprawdzone dla nich
+        // w Docs/K1_PROPOZYCJA.md 6a).
+        // Krok 9, K2: + klaster mechanoidow (kapsuly), krwawy deszcz i trzy obeliski (Docs/K2_PROPOZYCJA.md 7a).
+        T.EqS("tag 'niebo' = Meteoryt, Zrzut, Burza, Emanator, Opad, Defoliator, Klaster, Krwawy deszcz, obeliski (katalog Znakow z nieba)",
+              zTagiem("niebo"),
+              "PN_Akcja_Burza,PN_Akcja_Defoliator,PN_Akcja_Emanator,PN_Akcja_KlasterMaszyn,PN_Akcja_KrwawyDeszcz,PN_Akcja_Meteoryt,"
+              + "PN_Akcja_ObeliskA,PN_Akcja_ObeliskD,PN_Akcja_ObeliskM,PN_Akcja_Opad,PN_Akcja_Zrzut");
+        // Krok 9, K2: + Abazja (czlowiek w kapsule transportowej - Scigani / Zasiew).
+        T.EqS("tag 'kapsula' = Uchodzcy, Abazja", zTagiem("kapsula"), "PN_Akcja_Abazja,PN_Akcja_Uchodzcy");
         T.EqS("carriesFaction wylacznie na Napadzie (jedyny RaidEnemy)",
               string.Join(",", blocks.Where(b => b.CarriesFaction).Select(b => b.Id)), "PN_Akcja_Napad");
         T.EqI("tag 'niebo' tylko na klockach akcji", blocks.Count(b => b.Type != BlockType.Action && b.Tags.Contains("niebo")), 0);

@@ -46,6 +46,13 @@ namespace ProceduralNarrator.Core.Arcs
                 why = "brak zdarzenia";
                 return false;
             }
+            // Zdarzenie ukryte (krok 9, K2-b) nie pasuje do ZADNEJ fazy: nie otwiera luku, nie przesuwa go i nie dostaje
+            // premii lukowej - komunikat luku zdradzilby graczowi zdarzenie, o ktorym gra milczy.
+            if (e.IsHidden)
+            {
+                why = "zdarzenie ukryte";
+                return false;
+            }
             if (themes != null && themes.Count > 0 && !themes.Contains(e.Theme))
             {
                 why = "motyw " + e.Theme;
@@ -135,6 +142,9 @@ namespace ProceduralNarrator.Core.Arcs
 
         /// <summary>Czy klocek akcji niesie frakcje (flaga carriesFaction, dzis tylko Napad).</summary>
         public bool CarriesFaction;
+
+        /// <summary>Zdarzenie ukryte - tag Block.HiddenTag akcji (przechodzi przez linie P razem z tagami).</summary>
+        public bool IsHidden => Tags != null && Tags.Contains(Block.HiddenTag);
 
         /// <summary>Frakcja zdarzenia: dla kandydata - ta, ktora zostanie ustawiona; po wykonaniu - faktyczna.</summary>
         public string FactionId;

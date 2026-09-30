@@ -63,9 +63,18 @@ namespace ProceduralNarrator.Integration
                     }
                 }
 
-                int krawedzie = blocks.Sum(b => b.incompatibleWith != null ? b.incompatibleWith.Count : 0);
+                // Krawedzie z PRAWDZIWEGO grafu (incompatibleWith + rozwiniete listy onlyWith, krok 9) - suma
+                // deklaracji incompatibleWith przestala byc liczba krawedzi, odkad akcje deklaruja listy dozwolonych.
+                List<Core.Model.Block> katalogStartu;
+                Core.Composition.CompatibilityGraph grafStartu;
+                List<string> problemyWariantowStartu, problemyGrafuStartu;
+                BlockCatalogLoader.Load(out katalogStartu, out grafStartu, out problemyWariantowStartu, out problemyGrafuStartu);
                 PNLog.Decision("START OK - " + blocks.Count + " klockow (" + wgTypu + "), "
-                               + krawedzie + " zabronionych krawedzi.");
+                               + grafStartu.ForbiddenEdgeCount + " zabronionych krawedzi.");
+                foreach (string p in problemyGrafuStartu)
+                {
+                    PNLog.Warn("Lista onlyWith: " + p);
+                }
 
                 // Obiekty warunkow to typy polimorficzne z Core, wskazywane w XML przez Class=.
                 // Gdyby ktorys sie nie rozwiazal, RimWorld pominalby go PO CICHU i narrator
@@ -128,6 +137,9 @@ namespace ProceduralNarrator.Integration
                 : "UWAGA: StorytellerDef PN_GenerativeNarrator NIE zaladowal sie.");
 
             AuditActionPayloads();
+            AuditAnomalyGates();
+            AuditTrackCoverage();
+            AuditSnapshotRegistry();
             AuditIntensityEffect();
             AuditBlockAxes();
             AuditDecisionConfig();
@@ -689,7 +701,8 @@ namespace ProceduralNarrator.Integration
                 {
                     PNLog.Error("Styl gracza: wagi stylu ujemne albo nieskonczone: " + string.Join(", ", zleWagi.ToArray()));
                 }
-                var akcjeBezWag = klocki.Where(b => b.Type == BlockType.Action && (b.StyleWeights == null || !(b.StyleWeights.Total() > 0f)))
+                var akcjeBezWag = klocki.Where(b => b.Type == BlockType.Action && !b.StyleNeutral
+                                                    && (b.StyleWeights == null || !(b.StyleWeights.Total() > 0f)))
                                         .Select(b => b.Id).ToList();
                 if (akcjeBezWag.Count > 0)
                 {
@@ -954,6 +967,156 @@ namespace ProceduralNarrator.Integration
         ///      IIncidentTarget, ktorego na starcie nie ma. Bez tego tagu CanFireNow odrzuci
         ///      kandydata przy KAZDEJ probie, czyli klocek jest martwy mimo poprawnego defName.
         /// </summary>
+        /// <summary>
+        /// Brama Anomaly klockow akcji (krok 9, K0) zgodna z gra: kategoria z canUseAnomalyChance -> Anomaly przy
+        /// IsAnomalyIncident, inaczej Regular; kategoria bez flagi -> None. Zla deklaracja cicho wylaczylaby
+        /// zagrozenie z bramy (None) albo wstawila je do zlej puli. Walidator sprawdza to samo na danych gry (20c).
+        /// </summary>
+        private static void AuditAnomalyGates()
+        {
+            List<Core.Model.Block> klocki;
+            Core.Composition.CompatibilityGraph graf;
+            BlockCatalogLoader.Load(out klocki, out graf);
+            var zle = new List<string>();
+            foreach (Core.Model.Block b in klocki)
+            {
+                if (b.Type != BlockType.Action)
+                {
+                    continue;
+                }
+                IncidentDef inc = DefDatabase<IncidentDef>.GetNamedSilentFail(b.Payload);
+                if (inc == null)
+                {
+                    continue;   // brak payloadu zglasza AuditActionPayloads
+                }
+                Core.Model.AnomalyGateKind oczekiwana = inc.category != null && inc.category.canUseAnomalyChance
+                    ? (inc.IsAnomalyIncident ? Core.Model.AnomalyGateKind.Anomaly : Core.Model.AnomalyGateKind.Regular)
+                    : Core.Model.AnomalyGateKind.None;
+                if (b.AnomalyGate != oczekiwana)
+                {
+                    zle.Add(b.Id + "=" + b.AnomalyGate + " (gra: " + oczekiwana + ")");
+                }
+            }
+            if (zle.Count > 0)
+            {
+                PNLog.Error("Brama Anomaly klockow niezgodna z IncidentDef (anomalyGate w XML): " + string.Join(", ", zle.ToArray()));
+            }
+        }
+
+        /// <summary>
+        /// Pokrycie toru (krok 9, K0; decyzja autora E-8). Tor = incydenty trzech podmienianych compow: kategoria
+        /// ThreatBig, ThreatSmall albo Misc, cel Map_PlayerHome i BaseChanceThisGame &gt; 0 (waga 0 wypada z wyboru
+        /// gry). Porownanie z payloadami klockow akcji idzie do pliku danych jako [PN-CONFIG] pokrycie= - dowod
+        /// pokrycia przy zestawie DLC tej sesji. Walidator liczy to samo z plikow danych gry (TEST 20c).
+        /// Braki sa oczekiwane do konca etapow K1-K2, wiec ostrzega tylko akcja SPOZA toru (payload, ktorego gra
+        /// w tym torze nigdy by nie wybrala).
+        /// </summary>
+        /// <summary>
+        /// Rejestr wymagan snapshotu (krok 9, K1): kazdy klucz rasy musi byc ThingDefem rasy, kazdy klucz rzeczy -
+        /// ThingDefem. Literowka dawalaby warunek na zawsze niespelniony (rasa) albo zawsze "0 rzeczy" - bez sladu w logu.
+        /// </summary>
+        private static void AuditSnapshotRegistry()
+        {
+            List<Core.Model.Block> klocki;
+            Core.Composition.CompatibilityGraph graf;
+            BlockCatalogLoader.Load(out klocki, out graf);
+            var warunki = new List<NarrativeCondition>(SnapshotRequirements.ConditionsOf(klocki));
+            List<string> problemy;
+            foreach (Core.Arcs.ArcDefinition luk in ArcCatalogLoader.Load(out problemy).Arcs)
+            {
+                warunki.AddRange(luk.startConditions);
+            }
+            SnapshotRequirements rej = SnapshotRequirements.Collect(warunki);
+            var zle = new List<string>();
+            foreach (string r in rej.Races)
+            {
+                ThingDef d = DefDatabase<ThingDef>.GetNamedSilentFail(r);
+                if (d == null || d.race == null)
+                {
+                    zle.Add("rasa " + r);
+                }
+            }
+            foreach (string t in rej.Things)
+            {
+                if (DefDatabase<ThingDef>.GetNamedSilentFail(t) == null)
+                {
+                    zle.Add("rzecz " + t);
+                }
+            }
+            foreach (string f in rej.Factions)
+            {
+                if (DefDatabase<FactionDef>.GetNamedSilentFail(f) == null)
+                {
+                    zle.Add("frakcja " + f);
+                }
+            }
+            foreach (string q in rej.QuestScripts)
+            {
+                if (DefDatabase<QuestScriptDef>.GetNamedSilentFail(q) == null)
+                {
+                    zle.Add("zadanie " + q);
+                }
+            }
+            foreach (string k in rej.PawnKinds)
+            {
+                if (DefDatabase<PawnKindDef>.GetNamedSilentFail(k) == null)
+                {
+                    zle.Add("rodzaj " + k);
+                }
+            }
+            PNLog.Decision("Rejestr wymagan snapshotu: " + rej);
+            if (zle.Count > 0)
+            {
+                PNLog.Error("Rejestr wymagan snapshotu: klucze bez odpowiednika w grze (warunek nigdy nie zadziala poprawnie): "
+                            + string.Join(", ", zle.ToArray()));
+            }
+        }
+
+        private static void AuditTrackCoverage()
+        {
+            var tor = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (IncidentDef inc in DefDatabase<IncidentDef>.AllDefsListForReading)
+            {
+                if (inc.category != IncidentCategoryDefOf.ThreatBig && inc.category != IncidentCategoryDefOf.ThreatSmall
+                    && inc.category != IncidentCategoryDefOf.Misc)
+                {
+                    continue;
+                }
+                if (inc.targetTags == null || !inc.targetTags.Contains(IncidentTargetTagDefOf.Map_PlayerHome))
+                {
+                    continue;
+                }
+                if (inc.Worker.BaseChanceThisGame <= 0f)
+                {
+                    continue;
+                }
+                tor.Add(inc.defName);
+            }
+            var akcje = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (NarrativeBlockDef b in DefDatabase<NarrativeBlockDef>.AllDefsListForReading)
+            {
+                if (b.blockType == BlockType.Action && !string.IsNullOrEmpty(b.payload))
+                {
+                    akcje.Add(b.payload);
+                }
+            }
+            string[] brak = tor.Where(x => !akcje.Contains(x)).ToArray();
+            string[] spoza = akcje.Where(x => !tor.Contains(x)).ToArray();
+            int pokrytych = tor.Count - brak.Length;
+            konfiguracjaDoDanych.Add("pokrycie=" + pokrytych.ToString(CultureInfo.InvariantCulture)
+                                     + "/" + tor.Count.ToString(CultureInfo.InvariantCulture)
+                                     + "; brakujace=" + (brak.Length == 0 ? "-" : string.Join(",", brak))
+                                     + "; spozaToru=" + (spoza.Length == 0 ? "-" : string.Join(",", spoza)));
+            PNLog.Decision("Pokrycie toru: " + pokrytych.ToString(CultureInfo.InvariantCulture) + " z "
+                           + tor.Count.ToString(CultureInfo.InvariantCulture) + " incydentow"
+                           + (brak.Length == 0 ? "." : " (brakuje " + brak.Length.ToString(CultureInfo.InvariantCulture) + ")."));
+            if (spoza.Length > 0)
+            {
+                PNLog.Warn("Klocki akcji wskazuja incydenty spoza toru (kategoria, cel albo waga 0): "
+                           + string.Join(", ", spoza));
+            }
+        }
+
         private static void AuditActionPayloads()
         {
             List<NarrativeBlockDef> akcje = DefDatabase<NarrativeBlockDef>.AllDefsListForReading

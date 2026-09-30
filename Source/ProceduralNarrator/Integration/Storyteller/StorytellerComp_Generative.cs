@@ -4,6 +4,7 @@ using System.Globalization;
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Blackboard;
 using ProceduralNarrator.Core.Composition;
+using ProceduralNarrator.Core.Conditions;
 using ProceduralNarrator.Core.Decision;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Core.PlayerModel;
@@ -185,6 +186,9 @@ namespace ProceduralNarrator.Integration.Storyteller
 
             /// <summary>Odczyt stylu gracza w turze (krok 7). Obserwator ma wlasny bezpiecznik w komponencie pamieci.</summary>
             public bool Styl;
+
+            /// <summary>Lustro sprawdzen gry (krok 9, K0).</summary>
+            public bool Lustro;
         }
 
         /// <summary>
@@ -194,7 +198,7 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// </summary>
         internal Bezpieczniki OdczytajBezpieczniki()
         {
-            return new Bezpieczniki { Luki = arcsBroken, Fakty = faktyBroken, Styl = stylBroken };
+            return new Bezpieczniki { Luki = arcsBroken, Fakty = faktyBroken, Styl = stylBroken, Lustro = lustroBroken };
         }
 
         internal void UstawBezpieczniki(Bezpieczniki b)
@@ -202,6 +206,7 @@ namespace ProceduralNarrator.Integration.Storyteller
             arcsBroken = b.Luki;
             faktyBroken = b.Fakty;
             stylBroken = b.Styl;
+            lustroBroken = b.Lustro;
         }
 
         internal void ResetTickState()
@@ -271,6 +276,15 @@ namespace ProceduralNarrator.Integration.Storyteller
 
         /// <summary>Odczyt stylu rzucil wyjatek - warstwa stylu wylaczona do wczytania zapisu (raport raz).</summary>
         private bool stylBroken;
+
+        /// <summary>
+        /// Lustro sprawdzen gry rzucilo wyjatek - wylaczone do wczytania zapisu (raport raz). Bez lustra narrator
+        /// dziala jak przed krokiem 9: zablokowane zdarzenia odrzuca dopiero pytanie do gry.
+        /// </summary>
+        private bool lustroBroken;
+
+        /// <summary>Payloady klockow akcji katalogu (bez powtorzen, porzadek ordynalny) - wejscie lustra.</summary>
+        private List<string> payloadyAkcji = new List<string>();
 
         /// <summary>
         /// Ramie symulatora "bez stylu" (S): warstwa stylu nieobecna w turze (odczyt null, kolumny puste,
@@ -433,6 +447,24 @@ namespace ProceduralNarrator.Integration.Storyteller
             // wiec ranking jest wewnetrznie spojny i da sie go w calosci odtworzyc z logu.
             WorldSnapshot snapshot = WorldSnapshotBuilder.Build(map, history, ksiega, fakty, gameDay);
 
+            // LUSTRO SPRAWDZEN GRY (krok 9, K0): zdarzenia, ktore gra i tak by teraz odrzucila (odstep od poprzedniego
+            // razu, poziom Anomaly, biom...), wypadaja przed generowaniem - bez pytania gry i bez losowania.
+            if (!lustroBroken)
+            {
+                try
+                {
+                    snapshot.EngineBlockedPayloads = EngineCheckMirror.BlockedCanonical(payloadyAkcji, map);
+                    snapshot.EngineMirrorActive = true;
+                }
+                catch (Exception ex)
+                {
+                    lustroBroken = true;
+                    snapshot.EngineBlockedPayloads = string.Empty;
+                    PNLog.Warn("Lustro sprawdzen gry wylaczone po wyjatku (narrator wraca do pytania gry o kazde "
+                               + "zdarzenie): " + ex.Message);
+                }
+            }
+
             // STYL GRACZA (krok 7): odczyt RAZ na ture, mocne strony do snapshotu PRZED planowaniem - warunki
             // startu lukow widza styl wylacznie przez snapshot (jak fakty), a linia P zapamietuje go
             // z tego snapshotu dla sciezki spoznionej. Wyjatek w odczycie wylacza warstwe (bezpiecznik).
@@ -455,7 +487,7 @@ namespace ProceduralNarrator.Integration.Storyteller
             CrisisReading kryzys = plan.Crisis;
             IntentDecision zamiar = plan.Intent;
             DecisionContext context = plan.Context;
-            EventRecipe recipe = BuildRecipe();
+            EventRecipe recipe = BuildRecipe(snapshot);
 
             // LOG CZYTELNY TURY ZBIERANY DO JEDNEGO KOMUNIKATU. Verse.Log wylacza sie po 1000
             // KOMUNIKATACH calego procesu (nie linii) - tura wypisywana linia po linii zuzywala
@@ -966,6 +998,12 @@ namespace ProceduralNarrator.Integration.Storyteller
                 if (status == ExecStatus.Simulated)
                 {
                     return LetterAnnotator.Symulacja;
+                }
+                // Zdarzenie ukryte: nie szukamy listu - nowy list w tym ticku bylby CUDZY, a dopisanie zdradziloby graczowi
+                // zdarzenie, o ktorym gra milczy (krok 9, K2-b).
+                if (zwyciezca != null && zwyciezca.Event != null && ArcEventView.FromCandidate(zwyciezca.Event, null).IsHidden)
+                {
+                    return LetterAnnotator.Ukryty;
                 }
                 if (!Props.useComposedLetter)
                 {
@@ -1495,6 +1533,13 @@ namespace ProceduralNarrator.Integration.Storyteller
 
             linie.Add("  kontekst: " + context);
             linie.Add("  kompozycja: " + (kandydaci.Trace ?? kandydaci.DataLogFragment()));
+            // Krok 9 (decyzja autora K1-b): KTORE akcje odcielo lustro sprawdzen gry - w danych jest tylko liczba
+            // (zablokowanychSilnik; kolumna z nazwami dojdzie w etapie L).
+            string odciete = context == null || context.Snapshot == null ? null : context.Snapshot.EngineBlockedPayloads;
+            if (!string.IsNullOrEmpty(odciete) && odciete != ";")
+            {
+                linie.Add("  lustro gry odcina: " + odciete.Trim(';').Replace(";", ", "));
+            }
 
             foreach (string linia in decyzja.ToRankingLines())
             {
@@ -1657,11 +1702,14 @@ namespace ProceduralNarrator.Integration.Storyteller
         /// zeby posluchac krzywej. (Do drugiego przegladu etapu 4 przepis mial jeszcze martwe pola
         /// intencji i mocy bez zadnego czytelnika - patrz EventRecipe.)
         /// </summary>
-        private EventRecipe BuildRecipe()
+        private EventRecipe BuildRecipe(WorldSnapshot snapshot)
         {
             return new EventRecipe
             {
-                RequiredActionTag = Props.requiredActionTag
+                RequiredActionTag = Props.requiredActionTag,
+                // Brama Anomaly (krok 9, K0): raz na ture, na wlasnym ziarnie z ticku - nie przesuwa losowan tury.
+                // Sol 0 = gra; sol powtorzenia symulatora dojdzie w etapie SIM planu kroku 9.
+                AnomalySide = AnomalyGate.Draw(snapshot, CurrentTick(), 0)
             };
         }
 
@@ -1876,6 +1924,25 @@ namespace ProceduralNarrator.Integration.Storyteller
             generator = nowyGenerator;
             policy = nowaPolityka;
             turnRunner = nowyRunner;
+            var payloady = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (Block b in blocks)
+            {
+                if (b.Type == BlockType.Action && !string.IsNullOrEmpty(b.Payload))
+                {
+                    payloady.Add(b.Payload);
+                }
+            }
+            payloadyAkcji = new List<string>(payloady);
+
+            // REJESTR WYMAGAN SNAPSHOTU (krok 9, K1): rasy i rzeczy, o ktore pytaja warunki klockow, wariantow tekstu
+            // i warunki startu lukow. Snapshot liczy tylko je.
+            var warunki = new List<NarrativeCondition>(SnapshotRequirements.ConditionsOf(blocks));
+            List<string> problemyLukow;
+            foreach (Core.Arcs.ArcDefinition luk in ArcCatalogLoader.Load(out problemyLukow).Arcs)
+            {
+                warunki.AddRange(luk.startConditions);
+            }
+            WorldSnapshotBuilder.Requirements = SnapshotRequirements.Collect(warunki);
 
             // FLAGA NA SAMYM KONCU, PO UDANEJ BUDOWIE.
             // Wczesniej stala na poczatku metody, z uzasadnieniem "zeby problem konfiguracji

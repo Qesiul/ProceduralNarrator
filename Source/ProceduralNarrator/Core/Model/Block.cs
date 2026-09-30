@@ -106,6 +106,45 @@ namespace ProceduralNarrator.Core.Model
         /// </summary>
         public StyleWeights StyleWeights = new StyleWeights();
 
+        /// <summary>
+        /// Akcja swiadomie bez wag stylu (krok 9, decyzja autora K1-h: fale psychiczne dotycza nastroju, nie zadnej
+        /// z czterech cech). Bez tej flagi akcja bez wag to blad tresci (walidator) i ostrzezenie startowe.
+        /// </summary>
+        public bool StyleNeutral;
+
+        /// <summary>
+        /// LISTA DOZWOLONYCH (krok 9, K0; decyzja autora E0-1) - tylko klocek AKCJI. Komplet aktorow i konsekwencji,
+        /// z ktorymi akcja moze wystapic; kazdy inny aktor i kazda inna konsekwencja jest zabroniona (rozwija to
+        /// CatalogGraphBuilder). Brak konsekwencji na liscie = akcja bez konsekwencji. Pusta lista = brak
+        /// ograniczenia.
+        /// </summary>
+        public List<string> OnlyWith = new List<string>();
+
+        /// <summary>
+        /// Brama Anomaly (krok 9, K0) - tylko klocek akcji: None dla kategorii bez bramy (Misc), Regular albo
+        /// Anomaly dla zagrozen (ThreatBig, ThreatSmall). Audyt startowy i walidator porownuja z IncidentDef.
+        /// </summary>
+        public AnomalyGateKind AnomalyGate = AnomalyGateKind.None;
+
+        /// <summary>
+        /// Zastrzezony tag akcji ZDARZENIA UKRYTEGO (krok 9, K2; decyzje autora E0-6 i K2-b): gra nie wysyla listu
+        /// (SightstealerArrival, Revenant, MetalhorrorImplantation). Skutki: tekst tylko w logach (bez dopisania do listu),
+        /// zdarzenie nie pasuje do zadnej fazy luku (ArcExpectation.Matches), akcja nie ma konsekwencji (walidator).
+        /// Tag, a nie osobne pole, bo tagi akcji przechodza przez linie P kolejki wykonania - regula dziala tez po
+        /// wczytaniu zapisu, bez zmiany formatu pamieci.
+        /// </summary>
+        public const string HiddenTag = "ukryte";
+
+        /// <summary>Czy to akcja zdarzenia ukrytego (tag HiddenTag).</summary>
+        public bool IsHidden => Tags.Contains(HiddenTag);
+
+        /// <summary>
+        /// Minimum punktow, ktore worker gry sprawdza SAM w CanFireNowSub, poza polem minThreatPoints (krok 9, K2):
+        /// roje trupow - IncidentWorker_EntitySwarm odrzuca punkty ponizej minimum grupy (40). 0 = brak. Sito dokladne
+        /// bierze wieksza z obu wartosci (PointsSieve.EffectiveMinimum).
+        /// </summary>
+        public float WorkerMinPoints;
+
         public bool HasTag(string tag)
         {
             return tag == null || Tags.Contains(tag);
