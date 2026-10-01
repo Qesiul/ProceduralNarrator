@@ -335,6 +335,42 @@ namespace ProceduralNarrator.Core.Composition
         }
 
         /// <summary>
+        /// Wszystkie akcje katalogu ze stanem dla "PN: wymus akcje" (etap L). Te same sprawdzenia i ta sama kolejnosc
+        /// co AvailableActions (tag, warunki twarde, lustro), bez bramy Anomaly - akcje wymusza sie po obu stronach.
+        /// </summary>
+        public List<ActionAvailability> DescribeActions(WorldSnapshot snapshot, string requiredTag)
+        {
+            var result = new List<ActionAvailability>();
+            for (int i = 0; i < catalog.Count; i++)
+            {
+                Block block = catalog[i];
+                if (block.Type != BlockType.Action)
+                {
+                    continue;
+                }
+                string status;
+                if (!block.HasTag(requiredTag))
+                {
+                    status = ActionAvailability.Tag;
+                }
+                else if (!block.IsAvailable(snapshot))
+                {
+                    status = ActionAvailability.Conditions;
+                }
+                else if (EngineMirror.IsBlocked(snapshot, block.Payload))
+                {
+                    status = ActionAvailability.Mirror;
+                }
+                else
+                {
+                    status = ActionAvailability.Available;
+                }
+                result.Add(new ActionAvailability { Action = block, Status = status });
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Zwraca warianty JEDNEJ akcji: cala przestrzen, gdy miesci sie w limicie `max`,
         /// albo jednostajna probke rozmiaru `max`, gdy nie.
         ///

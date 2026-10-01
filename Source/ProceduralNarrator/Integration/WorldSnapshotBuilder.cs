@@ -613,7 +613,7 @@ namespace ProceduralNarrator.Integration
         }
 
         /// <summary>Waniliowy enum Season na nasza skale 0=wiosna, 1=lato, 2=jesien, 3=zima.</summary>
-        private static int SeasonIndex(Season season)
+        internal static int SeasonIndex(Season season)
         {
             switch (season)
             {

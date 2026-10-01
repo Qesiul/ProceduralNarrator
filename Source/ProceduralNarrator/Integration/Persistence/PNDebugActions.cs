@@ -2,8 +2,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using LudeonTK;
+using ProceduralNarrator.Core.Composition;
 using ProceduralNarrator.Core.Model;
 using ProceduralNarrator.Integration.Defs;
+using ProceduralNarrator.Integration.Storyteller;
+using RimWorld;
 using Verse;
 
 namespace ProceduralNarrator.Integration.Persistence
@@ -397,6 +400,111 @@ namespace ProceduralNarrator.Integration.Persistence
             }
 
             Find.WindowStack.Add(new Dialog_DebugOptionListLister(opcje));
+        }
+        /// <summary>
+        /// Start gry ewaluacyjnej, kalibracyjnej albo probnej (krok 9, etap L, decyzja L-4): nowy runId
+        /// "etykieta-narrator-guid", u Ariadne wybor profilu, wyczyszczona pamiec narratora i styl gracza, linia [PN-EVAL].
+        /// Uzywac zaraz po wczytaniu zapisu startowego i zmianie narratora (protokol L2, PLAN_EWALUACJI.md 9).
+        /// </summary>
+        [DebugAction("Procedural Narrator", "PN: rozpocznij gre ewaluacyjna", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void RozpocznijGreEwaluacyjna()
+        {
+            NarratorMemoryComponent pamiec = Pamiec;
+            if (pamiec == null)
+            {
+                PNLog.Error("Brak NarratorMemoryComponent w biezacej grze - nie ma gdzie nadac runId.");
+                return;
+            }
+            string[] etykiety = { "L2", "KAL", "G0" };
+            string[] opisy = { "gra ewaluacyjna", "gra kalibracyjna", "gra probna" };
+            var opcje = new List<DebugMenuOption>();
+            for (int i = 0; i < etykiety.Length; i++)
+            {
+                string etykieta = etykiety[i];
+                opcje.Add(new DebugMenuOption(etykieta + " - " + opisy[i], DebugMenuOptionMode.Action,
+                                              delegate { WybierzProfilGry(pamiec, etykieta); }));
+            }
+            Find.WindowStack.Add(new Dialog_DebugOptionListLister(opcje));
+        }
+
+        private static void WybierzProfilGry(NarratorMemoryComponent pamiec, string etykieta)
+        {
+            if (NaszComp() == null)
+            {
+                Start(pamiec, etykieta, null);
+                return;
+            }
+            var opcje = new List<DebugMenuOption>();
+            foreach (NarratorProfileDef def in NarratorProfileCatalog.AllDefs())
+            {
+                string profil = def.defName;
+                opcje.Add(new DebugMenuOption(profil + "  (" + def.label + ")", DebugMenuOptionMode.Action,
+                                              delegate { Start(pamiec, etykieta, profil); }));
+            }
+            opcje.Add(new DebugMenuOption("bez wymuszania (losowy z nowego runId)", DebugMenuOptionMode.Action,
+                                          delegate { Start(pamiec, etykieta, null); }));
+            Find.WindowStack.Add(new Dialog_DebugOptionListLister(opcje));
+        }
+
+        private static void Start(NarratorMemoryComponent pamiec, string etykieta, string profil)
+        {
+            pamiec.StartEvaluationGame(etykieta, profil);
+            Messages.Message("PN: gra " + etykieta + " rozpoczeta, runId=" + pamiec.RunId, MessageTypeDefOf.SilentInput, false);
+        }
+
+        /// <summary>
+        /// Wymusza akcje katalogu (krok 9, etap L, decyzja L-3; scenariusze TI-KAT w grze probnej G0): najlepszy wariant
+        /// przez zwykla sciezke gry, list i [PN-EXEC] wymuszone=1, bez zapisu do pamieci narratora. Akcje niedostepne
+        /// sa na liscie z powodem (tag, warunki, lustro) - wybor pokazuje powod zamiast odpalac.
+        /// </summary>
+        [DebugAction("Procedural Narrator", "PN: wymus akcje", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void WymusAkcje()
+        {
+            StorytellerComp_Generative comp = NaszComp();
+            Map map = Find.CurrentMap;
+            if (comp == null || map == null || !map.IsPlayerHome)
+            {
+                PNLog.Warn("\"PN: wymus akcje\" wymaga narratora Ariadne i otwartej mapy domowej.");
+                return;
+            }
+            List<ActionAvailability> akcje = comp.AkcjeDoWymuszenia(map);
+            if (akcje == null)
+            {
+                PNLog.Error("Narrator nie jest zainicjalizowany - patrz bledy wyzej w logu.");
+                return;
+            }
+            akcje.Sort((a, b) => a.IsAvailable != b.IsAvailable
+                                     ? (a.IsAvailable ? -1 : 1)
+                                     : string.CompareOrdinal(a.Action.Payload, b.Action.Payload));
+            var opcje = new List<DebugMenuOption>();
+            foreach (ActionAvailability a in akcje)
+            {
+                string id = a.Action.Id;
+                opcje.Add(new DebugMenuOption(a.Action.Payload + "  (" + id + ")" + (a.IsAvailable ? string.Empty : "  [" + a.Status + "]"),
+                                              DebugMenuOptionMode.Action,
+                                              delegate
+                                              {
+                                                  Messages.Message("PN: " + comp.WymusAkcje(map, id), MessageTypeDefOf.SilentInput, false);
+                                              }));
+            }
+            Find.WindowStack.Add(new Dialog_DebugOptionListLister(opcje));
+        }
+
+        private static StorytellerComp_Generative NaszComp()
+        {
+            if (Find.Storyteller == null || Find.Storyteller.storytellerComps == null)
+            {
+                return null;
+            }
+            foreach (StorytellerComp c in Find.Storyteller.storytellerComps)
+            {
+                StorytellerComp_Generative nasz = c as StorytellerComp_Generative;
+                if (nasz != null)
+                {
+                    return nasz;
+                }
+            }
+            return null;
         }
     }
 }

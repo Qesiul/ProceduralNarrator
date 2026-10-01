@@ -94,7 +94,7 @@
 
              Wartosc jest opisowa i ma sie zmieniac razem z kalibracja - dzieki temu w serii
              ewaluacyjnej widac w logu, na ktorej wersji konfiguracji powstal dany wiersz. -->
-        <configStamp>krok9-k2</configStamp>
+        <configStamp>krok9-l</configStamp>
         <allowedTargetTags>
           <li>Map_PlayerHome</li>
         </allowedTargetTags>

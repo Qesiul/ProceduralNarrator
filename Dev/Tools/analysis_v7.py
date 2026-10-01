@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""ANALIZA PLIKU DANYCH NARRATORA (format [PN-DATA] v6-v10: luki z kroku 5, fakty z kroku 6,
-styl gracza z kroku 7, brama Anomaly i lustro silnika z kroku 9) - niezmienniki + podsumowanie.
+"""ANALIZA PLIKU DANYCH NARRATORA (format [PN-DATA] v6-v11: luki z kroku 5, fakty z kroku 6,
+styl gracza z kroku 7, brama Anomaly i lustro silnika z kroku 9, logowanie ewaluacji z etapu L) - niezmienniki
++ podsumowanie.
 
 Uzycie:
     python analysis_v7.py                                   # domyslny PN_decyzje.log gracza
@@ -9,7 +10,9 @@ Uzycie:
 
 Zawiera 17 niezmiennikow v6 (bez zmian znaczenia), niezmienniki lukow (18-27, dla v7-v10),
 niezmienniki faktow (28-31, dla v8-v10), stylu gracza (32-41, dla v9-v10), kroku 8 (42-45) oraz
-kolumn v10 (46: strona bramy Anomaly, szansa, akcje odciete lustrem sprawdzen gry). Wiersze starszego
+kolumn v10 (46: strona bramy Anomaly, szansa, akcje odciete lustrem sprawdzen gry) i etapu L kroku 9 (47-54:
+lustroOdcina, czasMs, [PN-DZIEN], [PN-KOLONISTA], [PN-FIRED] z listami, [PN-PERF], [PN-EVAL], akcja wymuszona).
+Wiersze starszego
 formatu w tym samym pliku sa sprawdzane tylko regulami swojej wersji. Parametry (profile, PASS,
 brama, limit lukow, katalog lukow z krawedziami i warunkiem stylu, parametry i prototypy stylu,
 orientacja stylu profili) czyta z linii [PN-CONFIG] - nie z literalow.
@@ -26,10 +29,16 @@ Linie poza kontraktem:
             linii [PN-GRACZ] (krok 7); [PN-RESET] akcja=skasujStyl kotwiczy dni=0.
   [PN-GRACZ] zamknieta doba obserwacji stylu gracza (krok 7): cechy, profil wzgledny, mocne strony,
             etykieta, pomiary; porzucona galaz po wczytaniu wypada po ticku jak [PN-ARC].
+  [PN-DZIEN], [PN-KOLONISTA], [PN-PERF] (etap L): stan mapy na koniec doby, zmiany skladu kolonii, koszt czasu -
+            kazdy narrator, tylko gra; porzucona galaz jak [PN-ARC].
+  [PN-EVAL]  start gry ewaluacyjnej (etap L): nowy runId, pamiec i styl od zera (kotwica stylu dni=0).
+  [PN-LIST]  nowy list gracza (etap L, kazdy narrator): tytul, nazwy do znacznikow, tresc= do konca linii.
+  [PN-STAN]  stan mapy domowej dla regul RN (etap L): start, zmiana predykatu (kryzys, zagrozenie, pusta), koniec;
+            stan obowiazuje do nastepnej linii mapy; porzucona galaz jak [PN-ARC].
 
 Kod wyjscia 1, gdy jakis niezmiennik jest naruszony.
 """
-import collections, io, math, re, sys
+import bisect, collections, io, math, re, sys
 
 DOMYSLNY = 'C:/Users/Luis/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/PN_decyzje.log'
 THREAT_BIG = {'RaidEnemy', 'ManhunterPack', 'Infestation', 'PsychicEmanatorShipPartCrash'}
@@ -39,6 +48,35 @@ ZGODNOSC = {  # decyzja autora nr 2: walencja fazy -> intencje, przy ktorych faz
     'Negative': {'Escalate', 'Hold'}, 'Neutral': {'Escalate', 'Hold', 'Breathe', 'Pass'},
     'Positive': {'Hold', 'Breathe', 'Pass'}}
 WYKONANE = {'wykonane', 'symulacja', 'pozno-wykonane'}
+# Wersje formatu, od ktorych obowiazuja grupy regul (v11 = etap L kroku 9).
+OD_V7 = ('7', '8', '9', '10', '11')
+OD_V8 = ('8', '9', '10', '11')
+OD_V9 = ('9', '10', '11')
+OD_V10 = ('10', '11')
+OD_V11 = ('11',)
+KOLONISCI_ZDARZENIA = {'start', 'dolaczyl', 'zginal', 'porwany', 'uwieziony', 'zdziczal', 'odszedl', 'inne'}
+N47 = '47 lustroOdcina: puste z licznikiem, lista kanoniczna, licznik <= lista'
+N48 = '48 czasMs >= 0 w kazdym wierszu v11'
+N49 = '49 [PN-DZIEN]: doba = tick div 60000 - 1, jedna na mape, zakresy'
+N50 = '50 [PN-KOLONISTA]: lancuch licznosci od kotwicy (+-1)'
+N51 = '51 [PN-FIRED] v11: listy, frakcja, pora, noc, wiek bogactwa'
+N52 = '52 [PN-PERF]: agregaty spojne, decyzji = wiersze gry doby'
+N53 = '53 [PN-EVAL]: nowy runId, pamiec od zera'
+N54 = '54 [PN-EXEC] wymuszone=N: bez decyzji, faktow, lukow; wykonane => [PN-FIRED] po'
+
+
+def wymuszona(x):
+    """Akcja 'PN: wymus akcje': wymuszone = numer akcji w sesji (>= 1); 0, puste albo brak pola = zwykle zdarzenie."""
+    return (x.get('wymuszone') or '0') != '0'
+
+
+N55 = '55 [PN-LIST]: listy tiku = listow odpalen, incydenty zgodne, pola'
+N56 = '56 [PN-STAN]: lancuch stanu, predykaty z liczb, siatka, zgodnosc z [PN-DZIEN]'
+STAN_ZDARZENIA = {'start', 'zmiana', 'koniec'}
+STAN_PREDYKATY = ('zagrozenie', 'kryzys', 'pusta')
+POLA_LISTU = {'runId', 'narrator', 'tick', 'dzien', 'mapa', 'incydenty', 'wymuszone', 'typ', 'frakcja', 'pionki',
+              'tytul', 'tresc', 'tryb'}
+PERF_GRUPY = ('tickow', 'odpalen', 'styl', 'doba', 'kolonistow', 'interwalow', 'decyzji', 'potwierdzen')
 
 # ---- styl gracza (krok 7, v9) ----
 CECHY = ('Walka', 'Gospodarka', 'Ekspansja', 'Reaktywnosc')
@@ -209,12 +247,17 @@ def wczytaj(path):
     # Krok 8: sesja z linia [PN-CONFIG] srodowisko= ma obserwatora odpalen - tylko wtedy wykonanie MUSI miec
     # swoja linie [PN-FIRED] (niezmiennik 42). Stare pliki (bez tej linii) nie sa z tego rozliczane.
     sesjaObserwator = False
+    # Etap L: wiersze gry od poprzedniej linii [PN-PERF] (albo [PN-LOAD]/[PN-SESSION], gdzie pomiar startuje od nowa) -
+    # decyzja w ticku granicy doby jest pisana PRZED linia [PN-PERF] tego ticku i liczy sie do zamykanej doby.
+    decyzjiOdPerf = 0
     # Linie dzielone TYLKO po \n (przeglad S10): str.splitlines tnie tez na U+2028/U+0085 i innych znakach,
     # a tekst listu niesie nazwe frakcji z gry. Mod czysci je w PNLog.JednaLinia - to druga linia obrony.
-    for l in (x[:-1] if x.endswith('\r') else x for x in io.open(path, encoding='utf-8', newline='').read().split('\n')):
+    for nrLinii, l in enumerate(x[:-1] if x.endswith('\r') else x
+                                for x in io.open(path, encoding='utf-8', newline='').read().split('\n')):
         if l.startswith('[PN-SESSION]'):
             profile, stc, luki, styl_cfg = {}, {}, {}, {}
             sesjaObserwator = False
+            decyzjiOdPerf = 0
         elif l.startswith('[PN-DATA-COLS]'):
             cols = l.split('kolumny=')[1].split(',')
         elif l.startswith('[PN-CONFIG]'):
@@ -256,6 +299,8 @@ def wczytaj(path):
             d = kv(l.split('] ', 1)[1])
             extras[l.split(']')[0] + ']'].append(d)
             run = d.get('runId', '?')
+            if l.startswith('[PN-LOAD]'):
+                decyzjiOdPerf = 0
             odcinek[run] += 1
             if l.startswith('[PN-LOAD]') and d.get('mapy'):
                 granice = {}
@@ -285,6 +330,8 @@ def wczytaj(path):
                 gracze[:] = [x for x in gracze if not z_przyszlosci(x)]
                 extras['[PN-FIRED]'][:] = [x for x in extras['[PN-FIRED]'] if not z_przyszlosci(x)]
                 extras['[PN-CACHE]'][:] = [x for x in extras['[PN-CACHE]'] if not z_przyszlosci(x)]
+                for typ_ in ('[PN-DZIEN]', '[PN-KOLONISTA]', '[PN-PERF]', '[PN-LIST]', '[PN-STAN]'):
+                    extras[typ_][:] = [x for x in extras[typ_] if not z_przyszlosci(x)]
                 sekw[run] = [e for e in sekw[run] if not (e[0] == 'g' and z_przyszlosci(e[1]))]
                 # Ostatni wiersz mapy po przycieciu - wiersz porzuconej galezi nie moze byc decyzja otwarcia luku.
                 for k in [k for k in ostatniWiersz if k[0] == run]:
@@ -361,11 +408,48 @@ def wczytaj(path):
             execs.append(d)
         elif l.startswith('[PN-FIRED] '):
             # Krok 8: odpalenie incydentu (kazdy narrator). Linia tylko z gry - tryb dopisany dla filtrow i galezi.
-            d = kv(l[len('[PN-FIRED] '):])
+            # Etap L: listy= to OSTATNIE pole, do konca linii (etykiety listow z gry).
+            tresc = l[len('[PN-FIRED] '):]
+            listy_ = None
+            if '; listy=' in tresc:
+                tresc, listy_ = tresc.split('; listy=', 1)
+            d = kv(tresc)
+            if listy_ is not None:
+                d['listy'] = listy_
             d['tryb'] = 'gra'
             extras['[PN-FIRED]'].append(d)
         elif l.startswith('[PN-CACHE] '):
             extras['[PN-CACHE]'].append(kv(l[len('[PN-CACHE] '):]))
+        elif l.startswith('[PN-DZIEN] ') or l.startswith('[PN-KOLONISTA] ') or l.startswith('[PN-PERF] ') \
+                or l.startswith('[PN-STAN] '):
+            typ_ = l.split(']')[0] + ']'
+            d = kv(l[len(typ_) + 1:])
+            d['tryb'] = 'gra'
+            if typ_ == '[PN-PERF]':
+                d['_decyzjiWPliku'] = decyzjiOdPerf
+                decyzjiOdPerf = 0
+            extras[typ_].append(d)
+        elif l.startswith('[PN-LIST] '):
+            # tresc= to OSTATNIE pole, do konca linii (tekst listu moze miec srednik).
+            tresc_ = l[len('[PN-LIST] '):]
+            tekst_ = None
+            if '; tresc=' in tresc_:
+                tresc_, tekst_ = tresc_.split('; tresc=', 1)
+            d = kv(tresc_)
+            if tekst_ is not None:
+                d['tresc'] = tekst_
+            d['tryb'] = 'gra'
+            extras['[PN-LIST]'].append(d)
+        elif l.startswith('[PN-EVAL] '):
+            # Nowa rozgrywka pod nowym runId: pamiec i styl od zera - kotwica stylu dni=0 (niezmienniki 40-41).
+            d = kv(l[len('[PN-EVAL] '):])
+            d['_lin'] = nrLinii
+            # Start gry ewaluacyjnej zeruje pomiar czasu (PerfMonitor.Reset) - licznik decyzji do [PN-PERF] tez.
+            decyzjiOdPerf = 0
+            extras['[PN-EVAL]'].append(d)
+            nowy = d.get('runId', '?')
+            sekw[nowy].append(('k', 0, None))
+            ostatnieDni[nowy] = 0
         elif l.startswith('[PN-FACT] '):
             d = kv(l[len('[PN-FACT] '):])
             facts.append(d)
@@ -376,6 +460,7 @@ def wczytaj(path):
         elif l.startswith('[PN-DATA] '):
             d = kv(l[len('[PN-DATA] '):])
             d['_ksztalt_ok'] = cols is not None and list(k for k in d.keys()) == cols
+            d['_lin'] = nrLinii
             d['_odcinek'] = odcinek[d.get('runId', '?')]
             s = stan_dla(d.get('runId'), d.get('eksperyment', ''), d.get('mapa'))
             d['_stanLukow'] = sorted('%s:%s' % (a, fz) for a, fz in s.items())
@@ -386,6 +471,8 @@ def wczytaj(path):
             d['_faktow'] = sum(1 for (w, dzien, zycie, tz) in fs.values() if fakt_obowiazuje(tw, tz, zycie))
             d['_profile'], d['_stc'], d['_luki'], d['_styl'] = profile, stc, luki, styl_cfg
             ostatniWiersz[(d.get('runId'), d.get('eksperyment', ''), d.get('mapa'))] = d
+            if d.get('tryb') == 'gra':
+                decyzjiOdPerf += 1
             # Oczekiwane stylDni (41): gra - ostatnia linia [PN-GRACZ] albo kotwica w porzadku pliku; ramie
             # symulatora - wedlug stylu ramienia: gry = dni w chwili startu, narzucony = pojemnosc, wylaczony = pusto.
             eks = d.get('eksperyment', '')
@@ -522,7 +609,7 @@ def main():
                 narusz('17 straznikZawieszony tylko w kryzysie', (klucz, nr))
 
             # ---------------- 18-24: luki w wierszu [PN-DATA] (v7-v10) ----------------
-            if r.get('wersjaLogu') in ('7', '8', '9', '10'):
+            if r.get('wersjaLogu') in OD_V7:
                 if not r['_ksztalt_ok']:
                     narusz('18 ksztalt wiersza v7 = naglowek', (klucz, nr))
                 aa, pl = r.get('arcAlignment', ''), r.get('premiaLuku', '')
@@ -551,7 +638,7 @@ def main():
                             narusz('24 faza aktywna => walencja zgodna z intencja', (klucz, nr, x, r['intencja']))
 
             # ---------------- 28, 31: fakty i konsekwencja w wierszu [PN-DATA] (v8-v10) ----------------
-            if r.get('wersjaLogu') in ('8', '9', '10'):
+            if r.get('wersjaLogu') in OD_V8:
                 if r.get('faktow', '') != '' and int(r['faktow']) != r['_faktow']:
                     narusz('28 faktow = stan odtworzony z [PN-FACT]', (klucz, nr, r['faktow'], r['_faktow']))
                 segmenty = r.get('klucz', '').split('|')
@@ -562,7 +649,7 @@ def main():
                     narusz('31 konsekwencja zgodna z kluczem kompozycji', (klucz, nr, r.get('klucz'), r.get('konsekwencja')))
 
             # ---------------- 32-38, 41: styl gracza w wierszu [PN-DATA] (v9-v10) ----------------
-            if r.get('wersjaLogu') in ('9', '10'):
+            if r.get('wersjaLogu') in OD_V9:
                 styl_wiersza(r, klucz, nr, pas, los, prof, r['_styl'], narusz)
 
             # ---------------- 46: brama Anomaly i lustro silnika (v10) ----------------
@@ -570,7 +657,7 @@ def main():
             # Regular albo Anomaly (None tylko w testach bez przepisu); bez DLC (szansa pusta) AnomalyGate.Draw
             # zwraca Regular bez losowania; szansa to prawdopodobienstwo z gry (AnomalyIncidentChanceNow) w [0, 1];
             # zablokowanychSilnik to licznik akcji (>= 0) albo puste, gdy lustro nie dzialalo.
-            if r.get('wersjaLogu') == '10':
+            if r.get('wersjaLogu') in OD_V10:
                 tura, sz, zb = r.get('anomaliaTura', ''), r.get('anomaliaSzansa', ''), r.get('zablokowanychSilnik', '')
                 n46 = '46 kolumny v10: strona bramy Anomaly, szansa, lustro silnika'
                 if tura not in ('Regular', 'Anomaly'):
@@ -581,6 +668,31 @@ def main():
                     narusz(n46, (klucz, nr, 'szansa', sz))
                 if zb != '' and not (zb.isdigit()):
                     narusz(n46, (klucz, nr, 'zablokowanychSilnik', zb))
+
+            # ---------------- 47-48: kolumny v11 (etap L kroku 9) ----------------
+            # Z kodu moda (EngineMirror.DataColumn): lustroOdcina puste <=> lustro nie dzialalo <=> zablokowanychSilnik
+            # puste; "-" = dzialalo i nic nie odcielo (licznik 0); lista w postaci kanonicznej (ordynalnie, bez powtorzen),
+            # a licznik liczy tylko akcje, ktore przeszly strone bramy i wlasne warunki - wiec nie wiecej niz lista.
+            # czasMs mierzony zawsze (Stopwatch), takze w symulatorze.
+            if r.get('wersjaLogu') in OD_V11:
+                lo, zb = r.get('lustroOdcina', ''), r.get('zablokowanychSilnik', '')
+                if (lo == '') != (zb == ''):
+                    narusz(N47, (klucz, nr, 'puste razem', lo, zb))
+                elif lo == '-':
+                    if zb != '0':
+                        narusz(N47, (klucz, nr, 'lista pusta, licznik', zb))
+                elif lo != '':
+                    nazwy_ = lo.split(',')
+                    if len(set(nazwy_)) != len(nazwy_) or nazwy_ != sorted(nazwy_) or '' in nazwy_:
+                        narusz(N47, (klucz, nr, 'lista niekanoniczna', lo))
+                    if zb.isdigit() and int(zb) > len(nazwy_):
+                        narusz(N47, (klucz, nr, 'licznik > lista', zb, len(nazwy_)))
+                cz = r.get('czasMs', '')
+                try:
+                    if cz == '' or float(cz) < 0:
+                        narusz(N48, (klucz, nr, cz))
+                except ValueError:
+                    narusz(N48, (klucz, nr, cz))
             poprzedni = nr
 
     # ---------------- 22: legalne krawedzie automatow ----------------
@@ -624,16 +736,18 @@ def main():
     def klucz_decyzji(e):
         return e.get('runId'), e.get('eksperyment', ''), e.get('mapa'), e.get('tickDecyzji') or e.get('tick')
 
-    klucz_exec = collections.Counter(klucz_decyzji(e) for e in execs)
+    # Etap L: [PN-EXEC] akcji wymuszonej (akcja debugowa) nie ma wiersza decyzji ani lukow i faktow.
+    execs_dec = [e for e in execs if not wymuszona(e)]
+    klucz_exec = collections.Counter(klucz_decyzji(e) for e in execs_dec)
     for r in rows:
-        if r.get('wersjaLogu') in ('7', '8', '9', '10') and r['decyzja'] != 'PASS':
+        if r.get('wersjaLogu') in OD_V7 and r['decyzja'] != 'PASS':
             if klucz_exec[klucz_zdarzenia(r)] != 1:
                 narusz('25 kazde zdarzenie <-> dokladnie jedno [PN-EXEC]',
                        (r.get('eksperyment'), r.get('mapa'), r.get('tick'), klucz_exec[klucz_zdarzenia(r)]))
     # 26 wiaze krok luku z potwierdzeniem po ticku EMISJI (krok spozniony i jego [PN-EXEC] padaja w T+1000);
     # 30 wiaze fakt z decyzja po ticku DECYZJI (tickZrodla).
-    exec_status = {klucz_zdarzenia(e): e.get('status') for e in execs}
-    exec_status_decyzji = {klucz_decyzji(e): e.get('status') for e in execs}
+    exec_status = {klucz_zdarzenia(e): e.get('status') for e in execs_dec}
+    exec_status_decyzji = {klucz_decyzji(e): e.get('status') for e in execs_dec}
     for a in arcs:
         if a.get('powod') == 'wykonanie':
             st = exec_status.get(klucz_zdarzenia(a))
@@ -694,7 +808,7 @@ def main():
         if war in ('-', '', None):
             continue
         r = a.get('_wiersz')
-        if r is None or r.get('wersjaLogu') not in ('9', '10'):
+        if r is None or r.get('wersjaLogu') not in OD_V9:
             continue
         mocne = zbior_mocnych(r.get('stylMocne'))
         for w in war.split('/'):
@@ -733,7 +847,8 @@ def main():
     pn1 = collections.Counter((x.get('runId'), x.get('mapa'), x.get('incydent'), x.get('tick'))
                               for x in fired if x.get('pn') == '1')
     for e in execs:
-        if e.get('tryb') != 'gra' or not e.get('_obserwator'):
+        # Akcje wymuszone paruje regula 54 (po numerze) - kilka w jednej pauzie ma ten sam tick i incydent.
+        if e.get('tryb') != 'gra' or not e.get('_obserwator') or wymuszona(e):
             continue
         # Sciezka normalna (wykonane) i spozniona (pozno-wykonane): rejestracja idzie przed yield, wiec odpalenie
         # ma pn=1 w ticku DECYZJI takze wtedy, gdy potwierdzenie padlo w T+1000 (przeglad S10).
@@ -823,6 +938,238 @@ def main():
         if (c.get('runId'), c.get('eksperyment', ''), c.get('mapa'), c.get('tick')) not in ticki_decyzji:
             narusz(n45, ('kolizja poza tickiem decyzji', c.get('mapa'), c.get('tick')))
 
+    # ---------------- 49-54: linie etapu L kroku 9 (tylko gra) ----------------
+    dni_ = extras.get('[PN-DZIEN]', []) if tryb in ('wszystko', 'gra') else []
+    kol_ = extras.get('[PN-KOLONISTA]', []) if tryb in ('wszystko', 'gra') else []
+    perf_ = extras.get('[PN-PERF]', []) if tryb in ('wszystko', 'gra') else []
+    eval_ = extras.get('[PN-EVAL]', [])
+
+    def liczba_(x, k):
+        v = x.get(k, '')
+        return None if v in ('', None) else float(v)
+
+    # 49: doba zamknieta = tick div 60000 - 1 (linia w pierwszym ticku nowej doby), jedna linia na (runId, mapa, dzien),
+    # relacje licznosci jak w [PN-FIRED], liczniki gry (StatsRecord) nie maleja w obrebie runId.
+    wid = collections.Counter((x.get('runId'), x.get('mapa'), x.get('dzien')) for x in dni_)
+    ostatnieLiczniki = {}
+    for x in dni_:
+        t_ = int(x.get('tick') or 0)
+        if str(t_ // 60000 - 1) != x.get('dzien'):
+            narusz(N49, ('dzien', x.get('dzien'), t_))
+        if wid[(x.get('runId'), x.get('mapa'), x.get('dzien'))] != 1:
+            narusz(N49, ('powtorzona doba', x.get('runId'), x.get('mapa'), x.get('dzien')))
+        k_, nm, pw = liczba_(x, 'kolonisci'), liczba_(x, 'kolonisciNaMapie'), liczba_(x, 'powaleni')
+        if None not in (nm, pw) and pw > nm:
+            narusz(N49, ('powaleni > na mapie', pw, nm, t_))
+        if None not in (k_, nm) and nm > k_:
+            narusz(N49, ('na mapie > kolonisci', nm, k_, t_))
+        if x.get('zagrozenie') not in ('0', '1') or x.get('pora') not in ('0', '1', '2', '3'):
+            narusz(N49, ('zagrozenie/pora', x.get('zagrozenie'), x.get('pora'), t_))
+        ns = liczba_(x, 'nastroj')
+        if ns is not None and not (0.0 <= ns <= 1.0):
+            narusz(N49, ('nastroj', ns, t_))
+        if (x.get('bogactwo', '') == '') != (x.get('bogactwoWiek', '') == '') or (liczba_(x, 'bogactwoWiek') or 0) < 0:
+            narusz(N49, ('bogactwo i wiek', x.get('bogactwo'), x.get('bogactwoWiek'), t_))
+        licz = tuple(liczba_(x, k) for k in ('napadow', 'threatBig', 'poleglych'))
+        pop = ostatnieLiczniki.get(x.get('runId'))
+        if pop is not None and any(a is not None and b is not None and b < a for a, b in zip(pop, licz)):
+            narusz(N49, ('licznik gry maleje', pop, licz, t_))
+        ostatnieLiczniki[x.get('runId')] = licz
+
+    # 50: sklad kolonii - kotwica "start" (pionek -1) zaczyna lancuch, kazda zmiana to +-1 (dolaczyl +1, ubytek -1).
+    stanKol = {}
+    for x in kol_:
+        run, zd = x.get('runId'), x.get('zdarzenie')
+        n_ = int(x.get('liczebnosc') or -1)
+        if zd not in KOLONISCI_ZDARZENIA or n_ < 0:
+            narusz(N50, ('zdarzenie/liczebnosc', zd, x.get('liczebnosc'), x.get('tick')))
+            continue
+        if zd == 'start':
+            if x.get('pionek') != '-1':
+                narusz(N50, ('kotwica z pionkiem', x.get('pionek'), x.get('tick')))
+            stanKol[run] = n_
+            continue
+        if run not in stanKol:
+            narusz(N50, ('zmiana bez kotwicy', run, zd, x.get('tick')))
+        elif n_ != stanKol[run] + (1 if zd == 'dolaczyl' else -1):
+            narusz(N50, ('skok licznosci', stanKol[run], zd, n_, x.get('tick')))
+        stanKol[run] = n_
+
+    # 51: [PN-FIRED] z polami etapu L - listow = liczba etykiet, frakcja razem z jej Defem, pora i noc tylko na mapie.
+    for x in fired:
+        if 'listow' not in x:
+            continue
+        t_ = x.get('tick')
+        et = [] if (x.get('listy') or '') == '' else x['listy'].split(' | ')
+        if str(len(et)) != x.get('listow'):
+            narusz(N51, ('listow', x.get('listow'), len(et), t_))
+        if x.get('listyWspolne') not in ('tak', 'nie') or (x.get('listyWspolne') == 'tak' and not et):
+            narusz(N51, ('listyWspolne', x.get('listyWspolne'), t_))
+        if not (x.get('wymuszone', '0') or '').isdigit() or (wymuszona(x) and
+                                                         (x.get('pn') != '1' or x.get('kontekst') != 'po')):
+            narusz(N51, ('wymuszone', x.get('wymuszone'), x.get('pn'), x.get('kontekst'), t_))
+        if (x.get('frakcja') == '-') != (x.get('frakcjaDef') == '-'):
+            narusz(N51, ('frakcja bez Defa', x.get('frakcja'), x.get('frakcjaDef'), t_))
+        mapa_ = x.get('mapa') != '-1'
+        if mapa_ != (x.get('pora', '') != '') or x.get('pora', '') not in ('', '0', '1', '2', '3') \
+                or x.get('noc', '') not in ('', '0', '1') or (x.get('pora', '') == '') != (x.get('noc', '') == ''):
+            narusz(N51, ('pora/noc', x.get('mapa'), x.get('pora'), x.get('noc'), t_))
+        if (x.get('bogactwo', '') == '') != (x.get('bogactwoWiek', '') == '') or (liczba_(x, 'bogactwoWiek') or 0) < 0:
+            narusz(N51, ('bogactwo i wiek', x.get('bogactwo'), x.get('bogactwoWiek'), t_))
+
+    # 52: [PN-PERF] - agregaty spojne (0 <= max <= suma, kubelki sumuja sie do liczby, obserwatory co tick), doba
+    # = tick div 60000 - 1, a decyzji = wiersze gry od poprzedniej linii [PN-PERF] w pliku (albo od [PN-LOAD]).
+    wper = collections.Counter((x.get('runId'), x.get('dzien')) for x in perf_)
+    for x in perf_:
+        t_ = int(x.get('tick') or 0)
+        if str(t_ // 60000 - 1) != x.get('dzien'):
+            narusz(N52, ('dzien', x.get('dzien'), t_))
+        if wper[(x.get('runId'), x.get('dzien'))] != 1:
+            narusz(N52, ('powtorzona doba', x.get('runId'), x.get('dzien')))
+        for g in PERF_GRUPY:
+            n_ = x.get(g, '')
+            su = [v for k_, v in x.items() if k_.startswith(g + 'Suma')]
+            mx = [v for k_, v in x.items() if k_.startswith(g + 'Max')]
+            if not n_.isdigit() or len(su) != 1 or len(mx) != 1:
+                narusz(N52, ('pola', g, t_))
+                continue
+            s_, m_ = float(su[0]), float(mx[0])
+            if not (0.0 <= m_ <= s_ + 0.002) or (n_ == '0' and (s_ != 0 or m_ != 0)):
+                narusz(N52, ('max/suma', g, n_, s_, m_, t_))
+            if g + 'Kubelki' in x:
+                kub = [int(v) for v in x[g + 'Kubelki'].split('/')]
+                gr = x.get(g + 'Granice', '').split('/')
+                if sum(kub) != int(n_) or len(kub) != len(gr) + 1:
+                    narusz(N52, ('kubelki', g, x[g + 'Kubelki'], n_, t_))
+        if any(x.get(g) != x.get('tickow') for g in ('odpalen', 'styl', 'doba', 'kolonistow')) \
+                or int(x.get('tickow') or 0) > 60000:
+            narusz(N52, ('obserwatory != tickow', x.get('tickow'), t_))
+        if x.get('decyzji', '').isdigit() and int(x['decyzji']) != x['_decyzjiWPliku']:
+            narusz(N52, ('decyzji != wiersze gry doby', x['decyzji'], x['_decyzjiWPliku'], t_))
+
+    # 53: [PN-EVAL] - nowy runId "etykieta-narrator-...", zadnego wiersza z nim wczesniej w pliku, a pierwsza decyzja
+    # kazdej mapy pod nim zaczyna od pustej pamieci (decyzjaNr 0, historia 0).
+    for x in eval_:
+        run = x.get('runId')
+        if run == x.get('runIdPoprzedni') or x.get('etykieta') not in ('L2', 'KAL', 'G0') \
+                or not (run or '').startswith('%s-%s-' % (x.get('etykieta'), x.get('narrator'))):
+            narusz(N53, ('runId', run, x.get('runIdPoprzedni'), x.get('etykieta')))
+        if any(r_.get('runId') == run and r_['_lin'] < x['_lin'] for r_ in rows):
+            narusz(N53, ('wiersze z nowym runId przed linia', run))
+        pierwsze = {}
+        for r_ in rows:
+            if r_['_lin'] > x['_lin'] and r_.get('runId') == run and r_.get('tryb') == 'gra':
+                pierwsze.setdefault(r_.get('mapa'), r_)
+        for mapa_, r_ in pierwsze.items():
+            if r_.get('decyzjaNr') != '0' or r_.get('histWpisow') != '0':
+                narusz(N53, ('pierwsza decyzja nie od zera', run, mapa_, r_.get('decyzjaNr'), r_.get('histWpisow')))
+
+    # 54: [PN-EXEC] akcji wymuszonej (wymuszone = numer) - tylko gra, sciezka normalna, bez faktow i krokow lukow z tego
+    # ticku; wykonane => linia [PN-FIRED] pn=1 z kontekstem "po" i tym samym numerem (odpalenie z UI po przegladzie
+    # ticku, logowane wprost); w druga strone kazde odpalenie wymuszone ma swoj [PN-EXEC].
+    for e in execs:
+        if not wymuszona(e):
+            continue
+        k_ = (e.get('runId'), e.get('mapa'), e.get('tick'))
+        if e.get('tryb') != 'gra' or (e.get('tickDecyzji') or e.get('tick')) != e.get('tick'):
+            narusz(N54, ('tryb/sciezka', e.get('tryb'), e.get('tick'), e.get('tickDecyzji')))
+        if any((x.get('runId'), x.get('mapa'), x.get('tickZrodla')) == k_ for x in facts) \
+                or any((a.get('runId'), a.get('mapa'), a.get('tick')) == k_ and a.get('powod') == 'wykonanie' for a in arcs):
+            narusz(N54, ('fakt albo krok luku z akcji wymuszonej', k_))
+        if e.get('status') == 'wykonane' and e.get('_obserwator') and not any(
+                x.get('pn') == '1' and x.get('kontekst') == 'po' and x.get('wymuszone') == e.get('wymuszone')
+                and (x.get('runId'), x.get('mapa'), x.get('tick')) == k_
+                and x.get('incydent') == e.get('incydent') for x in fired):
+            narusz(N54, ('wykonane bez [PN-FIRED] pn=1 kontekst=po', k_, e.get('incydent')))
+
+    wym_exec = set((e.get('runId'), e.get('mapa'), e.get('tick'), e.get('incydent'), e.get('wymuszone'))
+                   for e in execs if wymuszona(e))
+    for x in fired:
+        if wymuszona(x) and (x.get('runId'), x.get('mapa'), x.get('tick'), x.get('incydent'),
+                             x.get('wymuszone')) not in wym_exec:
+            narusz(N54, ('[PN-FIRED] wymuszone bez [PN-EXEC] z tym numerem', x.get('incydent'), x.get('tick')))
+
+    # 55: [PN-LIST] - kazde odpalenie w ticku dostaje wszystkie nowe listy tego ticku (listow = liczba linii [PN-LIST]
+    # tego ticku), incydenty= to zbior incydentow odpalonych w ticku ('-' = zadnego); akcja wymuszona osobno
+    # (wymuszone = numer akcji - osobna grupa kazdej akcji). Pola z ustalonej listy - tresc= czytana do konca linii.
+    listy_ = extras.get('[PN-LIST]', []) if tryb in ('wszystko', 'gra') else []
+    lin_ = collections.defaultdict(list)
+    for x in listy_:
+        lin_[(x.get('runId'), x.get('tick'), x.get('wymuszone'))].append(x)
+        if not set(x.keys()) <= POLA_LISTU or 'tresc' not in x or not (x.get('wymuszone') or '').isdigit():
+            narusz(N55, ('pola', sorted(set(x.keys()) - POLA_LISTU), x.get('tick')))
+    odp_ = collections.defaultdict(list)
+    for x in fired:
+        if 'listow' in x:
+            odp_[(x.get('runId'), x.get('tick'), x.get('wymuszone', '0'))].append(x)
+    for k_, oo in odp_.items():
+        ll = lin_.get(k_, [])
+        incydenty_ = set(o.get('incydent') for o in oo)
+        for o in oo:
+            if int(o.get('listow') or 0) != len(ll):
+                narusz(N55, ('listow != linie [PN-LIST] ticku', o.get('incydent'), o.get('listow'), len(ll), k_[1]))
+        for x in ll:
+            if set((x.get('incydenty') or '').split(',')) != incydenty_:
+                narusz(N55, ('incydenty listu != odpalenia ticku', x.get('incydenty'), sorted(incydenty_), k_[1]))
+    for k_, ll in lin_.items():
+        if k_ not in odp_ and any(x.get('incydenty') != '-' for x in ll):
+            narusz(N55, ('list z incydentem bez odpalenia w ticku', k_[1], ll[0].get('incydenty')))
+
+    # 56: [PN-STAN] - ekspozycja na warunki regul RN (PLAN_EWALUACJI.md 5). Na (runId, mapa): start zaczyna lancuch (takze
+    # po wczytaniu i po [PN-EVAL], moze byc poza siatka), zmiana zmienia co najmniej jeden z predykatow kryzys/zagrozenie/
+    # pusta, koniec zamyka mape (pola puste); zmiana i koniec na siatce 250 tickow; predykaty z liczb (kryzys = powaleni >= 1
+    # i 2*powaleni >= na mapie, pusta = 0 na mapie); tick nie cofa sie po przycieciu galezi; stan obowiazujacy w ticku
+    # [PN-DZIEN] na siatce zgodny z jej liczbami (ten sam odczyt gry w tym samym ticku).
+    stan_ = extras.get('[PN-STAN]', []) if tryb in ('wszystko', 'gra') else []
+    obowStan = {}
+    histStan = collections.defaultdict(list)
+    for x in stan_:
+        run, mapa_, zd = x.get('runId'), x.get('mapa'), x.get('zdarzenie')
+        t_ = int(x.get('tick') or 0)
+        k_ = (run, mapa_)
+        if zd not in STAN_ZDARZENIA:
+            narusz(N56, ('zdarzenie', zd, t_))
+            continue
+        if histStan[k_] and t_ < histStan[k_][-1][0]:
+            narusz(N56, ('tick cofa sie', run, mapa_, histStan[k_][-1][0], t_))
+        if zd != 'start' and t_ % 250 != 0:
+            narusz(N56, ('poza siatka 250', zd, t_))
+        if zd == 'koniec':
+            if any(x.get(p) not in ('', None) for p in ('kolonisciNaMapie', 'powaleni') + STAN_PREDYKATY):
+                narusz(N56, ('koniec z polami stanu', run, mapa_, t_))
+            if k_ not in obowStan:
+                narusz(N56, ('koniec bez stanu', run, mapa_, t_))
+            obowStan.pop(k_, None)
+            histStan[k_].append((t_, None))
+            continue
+        nm, pw = liczba_(x, 'kolonisciNaMapie'), liczba_(x, 'powaleni')
+        s_ = tuple(x.get(p) for p in STAN_PREDYKATY)
+        if nm is None or pw is None or pw < 0 or pw > nm or any(v not in ('0', '1') for v in s_):
+            narusz(N56, ('pola', nm, pw, s_, t_))
+            continue
+        kryzys_ = pw >= 1 and 2 * pw >= nm
+        if s_[1] != ('1' if kryzys_ else '0') or s_[2] != ('1' if nm == 0 else '0'):
+            narusz(N56, ('predykat niezgodny z liczbami', nm, pw, s_, t_))
+        if zd == 'zmiana':
+            if k_ not in obowStan:
+                narusz(N56, ('zmiana bez startu', run, mapa_, t_))
+            elif obowStan[k_] == s_:
+                narusz(N56, ('zmiana bez zmiany predykatu', s_, t_))
+        obowStan[k_] = s_
+        histStan[k_].append((t_, s_))
+    for x in dni_:
+        t_ = int(x.get('tick') or 0)
+        h_ = histStan.get((x.get('runId'), x.get('mapa')))
+        nm, pw = liczba_(x, 'kolonisciNaMapie'), liczba_(x, 'powaleni')
+        if not h_ or t_ % 250 != 0 or None in (nm, pw):
+            continue
+        i_ = bisect.bisect_right([e[0] for e in h_], t_) - 1
+        if i_ < 0 or h_[i_][1] is None:
+            continue
+        oczek = (x.get('zagrozenie'), '1' if pw >= 1 and 2 * pw >= nm else '0', '1' if nm == 0 else '0')
+        if h_[i_][1] != oczek:
+            narusz(N56, ('stan niezgodny z [PN-DZIEN]', x.get('runId'), x.get('mapa'), t_, h_[i_][1], oczek))
+
     print('\nNIEZMIENNIKI (%d wierszy, %d grup, %d linii [PN-ARC], %d [PN-EXEC], %d [PN-FACT], %d [PN-GRACZ]):' % (
         len(rows), len(grupy), len(arcs), len(execs), len(facts), len(gracze)))
     nazwy = sorted(set(list(narus.keys()) + [
@@ -849,7 +1196,8 @@ def main():
         '43 forma [PN-FIRED] (kontekst, zakresy, pn=1 tylko nasz narrator)',
         '44 [PN-EXEC] list= zgodny ze statusem, sciezka i konfiguracja',
         '45 [PN-CACHE] spojna i w ticku naszej decyzji',
-        '46 kolumny v10: strona bramy Anomaly, szansa, lustro silnika']))
+        '46 kolumny v10: strona bramy Anomaly, szansa, lustro silnika',
+        N47, N48, N49, N50, N51, N52, N53, N54, N55, N56]))
     for n in nazwy:
         print('  %-66s %s' % (n, 'OK' if narus[n] == 0 else 'NARUSZEN %d, np. %s' % (narus[n], przyklad[n])))
 
@@ -872,10 +1220,16 @@ def main():
                 dict(collections.Counter(r['wybor'] for r in zd).most_common()), len(set(r['klucz'] for r in zd)), len(zd)))
         if okres > 0:
             print('   tempo zdarzen %.3f/dzien' % (len(zd) / okres))
-        v7 = [r for r in rr if r.get('wersjaLogu') in ('7', '8', '9', '10')]
-        v8 = [r for r in rr if r.get('wersjaLogu') in ('8', '9', '10')]
-        v9 = [r for r in rr if r.get('wersjaLogu') in ('9', '10')]
-        v10 = [r for r in rr if r.get('wersjaLogu') == '10']
+        v7 = [r for r in rr if r.get('wersjaLogu') in OD_V7]
+        v8 = [r for r in rr if r.get('wersjaLogu') in OD_V8]
+        v9 = [r for r in rr if r.get('wersjaLogu') in OD_V9]
+        v10 = [r for r in rr if r.get('wersjaLogu') in OD_V10]
+        v11 = [r for r in rr if r.get('wersjaLogu') in OD_V11]
+        if v11:
+            cz = sorted(f(r, 'czasMs') for r in v11 if r.get('czasMs', '') != '')
+            if cz:
+                print('   czas decyzji (czasMs): p50 %.3f, p95 %.3f, max %.3f ms (n=%d)' % (
+                    cz[len(cz) // 2], cz[min(len(cz) - 1, int(math.ceil(0.95 * len(cz))) - 1)], cz[-1], len(cz)))
         if v10:
             # Czestosc strony Anomaly wobec sredniej szansy - kanarek losowania bramy (nie niezmiennik: to proba).
             zdlc = [r for r in v10 if r.get('anomaliaSzansa', '') != '']
@@ -930,6 +1284,36 @@ def main():
     if cachel:
         print('\nKOLIZJE CACHE ([PN-CACHE]): %d, w tym z innym werdyktem: %d' % (
             len(cachel), sum(1 for c in cachel if c.get('rozny') == 'true')))
+    # Etap L: dzienny stan kolonii, sklad, koszt czasu, gry ewaluacyjne.
+    if dni_:
+        print('\nDOBY ([PN-DZIEN]): %d linii; narrator: %s; ostatnia: %s' % (
+            len(dni_), dict(collections.Counter(x.get('narrator') for x in dni_)),
+            ' '.join('%s=%s' % (k, dni_[-1].get(k)) for k in ('dzien', 'kolonisci', 'bogactwo', 'bogactwoWiek', 'pora',
+                                                                 'warunki', 'monolit', 'nastroj', 'napadow'))))
+    if kol_:
+        print('\nSKLAD KOLONII ([PN-KOLONISTA]): %s' % dict(collections.Counter(x.get('zdarzenie') for x in kol_)))
+    if stan_:
+        print('\nSTAN REGUL RN ([PN-STAN]): %d linii; %s' % (
+            len(stan_), dict(collections.Counter(x.get('zdarzenie') for x in stan_))))
+    if perf_:
+        dec = sum(int(x.get('decyzji') or 0) for x in perf_)
+        sumaMs = sum(float(x.get('decyzjiSumaMs') or 0) for x in perf_)
+        tik = sum(int(x.get('tickow') or 0) for x in perf_)
+        sumaUs = sum(float(x.get('tickowSumaUs') or 0) for x in perf_)
+        print('\nCZAS ([PN-PERF]): %d dob; decyzji %d, sr. %.3f ms, max %.3f ms; obserwatory sr. %.2f us/tick, max %.1f us' % (
+            len(perf_), dec, sumaMs / dec if dec else 0.0, max(float(x.get('decyzjiMaxMs') or 0) for x in perf_),
+            sumaUs / tik if tik else 0.0, max(float(x.get('tickowMaxUs') or 0) for x in perf_)))
+    if listy_:
+        print('\nLISTY ([PN-LIST]): %d; z odpaleniem w ticku %d, bez %d, z akcji wymuszonej %d; typy: %s' % (
+            len(listy_), sum(1 for x in listy_ if x.get('incydenty') != '-'), sum(1 for x in listy_ if x.get('incydenty') == '-'),
+            sum(1 for x in listy_ if wymuszona(x)), dict(collections.Counter(x.get('typ') for x in listy_))))
+    if eval_:
+        print('\nGRY EWALUACYJNE ([PN-EVAL]): %s' % ', '.join(
+            '%s (profil %s)' % (x.get('runId'), x.get('profil')) for x in eval_))
+    wym = [e for e in execs if wymuszona(e)]
+    if wym:
+        print('\nAKCJE WYMUSZONE ([PN-EXEC] wymuszone=N): %s' % dict(collections.Counter(
+            (e.get('incydent'), e.get('status')) for e in wym)))
     print('\nSTYL GRACZA ([PN-GRACZ]): %d linii' % len(gracze))
     for run in sorted(set(g.get('runId') for g in gracze)):
         gg = [g for g in gracze if g.get('runId') == run]
@@ -944,7 +1328,7 @@ def main():
             x.get('klucz') for x in facts if x.get('tryb') == tryb_ and x.get('zdarzenie') == 'ustawienie'))))
 
     print('\nLINIE POZA [PN-DATA]:')
-    for typ in ['[PN-LOAD]', '[PN-RESET]', '[PN-EXP]', '[PN-WARN]', '[PN-ERR]']:
+    for typ in ['[PN-LOAD]', '[PN-RESET]', '[PN-EVAL]', '[PN-EXP]', '[PN-WARN]', '[PN-ERR]']:
         wpisy = extras.get(typ, [])
         print('  %-11s %d' % (typ, len(wpisy)))
         if typ in ('[PN-WARN]', '[PN-ERR]'):

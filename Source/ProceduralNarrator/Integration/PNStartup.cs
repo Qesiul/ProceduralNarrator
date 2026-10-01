@@ -848,7 +848,9 @@ namespace ProceduralNarrator.Integration
                                      + "; obceMody=" + (obce.Count == 0 ? "-" : string.Join(",", obce.ToArray()))
                                      + "; jezyk=" + jezyk
                                      + "; wersjaGry=" + VersionControl.CurrentVersionStringWithRev
-                                     + "; izolacjaCache=" + (izolacja ? "tak" : "nie"));
+                                     + "; izolacjaCache=" + (izolacja ? "tak" : "nie")
+                                     // Etap L: identyfikator buildu DLL (MVID) - zamrozenie w etapie T porownuje go z danymi.
+                                     + "; mvid=" + typeof(PNStartup).Assembly.ManifestModule.ModuleVersionId.ToString("N"));
             if (obce.Count > 0)
             {
                 PNLog.Warn("Aktywne mody spoza Core i DLC: " + string.Join(", ", obce.ToArray())

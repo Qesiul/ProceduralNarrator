@@ -12,6 +12,7 @@ using ProceduralNarrator.Core.Tension;
 using ProceduralNarrator.Core.Util;
 using ProceduralNarrator.Integration.Arcs;
 using ProceduralNarrator.Integration.Defs;
+using ProceduralNarrator.Integration.Evaluation;
 using ProceduralNarrator.Integration.Incidents;
 using ProceduralNarrator.Integration.Persistence;
 using RimWorld;
@@ -62,32 +63,15 @@ namespace ProceduralNarrator.Integration.Storyteller
         private SelectionPolicy policy;
 
         /// <summary>
-        /// Awaryjna pamiec lokalna. Uzywana WYLACZNIE wtedy, gdy nie ma NarratorMemoryComponent -
-        /// czyli w sytuacji, ktora nie powinna zajsc, bo Game.FillComponents() tworzy go przez
-        /// refleksje w kazdej grze. Narrator dziala wtedy dalej, tylko bez trwalosci.
-        ///
-        /// Degradacja jest swiadoma: brak pamieci przez jedna sesje jest mniej szkodliwy niz
-        /// wyjatek co 1000 tickow. Zeby jednak nie byla CICHA, towarzyszy jej jednorazowy Error -
-        /// patrz ostrzezonoOBrakuKomponentu.
+        /// Awaryjna pamiec lokalna - tylko gdy brak NarratorMemoryComponent (nie powinno sie zdarzyc); jednorazowy Error.
         /// </summary>
         private readonly Dictionary<int, EventHistory> historieAwaryjne = new Dictionary<int, EventHistory>();
 
         private bool ostrzezonoOBrakuKomponentu;
 
         /// <summary>
-        /// Pamiec dla danej mapy. Od kroku 6 comp jej NIE POSIADA - tylko o nia pyta.
-        ///
-        /// Wlascicielem jest NarratorMemoryComponent, bo ten comp nie przezywa wczytania:
-        /// Storyteller.ExposeData w fazie ResolvingCrossRefs wola InitializeStorytellerComps(),
-        /// a ta robi Activator.CreateInstance(compClass), czyli buduje comp od zera z Defa.
-        /// Kazde pole instancyjne przepada przy kazdym wczytaniu i przy kazdej zmianie narratora.
-        ///
-        /// Referencji do komponentu CELOWO NIE CACHUJEMY. GetComponent to skan liniowy listy,
-        /// ale wolany raz na 1000 tickow jest darmowy, a cache przetrwalby wyjscie do menu
-        /// i wczytanie innego zapisu - czyli wskazywalby na pamiec CUDZEJ rozgrywki.
-        ///
-        /// Rozdzial per mapa (klucz Map.uniqueID) i jego uzasadnienie mieszkaja teraz razem
-        /// z pamiecia, w NarratorMemoryComponent.
+        /// Pamiec mapy z NarratorMemoryComponent (comp nie przezywa wczytania). Referencji do komponentu nie cachujemy -
+        /// przetrwalaby wczytanie innego zapisu.
         /// </summary>
         private EventHistory HistoryFor(Map map)
         {
@@ -233,14 +217,8 @@ namespace ProceduralNarrator.Integration.Storyteller
         private bool runtimeBroken;
 
         /// <summary>
-        /// Krzywa dramaturgiczna i profil, z ktorego powstala. Budowane leniwie i przebudowywane
-        /// TYLKO wtedy, gdy zmieni sie profil - czyli w praktyce raz na rozgrywke, a przy seriach
-        /// kontrolnych takze po wymuszeniu profilu akcja debugowa.
-        ///
-        /// Scorer jest tu razem z nimi, bo wagi czynnikow naleza do profilu: gdyby zostal
-        /// zbudowany raz w EnsureRuntime, wymuszenie profilu zmienialoby krzywa, ale NIE wagi,
-        /// i narrator dzialalby na hybrydzie dwoch osobowosci - roznicy nie dalo by sie wtedy
-        /// przypisac zadnej z nich.
+        /// Krzywa, scorer i profil, z ktorego powstaly - przebudowywane razem przy zmianie profilu (wagi naleza do profilu;
+        /// osobna przebudowa dalaby hybryde dwoch osobowosci).
         /// </summary>
         private TensionModel tensionModel;
 
@@ -387,6 +365,9 @@ namespace ProceduralNarrator.Integration.Storyteller
                 yield break;
             }
 
+            // Czas wywolania (etap L): luki i fakty przy kazdym interwale; czas decyzji liczony osobno od bramki tempa.
+            long tWywolania = System.Diagnostics.Stopwatch.GetTimestamp();
+
             // LUKI - OBSERWACJA PRZY KAZDYM WYWOLANIU (krok 5, decyzja autora nr 5), PRZED bramka
             // MTB: straznicy (reakcja na gracza) i limity czasu nie moga czekac na ture decyzji,
             // ktora przychodzi srednio co 2.5 dnia. Bez losowosci (kanarek w ArcTick).
@@ -399,26 +380,21 @@ namespace ProceduralNarrator.Integration.Storyteller
             // w tym samym wywolaniu. Niezalezne od lukow i bez losowosci.
             FactTick(map);
 
-            // Bramka tempa. mtbDays jest wyprowadzone z czestotliwosci podmienionych compow
-            // Cassandry (0.14 + 0.06 + 0.21 = 0.40/dzien), zeby budzet wydarzen byl porownywalny.
-            //
-            // KROK 4 CELOWO JEJ NIE RUSZYL. Wczesniejszy komentarz zapowiadal, ze krzywa
-            // dramaturgiczna zastapi te stala - odrzucone po policzeniu konsekwencji: ruchome
-            // mtbDays kasuje parytet budzetu wobec Cassandry, czyli ten sam argument
-            // metodologiczny, na ktorym stoi caly rozdzial o ewaluacji porownawczej.
-            // Zamiast tego mtbDays zostaje SUFITEM, a krzywa decyduje, ile z niego narrator
-            // zuzyje - przez brame PASS (PassScoringParams.weightIntentAlignment). Tempo jest
-            // wiec zmienne, a porownanie nadal dotyczy tresci, a nie liczby zdarzen.
+            PerfMonitor pomiar = PomiarCzasu();
+            if (pomiar != null)
+            {
+                pomiar.RecordInterval(PerfMonitor.Us(tWywolania, System.Diagnostics.Stopwatch.GetTimestamp()));
+            }
+
+            // Bramka tempa: mtbDays = sufit budzetu (parytet z podmienionymi compami Cassandry, 0.14 + 0.06 + 0.21 na dzien);
+            // ile z niego narrator zuzyje, decyduje krzywa przez brame PASS. Ruchome mtbDays skasowaloby parytet (krok 4).
             if (!Rand.MTBEventOccurs(Props.mtbDays, TicksPerDay, TicksPerInterval))
             {
                 yield break;
             }
+            long tDecyzji = System.Diagnostics.Stopwatch.GetTimestamp();
 
-            // STRAZNIK SCIEZKI DECYZYJNEJ - cala inicjalizacja siedzi WEWNATRZ TryEnsureRuntime,
-            // zeby wyjatek z konstruktorow nie mial jak wyleciec z MakeIntervalIncidents.
-            // Powod, dla ktorego to osobna metoda, a nie try/catch tutaj: C# nie pozwala na
-            // yield return w bloku try z klauzula catch, wiec opakowanie inicjalizacji na
-            // miejscu wymusiloby przebudowe calej metody-iteratora.
+            // Inicjalizacja w TryEnsureRuntime: wyjatek nie moze wyleciec z iteratora (yield nie moze stac w try z catch).
             if (!TryEnsureRuntime())
             {
                 yield break;
@@ -512,23 +488,10 @@ namespace ProceduralNarrator.Integration.Storyteller
                            + "jest dolnym ograniczeniem, a pokrycie gornym. " + kandydaci.Trace);
             }
 
-            // DOKLADNE SITO PRZED SCORINGIEM: usuwamy kandydatow, ktorych gra i tak odrzuci
-            // przez prog punktow zagrozenia. Cond_MinThreatPoints jest tylko sitem ZGRUBNYM,
-            // bo warunek twardy dziala na poziomie klocka i nie zna koncowej intensywnosci
-            // kompozycji - a to ona decyduje o mnozniku punktow. Szczegoly w IncidentParmsBuilder.
-            //
-            // Robimy to PRZED ocenianiem, bo kandydat nieosiagalny w puli moze wygrac runde,
-            // zostac odrzucony przez CanFireNow i - nie trafiwszy do historii - wrocic na czolo
-            // rankingu z maksymalna swiezoscia. To jest petla, ktora zjadala 64% rund.
-            // NOWA LISTA, a nie filtrowanie w miejscu: kandydaci.Candidates jest zrodlem
-            // kolumny "wygenerowanych", wiec skrocenie jej tutaj zabieraloby logowi jedyny
-            // slad po dzialaniu sita.
-            // Dwie przyczyny usuniecia, DWIE osobne linie logu. Linia "Sito punktow zagrozenia"
-            // jest kryterium dlugu weryfikacyjnego 1 z CLAUDE.md - gdyby niosla takze filtr
-            // trudnosci, na Peaceful (gdzie sito punktow jest dzis NIEOSIAGALNE: oba payloady
-            // z progiem to ThreatBig, a filtr trudnosci odcina je wczesniej) potwierdzalaby dlug
-            // zawsze falszywie. W [PN-DATA] obie przyczyny skladaja sie na roznice
-            // wygenerowanych - kandydatow; rozdziela je wylacznie ten log czytelny.
+            // DOKLADNE SITO PRZED SCORINGIEM (IncidentParmsBuilder): kandydaci, ktorych gra odrzuci progiem punktow albo
+            // filtrem trudnosci. Przed ocena, bo odrzucony zwyciezca wracalby z maksymalna swiezoscia (zjadalo 64% rund).
+            // Nowa lista - "wygenerowanych" zostaje, roznica z "kandydatow" to slad sita w danych. Dwie przyczyny, dwie
+            // linie logu czytelnego (linia sita punktow jest kryterium dlugu weryfikacyjnego 1).
             int odfiltrowanych;
             int odfiltrowanychTrudnosc;
             List<ComposedEvent> doOceny = IncidentParmsBuilder.OdfiltrujNieosiagalne(
@@ -549,19 +512,11 @@ namespace ProceduralNarrator.Integration.Storyteller
                              + " punktach bazowych.");
             }
 
-            // WYMOG: ScoreAll i ScorePass wolane DOKLADNIE RAZ na decyzje. Kolejne rundy petli
-            // powtarzaja wylacznie SelectionPolicy.Select na juz ocenionej liscie. Powtorne
-            // ocenianie (a) przeliczyloby czynniki tyle razy, ile rund, (b) nadpisaloby Factors,
-            // gubiac slad tej rundy, ktora faktycznie zakonczyla decyzje. PASS tez nie jest
-            // przeliczany miedzy rundami - gestosc zdarzen nie zmienia sie w obrebie jednej tury.
+            // ScoreAll i ScorePass DOKLADNIE RAZ na ture - rundy powtarzaja tylko wybor na ocenionej liscie.
             List<ScoredCandidate> ocenieni = scorer.ScoreAll(doOceny, context);
             ScoredCandidate pass = scorer.ScorePass(context);
 
-            // Kopia listy jest dzis SZCZATKOWA i zostaje wylacznie ochronnie: TurnRunner nie skraca
-            // listy (odrzuconych OZNACZA, bo musza zostac w mianowniku i w rankingu), a flagi
-            // i tak siedza na wspoldzielonych obiektach ScoredCandidate. Logger czyta ranking
-            // z decyzji i statystyk tury, nie z tej listy. (Dawny komentarz "TurnRunner usuwa
-            // z niej odrzuconych" opisywal ture sprzed prewerifikacji czola.)
+            // Kopia ochronna (TurnRunner oznacza odrzuconych, nie usuwa ich z listy).
             var pula = new List<ScoredCandidate>(ocenieni);
 
             // AKCEPTOR - jedyne miejsce, w ktorym przebieg tury dotyka API gry.
@@ -758,35 +713,16 @@ namespace ProceduralNarrator.Integration.Storyteller
             decyzja.DeferredVariants = tura.DeferredVariants;
             decyzja.UnanswerableScopes = tura.UnanswerableScopes;
 
-            // BRAMKA EMISJI IDZIE PO tura.Accepted, A NIE PO "incydent != null".
-            //
-            // Do czasu prewerifikacji czola oba warunki znaczyly to samo, bo akceptor byl wolany
-            // wylacznie dla zwyciezcy rundy. Faza 0 to rozerwala: pyta o czolo PRZED brama, wiec
-            // gdy brama wybierze cisze, w zmiennych siedzi gotowy incydent kandydata, ktory
-            // niczego nie wygral. Sama bramka "incydent != null" odpalilaby go i PASS przestalby
-            // istniec - awaria cicha, bo log pokazywalby poprawna decyzje o ciszy obok
-            // wypalonego zdarzenia.
-            //
-            // tura.Accepted jest podnoszone WYLACZNIE bezposrednio po przyjeciu zwyciezcy, wiec
-            // przy Accepted == true stan akceptora na pewno opisuje zwyciezce. Przy false nie
-            // ma czego odpalac i zmienne czyscimy, zeby ten sam stan widzial takze logger.
+            // Emisja po tura.Accepted, nie po "incydent != null": faza 0 pyta o czolo PRZED brama, wiec przy ciszy w zmiennych
+            // akceptora moze siedziec gotowy incydent kandydata, ktory niczego nie wygral.
             if (!tura.Accepted)
             {
                 incydent = null;
                 parms = null;
             }
 
-            // KANAREK NA RELACJI, KTORA JEST JEDYNYM SLADEM SITA W DANYCH.
-            //
-            // Dokumentacja IncidentParmsBuilder obiecuje, ze w linii [PN-DATA] zachodzi
-            //     wygenerowanych - kandydatow == liczba odfiltrowanych
-            // i to jest powod, dla ktorego sito NIE dostalo wlasnej kolumny ani podbicia wersji
-            // formatu. Obietnica bez straznika juz raz sie zestarzala po cichu: filtr mutowal
-            // liste, z ktorej logger czyta pierwszy skladnik, wiec roznica wychodzila zawsze zero.
-            //
-            // Straznik porownuje to, co NAPRAWDE trafi do pliku (CountScored ze statystyk tury),
-            // a nie lokalna dlugosc listy - lokalne porownanie bylo by tautologia i przespaloby
-            // dokladnie ten blad, ktory tu wystapil.
+            // Kanarek relacji "wygenerowanych - kandydatow == odfiltrowanych" (jedyny slad sita w danych) na liczbach, ktore
+            // naprawde trafia do pliku (CountScored), a nie na lokalnej liscie.
             TurnStats statystykiTury = decyzja.TurnStats;
             if (statystykiTury != null)
             {
@@ -811,7 +747,7 @@ namespace ProceduralNarrator.Integration.Storyteller
             // Log PRZED zapisem do historii: kontekst wypisany w logu ma opisywac stan, NA KTORYM
             // decyzja zapadla, a nie stan juz o nia powiekszony.
             LogDecision(czytelne, context, kandydaci, decyzja, incydent, parms, odmowy, rundy, map, tick,
-                        tura.PreGateRefusals, tura.AcceptorCalls, napiecie, kryzys);
+                        tura.PreGateRefusals, tura.AcceptorCalls, napiecie, kryzys, tDecyzji);
 
             if (incydent == null)
             {
@@ -906,8 +842,14 @@ namespace ProceduralNarrator.Integration.Storyteller
 
             yield return new FiringIncident(incydent, this, parms);
 
+            long tPotwierdzenia = System.Diagnostics.Stopwatch.GetTimestamp();
             PotwierdzWykonanie(map, ksiega, history, snapshot, incydent, parms, ostatniPrzed, tick,
                                context.DecisionIndex, decyzja.Winner, migawkaListow);
+            PerfMonitor pomiarPotwierdzenia = PomiarCzasu();
+            if (pomiarPotwierdzenia != null)
+            {
+                pomiarPotwierdzenia.RecordConfirmation(PerfMonitor.Us(tPotwierdzenia, System.Diagnostics.Stopwatch.GetTimestamp()));
+            }
 
             // Nasz TryFire juz byl (korzystal z NASZEGO werdyktu) - teraz cache wraca do stanu sprzed nas.
             PrzywrocCache();
@@ -971,6 +913,166 @@ namespace ProceduralNarrator.Integration.Storyteller
                            + ") - w tym ticku kolejni pytajacy moga zobaczyc nasz werdykt.");
             }
             pracownicyCache.Clear();
+        }
+
+        // ---------------------------------------------------------------- POMIAR CZASU I WYMUSZONA AKCJA (krok 9, etap L)
+
+        /// <summary>Pomiar czasu [PN-PERF] z komponentu pamieci; null w symulatorze, bez komponentu albo po awarii.</summary>
+        private static PerfMonitor PomiarCzasu()
+        {
+            if (PNLog.InExperiment || Current.Game == null)
+            {
+                return null;
+            }
+            NarratorMemoryComponent pamiec = Current.Game.GetComponent<NarratorMemoryComponent>();
+            return pamiec == null ? null : pamiec.Perf;
+        }
+
+        /// <summary>Snapshot dla akcji debugowych: pamiec narratora tylko do odczytu, bez lukow, lustro jak w turze.</summary>
+        private WorldSnapshot SnapshotDoWymuszenia(Map map, out EventHistory history, out float gameDay)
+        {
+            gameDay = CurrentTick() / TicksPerDay;
+            history = HistoryFor(map);
+            WorldSnapshot snapshot = WorldSnapshotBuilder.Build(map, history, null, KsiegaFaktow(map), gameDay);
+            if (!lustroBroken)
+            {
+                try
+                {
+                    snapshot.EngineBlockedPayloads = EngineCheckMirror.BlockedCanonical(payloadyAkcji, map);
+                    snapshot.EngineMirrorActive = true;
+                }
+                catch (Exception)
+                {
+                    snapshot.EngineBlockedPayloads = string.Empty;
+                }
+            }
+            return snapshot;
+        }
+
+        /// <summary>Stan akcji katalogu teraz (menu "PN: wymus akcje"); null, gdy narrator nie dziala.</summary>
+        internal List<ActionAvailability> AkcjeDoWymuszenia(Map map)
+        {
+            if (map == null || !TryEnsureRuntime())
+            {
+                return null;
+            }
+            EventHistory history;
+            float gameDay;
+            return composer.DescribeActions(SnapshotDoWymuszenia(map, out history, out gameDay), Props.requiredActionTag);
+        }
+
+        /// <summary>
+        /// "PN: wymus akcje" (etap L, decyzja L-3): najlepszy wariant akcji (ForcedActionPicker, bez bramy i losowania)
+        /// zwykla sciezka gry - izolowane CanFireNow, Storyteller.TryFire, list - i [PN-EXEC] wymuszone=1. Bez zapisu do
+        /// historii, lukow i faktow, bez wiersza [PN-DATA]. Odpalenie z UI przesuwa lastFireTicks jak zwykle odpalenie.
+        /// </summary>
+        internal string WymusAkcje(Map map, string actionId)
+        {
+            if (map == null || !TryEnsureRuntime())
+            {
+                return "narrator nie dziala (brak mapy albo inicjalizacji)";
+            }
+            EventHistory history;
+            float gameDay;
+            WorldSnapshot snapshot = SnapshotDoWymuszenia(map, out history, out gameDay);
+            ActionAvailability stan = composer.DescribeActions(snapshot, Props.requiredActionTag).Find(a => a.Action.Id == actionId);
+            if (stan == null)
+            {
+                return actionId + ": nie ma takiej akcji w katalogu";
+            }
+            if (!stan.IsAvailable)
+            {
+                return actionId + ": niedostepna (" + stan.Status + ")";
+            }
+
+            VariantEnumerationStats statystyki;
+            List<ComposedEvent> warianty = composer.EnumerateVariants(stan.Action, snapshot, Props.candidateBudget, null,
+                                                                      out statystyki);
+            int odfiltrowanych, odfiltrowanychTrudnosc;
+            List<ComposedEvent> doOceny = IncidentParmsBuilder.OdfiltrujNieosiagalne(
+                warianty, snapshot.ThreatPoints, IncidentParmsBuilder.BigThreatsAllowedNow(), out odfiltrowanych,
+                out odfiltrowanychTrudnosc);
+            if (doOceny.Count == 0)
+            {
+                return actionId + ": zaden wariant (" + (warianty.Count == 0 ? "brak zgodnych klockow" : "sito punktow albo trudnosci") + ")";
+            }
+            TurnPlan plan = TurnPlanner.Plan(tensionModel, Props.crisis, history, snapshot, gameDay, null, null,
+                                             new FactionUsability(map, snapshot.ThreatPoints), null, orientacjaStylu,
+                                             Props.playerStyle);
+            ScoredCandidate wybor = ForcedActionPicker.Pick(scorer.ScoreAll(doOceny, plan.Context), actionId);
+            if (wybor == null)
+            {
+                return actionId + ": brak ocenionego wariantu";
+            }
+
+            IncidentDef def = DefDatabase<IncidentDef>.GetNamedSilentFail(wybor.Event.ActionPayload);
+            if (def == null || !def.TargetAllowed(map))
+            {
+                return actionId + ": brak IncidentDef albo cel niedozwolony";
+            }
+            if (def.requireColonistsPresent && map.mapPawns.FreeColonistsSpawnedCount == 0)
+            {
+                return actionId + ": brak wolnych kolonistow na mapie (requireColonistsPresent)";
+            }
+            IncidentParms parms = IncidentParmsBuilder.Apply(GenerateParms(def.category, map), ExecutionSpec.From(wybor.Event, null));
+
+            int tick = CurrentTick();
+            int decyzjaNr = history.DecisionCount;
+            int ostatniPrzed = OstatnieOdpalenie(map, def);
+            NarratorMemoryComponent pamiec = Current.Game == null ? null : Current.Game.GetComponent<NarratorMemoryComponent>();
+            int numer = pamiec == null ? 1 : pamiec.NastepneWymuszenie();
+            LetterSnapshot migawka = null;
+            try
+            {
+                migawka = LetterSnapshot.Take(map);
+            }
+            catch (Exception)
+            {
+                migawka = null;
+            }
+            bool wolno = ZapytajIzolowanie(def, parms, map);
+            if (wolno)
+            {
+                Find.Storyteller.TryFire(new FiringIncident(def, this, parms));
+            }
+            PrzywrocCache();
+
+            int ostatniPo = OstatnieOdpalenie(map, def);
+            ExecStatus status = ExecutionConfirmation.Classify(ostatniPrzed, ostatniPo, tick, false);
+            string frakcja = ArcObservationBuilder.FactionId(parms.faction);
+            int nowychListow;
+            string wariantyTekstu, tekstListu;
+            string list = ZlozList(map, snapshot, status, frakcja, decyzjaNr, wybor, migawka, out nowychListow,
+                                   out wariantyTekstu, out tekstListu);
+            PNLog.Exec(map.uniqueID, decyzjaNr, def.defName, wybor.SortKey, ExecutionConfirmation.Label(status),
+                       ostatniPrzed, ostatniPo, frakcja, null, tick, frakcja == null ? "-" : "parms", tick,
+                       list, nowychListow, wariantyTekstu, tekstListu, numer);
+            if (status == ExecStatus.Executed && pamiec != null)
+            {
+                pamiec.LogujWymuszoneOdpalenie(tick, map, def.defName, NoweListy(migawka), numer);
+            }
+            string wynik = def.defName + ": " + ExecutionConfirmation.Label(status) + (wolno ? string.Empty : " (CanFireNow=false)");
+            PNLog.Decision("WYMUSZONA AKCJA (dev, etap L): " + actionId + " -> " + wynik + " | " + wybor.Label
+                           + " | opis: " + wybor.Event.Description);
+            return wynik;
+        }
+
+        /// <summary>Listy, ktorych nie bylo w migawce (bez migawki - zadne).</summary>
+        private static List<Letter> NoweListy(LetterSnapshot migawka)
+        {
+            var wynik = new List<Letter>();
+            if (migawka == null || Find.LetterStack == null)
+            {
+                return wynik;
+            }
+            foreach (Letter l in Find.LetterStack.LettersListForReading)
+            {
+                if (l != null && !migawka.Letters.Contains(l))
+                {
+                    wynik.Add(l);
+                }
+            }
+            return wynik;
         }
 
         /// <summary>
@@ -1491,7 +1593,7 @@ namespace ProceduralNarrator.Integration.Storyteller
                                  IncidentDef incydent, IncidentParms parms, List<string> odmowy,
                                  int rundy, Map map, int tick,
                                  int preGateRefusals, int acceptorCalls,
-                                 TensionReading napiecie, CrisisReading kryzys)
+                                 TensionReading napiecie, CrisisReading kryzys, long tDecyzji)
         {
             string runda = " | runda " + rundy.ToString(CultureInfo.InvariantCulture)
                            + "/" + Props.maxSelectionRounds.ToString(CultureInfo.InvariantCulture);
@@ -1533,8 +1635,7 @@ namespace ProceduralNarrator.Integration.Storyteller
 
             linie.Add("  kontekst: " + context);
             linie.Add("  kompozycja: " + (kandydaci.Trace ?? kandydaci.DataLogFragment()));
-            // Krok 9 (decyzja autora K1-b): KTORE akcje odcielo lustro sprawdzen gry - w danych jest tylko liczba
-            // (zablokowanychSilnik; kolumna z nazwami dojdzie w etapie L).
+            // Akcje odciete lustrem sprawdzen gry (K1-b; w danych kolumna lustroOdcina od v11).
             string odciete = context == null || context.Snapshot == null ? null : context.Snapshot.EngineBlockedPayloads;
             if (!string.IsNullOrEmpty(odciete) && odciete != ";")
             {
@@ -1562,8 +1663,15 @@ namespace ProceduralNarrator.Integration.Storyteller
 
             PNLog.Decision(string.Join("\n", linie.ToArray()));
 
+            // Czas decyzji (etap L, L-2): od bramki tempa do tego wiersza, wlacznie z logiem czytelnym.
+            float czasMs = (float)PerfMonitor.Ms(tDecyzji, System.Diagnostics.Stopwatch.GetTimestamp());
+            PerfMonitor pomiar = PomiarCzasu();
+            if (pomiar != null)
+            {
+                pomiar.RecordDecision(czasMs);
+            }
             PNLog.Data(tick, map == null ? -1 : map.uniqueID, context, kandydaci, decyzja,
-                       odmowy.Count, preGateRefusals, acceptorCalls, napiecie, kryzys);
+                       odmowy.Count, preGateRefusals, acceptorCalls, napiecie, kryzys, czasMs);
         }
 
         /// <summary>

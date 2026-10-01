@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Reflection;
 using ProceduralNarrator.Core.Evaluation;
 using ProceduralNarrator.Integration.Arcs;
 using RimWorld;
@@ -11,38 +10,24 @@ using Verse;
 namespace ProceduralNarrator.Integration.Evaluation
 {
     /// <summary>
-    /// LOG ODPALEN INCYDENTOW DLA KAZDEGO NARRATORA - [PN-FIRED] (krok 8, decyzja autora K8-2; dlug 7).
+    /// [PN-FIRED] - odpalenia incydentow KAZDEGO narratora w kazdej grze (krok 8, K8-2; etap L kroku 9) i [PN-LIST] - pelna
+    /// tresc kazdego nowego listu (poprawka metodologii etapu L: widoczne formy porownywane tak samo dla wszystkich narratorow).
     ///
-    /// Ewaluacja porownawcza (krok 9) zestawia nasz tor z torem Cassandry, Phoebe i Randy'ego, a nasze
-    /// [PN-DATA] opisuje tylko NASZE decyzje. Ten obserwator mierzy obie strony tym samym narzedziem:
-    /// kazdy incydent odpalony przez Storyteller.TryFire, na kazdym celu (mapy, swiat, karawany), w kazdej
-    /// grze - pole narrator= mowi, kto prowadzil gre. Ktory incydent nalezy do "toru", rozstrzyga analiza.
+    /// Wykrycie bez Harmony przez StoryState.lastFireTicks (FireDetector w Core), na kazdym celu. Nie widac
+    /// incydentow z parms.forced (dev mode, generator zagrozen zadan, wiekszosc Anomaly) ani odpalanych wprost przez
+    /// TryExecute; widac ClassicIntro i kolejke - tor klasyfikuje analiza. Akcja "PN: wymus akcje" odpala z UI po
+    /// przegladzie ticku, wiec detektor jej nie zobaczy - loguje ja LogForced (wymuszone=1).
     ///
-    /// BEZ HARMONY (decyzja K8-1): wykrycie przez StoryState.lastFireTicks (FireDetector w Core). Nie widac
-    /// incydentow wymuszonych w dev mode (parms.forced) i tych, ktore zadania, zdolnosci, rytualy albo
-    /// scenariusz odpalaja wprost przez TryExecute - to nie sa decyzje narratora. SPROSTOWANIE (przeglad S10):
-    /// "wszystkie z TryFire" nie jest doslowne - napady generatora zagrozen zadan (QuestPart_ThreatsGenerator,
-    /// ThreatsGenerator ustawia forced) i wiekszosc zdarzen Anomaly przechodza przez TryFire z forced=true,
-    /// wiec lastFireTicks ich nie zna i ten log ich nie widzi. Widzi za to ClassicIntro (ticki 204000/264000/324000)
-    /// i kolejke (np. prowokacja otchlani) - klasyfikacja "toru" w analizie musi to uwzglednic.
-    ///
-    /// KONTEKST: koloniscy, powaleni ostro i zagrozenie sa zapisywane w ticku tuz PRZED interwalem narratora
-    /// (tick = 999 mod 1000); odpalenie w ticku interwalu dostaje je jako kontekst=przed, bo w ticku
-    /// odpalenia swiat juz zawiera skutek (napastnicy na mapie). Odpalenie poza interwalem (kolejka
-    /// incydentow) i pierwsze po wczytaniu dostaje kontekst z chwili wykrycia (kontekst=po). Bogactwo i punkty
-    /// sa z chwili wykrycia i TYLKO wtedy, gdy odczyt nie wymusi przeliczenia WealthWatcher (inaczej puste -
-    /// przeglad S10: odczyt przestawialby faze przeliczania bogactwa w grze Cassandry).
-    /// Zagrozenie z GenHostility - bez efektow ubocznych (DangerWatcher zapisuje wlasny cache, wiec jego odczyt
-    /// w grze Cassandry zmienialby to, co widzi wanilia).
-    ///
-    /// BEZ RNG GRY (kanarek RandCanary). Instancja zyje w komponencie pamieci i powstaje od nowa przy kazdym
-    /// wczytaniu - nic tu nie jest statyczne ani utrwalane.
+    /// Caly kontekst mapy (koloniscy, powaleni ostro, zagrozenie, bogactwo, punkty, pora, noc) z ticku tuz przed interwalem
+    /// narratora (kontekst=przed), bo w ticku odpalenia swiat zawiera juz skutek; inaczej z chwili wykrycia (kontekst=po).
+    /// Bogactwo z pol gry bez przeliczania (WealthReader), punkty tylko gdy nie wymuszaja przeliczenia. Frakcja tylko dla
+    /// napadow (IncidentWorker_Raid ustawia StoryState.lastRaidFaction). Listy: nowe z ticku wykrycia; przy kilku odpaleniach
+    /// w ticku kazde dostaje wszystkie (listyWspolne=tak). [PN-LIST] idzie dla KAZDEGO nowego listu, takze bez odpalenia
+    /// w tym ticku (listy pozniejsze: meteoryt, zadania). Bez RNG gry (RandCanary).
     /// </summary>
     internal sealed class IncidentFireWatcher
     {
         private readonly FireDetector detektor;
-
-        /// <summary>Kontekst "przed" per mapa domowa: tick zapisu i wartosci.</summary>
         private readonly Dictionary<int, KontekstMapy> przed = new Dictionary<int, KontekstMapy>();
 
         /// <summary>Nasze zdarzenia oddane grze: "tick|cel|incydent" (rejestrowane przed yield compa).</summary>
@@ -50,6 +35,12 @@ namespace ProceduralNarrator.Integration.Evaluation
 
         private readonly List<DetectedFire> bufor = new List<DetectedFire>();
         private readonly List<KeyValuePair<string, int>> wpisy = new List<KeyValuePair<string, int>>();
+        private readonly Dictionary<string, int> liczbaWpisow = new Dictionary<string, int>();
+        private readonly NewIdTracker listy = new NewIdTracker();
+        private readonly List<int> idListow = new List<int>();
+
+        private bool ostrzezonoSpadek;
+        private bool ostrzezonoFantom;
 
         public IncidentFireWatcher(int startTick)
         {
@@ -63,6 +54,12 @@ namespace ProceduralNarrator.Integration.Evaluation
             public int NaMapie;
             public int Powaleni;
             public bool Zagrozenie;
+            public int Pora;
+            public int Noc;
+            public float Bogactwo;
+            public int BogactwoWiek;
+            public float BogactwoWzgl;
+            public float Punkty;
         }
 
         public static string MapKey(int mapId)
@@ -70,11 +67,7 @@ namespace ProceduralNarrator.Integration.Evaluation
             return "map:" + mapId.ToString(CultureInfo.InvariantCulture);
         }
 
-        /// <summary>
-        /// Rejestruje zdarzenie, ktore NASZ comp oddaje grze w tym ticku (przed yield). Obserwator oznaczy
-        /// jego odpalenie pn=1. Rejestracja przed yield, a nie po potwierdzeniu: sciezka spozniona
-        /// (iterator niewznowiony) tez ma wtedy poprawny znacznik.
-        /// </summary>
+        /// <summary>Nasz comp oddaje zdarzenie grze w tym ticku (przed yield) - odpalenie dostanie pn=1.</summary>
         public void RegisterOwn(int tick, int mapId, string incydent)
         {
             if (incydent != null)
@@ -83,11 +76,7 @@ namespace ProceduralNarrator.Integration.Evaluation
             }
         }
 
-        /// <summary>
-        /// Cofa rejestracje, gdy nasz TryFire sie NIE wykonal (przeglad S10). Potwierdzenie biegnie po wznowieniu
-        /// iteratora, jeszcze w StorytellerTick - przed GameComponentTick tego ticku, wiec zdazy. Bez tego odpalenie
-        /// tego samego incydentu przez kogos innego w tym samym ticku (np. ClassicIntro) dostaloby pn=1.
-        /// </summary>
+        /// <summary>Nasz TryFire sie nie wykonal - cudze odpalenie tego incydentu w tym ticku nie dostanie pn=1.</summary>
         public void UnregisterOwn(int tick, int mapId, string incydent)
         {
             if (incydent != null)
@@ -96,21 +85,7 @@ namespace ProceduralNarrator.Integration.Evaluation
             }
         }
 
-        /// <summary>Liczba wpisow lastFireTicks per cel w poprzednim przegladzie (ostrzezenie o wyczyszczeniu).</summary>
-        private readonly Dictionary<string, int> liczbaWpisow = new Dictionary<string, int>();
-
-        private bool ostrzezonoSpadek;
-        private bool ostrzezonoFantom;
-
-        /// <summary>
-        /// Uchwyt pola WealthWatcher.lastCountTick (float) - metadane typu gry. Bogactwo i punkty czytamy tylko
-        /// wtedy, gdy getter NIE wymusi przeliczenia (przeglad S10): w grze z Cassandra odczyt przestawialby faze
-        /// przeliczania bogactwa, a obserwator ma byc bierny.
-        /// </summary>
-        private static readonly FieldInfo OstatnieLiczenie =
-            typeof(WealthWatcher).GetField("lastCountTick", BindingFlags.NonPublic | BindingFlags.Instance);
-
-        /// <summary>Krok obserwatora w ticku gry. Wolane z GameComponentTick, po StorytellerTick.</summary>
+        /// <summary>Krok w ticku gry (GameComponentTick, po StorytellerTick).</summary>
         public void Tick(int tick)
         {
             if (Current.Game == null || Find.Storyteller == null)
@@ -118,13 +93,11 @@ namespace ProceduralNarrator.Integration.Evaluation
                 return;
             }
 
-            // 1. Odpalenia od ostatniego przegladu - na kazdym celu narratora.
             bufor.Clear();
-            List<IIncidentTarget> cele = Find.Storyteller.AllIncidentTargets;
-            var kopia = new List<IIncidentTarget>(cele);
-            for (int i = 0; i < kopia.Count; i++)
+            var cele = new List<IIncidentTarget>(Find.Storyteller.AllIncidentTargets);
+            for (int i = 0; i < cele.Count; i++)
             {
-                IIncidentTarget cel = kopia[i];
+                IIncidentTarget cel = cele[i];
                 if (cel == null || cel.StoryState == null || cel.StoryState.lastFireTicks == null)
                 {
                     continue;
@@ -138,16 +111,14 @@ namespace ProceduralNarrator.Integration.Evaluation
                     }
                 }
                 string klucz = KluczCelu(cel);
-                int fantomow = detektor.Scan(klucz, wpisy, tick, bufor);
-                if (fantomow > 0 && !ostrzezonoFantom)
+                if (detektor.Scan(klucz, wpisy, tick, bufor) > 0 && !ostrzezonoFantom)
                 {
                     ostrzezonoFantom = true;
                     PNLog.Warn("Stan odpalen celu " + klucz + " ma wpisy z PRZYSZLOSCI (tick > " + tick
-                               + ") - zostawia je waniliowe narzedzie \"Future incidents\" albo nieudane przywrocenie "
-                               + "symulatora. Nie beda logowane jako odpalenia; sesja jest skazona dla ewaluacji.");
+                               + ") - zostawia je waniliowe \"Future incidents\" albo nieudane przywrocenie symulatora. "
+                               + "Nie beda logowane jako odpalenia; sesja jest skazona dla ewaluacji.");
                 }
-                // Wanilia nigdy nie USUWA wpisow lastFireTicks poza narzedziami debugowymi ("Future incidents"
-                // czysci je na stale - przeglad S10). Spadek liczby wpisow = skazony stan gry.
+                // Wanilia nie usuwa wpisow lastFireTicks poza narzedziami debugowymi - spadek = skazony stan gry.
                 int poprzednio;
                 if (liczbaWpisow.TryGetValue(klucz, out poprzednio) && wpisy.Count < poprzednio && !ostrzezonoSpadek)
                 {
@@ -158,21 +129,155 @@ namespace ProceduralNarrator.Integration.Evaluation
                 }
                 liczbaWpisow[klucz] = wpisy.Count;
             }
+
+            List<Letter> nowe = NoweListy();
             for (int i = 0; i < bufor.Count; i++)
             {
-                Zaloguj(bufor[i], tick);
+                Zaloguj(bufor[i], tick, nowe, bufor.Count > 1, 0);
             }
+            ZalogujListy(tick, nowe, IncydentyTiku(), 0);
 
-            // 2. Rejestr naszych zdarzen: starsze niz biezacy tick nie maja juz czego oznaczyc.
             if (nasze.Count > 0)
             {
-                nasze.RemoveWhere(k => !k.StartsWith(tick.ToString(CultureInfo.InvariantCulture) + "|"));
+                string teraz = tick.ToString(CultureInfo.InvariantCulture) + "|";
+                nasze.RemoveWhere(k => !k.StartsWith(teraz, StringComparison.Ordinal));
             }
 
-            // 3. Kontekst "przed" - w ticku tuz przed interwalem narratora (StorytellerTick co 1000 tickow).
+            // Kontekst "przed" w ticku tuz przed interwalem narratora (StorytellerTick co 1000 tickow).
             if ((tick + 1) % 1000 == 0)
             {
                 ZapiszKontekstPrzed(tick);
+            }
+        }
+
+        /// <summary>
+        /// Odpalenie z akcji "PN: wymus akcje" (UI, po przegladzie ticku - detektor go nie zobaczy). Listy tego odpalenia
+        /// podaje wolajacy (roznica migawki listow przed i po TryFire); inne nowe listy od ostatniego ticku ida bez odpalenia.
+        /// numer = kolejna akcja w sesji (wymuszone=numer w obu liniach) - kilka akcji w jednej pauzie ma ten sam tick.
+        /// </summary>
+        public void LogForced(int tick, Map mapa, string incydent, List<Letter> jegoListy, int numer)
+        {
+            if (mapa == null || incydent == null)
+            {
+                return;
+            }
+            List<Letter> wlasne = jegoListy ?? new List<Letter>();
+            int nr = numer < 1 ? 1 : numer;
+            Zaloguj(new DetectedFire { Target = MapKey(mapa.uniqueID), Incident = incydent, Tick = tick }, tick, wlasne, false, nr);
+            ZalogujListy(tick, wlasne, incydent, nr);
+            // Listy tego odpalenia sa juz zalogowane - nie moga trafic do odpalenia w nastepnym ticku.
+            var reszta = new List<Letter>();
+            foreach (Letter l in NoweListy())
+            {
+                if (!wlasne.Contains(l))
+                {
+                    reszta.Add(l);
+                }
+            }
+            ZalogujListy(tick, reszta, "-", 0);
+        }
+
+        /// <summary>Listy, ktore pojawily sie od poprzedniego ticku (pierwszy tick po wczytaniu - zadne), rosnaco po ID.</summary>
+        private List<Letter> NoweListy()
+        {
+            var wynik = new List<Letter>();
+            if (Find.LetterStack == null)
+            {
+                return wynik;
+            }
+            List<Letter> stos = Find.LetterStack.LettersListForReading;
+            idListow.Clear();
+            for (int i = 0; i < stos.Count; i++)
+            {
+                if (stos[i] != null)
+                {
+                    idListow.Add(stos[i].ID);
+                }
+            }
+            List<int> nowe = listy.Update(idListow);
+            for (int n = 0; n < nowe.Count; n++)
+            {
+                for (int i = 0; i < stos.Count; i++)
+                {
+                    if (stos[i] != null && stos[i].ID == nowe[n])
+                    {
+                        wynik.Add(stos[i]);
+                        break;
+                    }
+                }
+            }
+            return wynik;
+        }
+
+        /// <summary>Incydenty wykryte w tym ticku (bez powtorzen, porzadek wykrycia) albo "-".</summary>
+        private string IncydentyTiku()
+        {
+            var nazwy = new List<string>();
+            for (int i = 0; i < bufor.Count; i++)
+            {
+                if (!nazwy.Contains(bufor[i].Incident))
+                {
+                    nazwy.Add(bufor[i].Incident);
+                }
+            }
+            return nazwy.Count == 0 ? "-" : string.Join(",", nazwy.ToArray());
+        }
+
+        internal static string Etykieta(Letter l)
+        {
+            return l == null ? string.Empty : l.Label.Resolve().StripTags();
+        }
+
+        /// <summary>Linia [PN-LIST] dla kazdego listu: tytul, pelna tresc i nazwy wlasne do znacznikow (analiza w Pythonie).</summary>
+        private static void ZalogujListy(int tick, List<Letter> nowe, string incydenty, int wymuszone)
+        {
+            for (int i = 0; i < nowe.Count; i++)
+            {
+                Letter l = nowe[i];
+                if (l == null)
+                {
+                    continue;
+                }
+                ChoiceLetter cl = l as ChoiceLetter;
+                Map mapa = l.lookTargets != null && l.lookTargets.Any ? l.lookTargets.PrimaryTarget.Map : null;
+                PNLog.List(tick, mapa == null ? -1 : mapa.uniqueID, incydenty, wymuszone, l.def == null ? "?" : l.def.defName,
+                           l.relatedFaction == null ? null : l.relatedFaction.Name, NazwyPionkow(l), Etykieta(l),
+                           cl == null ? string.Empty : cl.Text.Resolve().StripTags());
+            }
+        }
+
+        /// <summary>Imiona pionkow wskazanych przez list (pelne, krotkie, imie i nazwisko) - do znacznika PIONEK.</summary>
+        private static List<string> NazwyPionkow(Letter l)
+        {
+            var wynik = new List<string>();
+            if (l.lookTargets == null || l.lookTargets.targets == null)
+            {
+                return wynik;
+            }
+            foreach (GlobalTargetInfo t in l.lookTargets.targets)
+            {
+                Pawn p = t.Thing as Pawn;
+                if (p == null || p.Name == null)
+                {
+                    continue;
+                }
+                Dodaj(wynik, p.Name.ToStringFull);
+                Dodaj(wynik, p.Name.ToStringShort);
+                NameTriple n3 = p.Name as NameTriple;
+                if (n3 != null)
+                {
+                    Dodaj(wynik, n3.First);
+                    Dodaj(wynik, n3.Last);
+                }
+            }
+            return wynik;
+        }
+
+        private static void Dodaj(List<string> lista, string s)
+        {
+            if (!string.IsNullOrEmpty(s) && !lista.Contains(s))
+            {
+                lista.Add(s);
             }
         }
 
@@ -184,87 +289,102 @@ namespace ProceduralNarrator.Integration.Evaluation
             }
             foreach (Map m in new List<Map>(Find.Maps))
             {
-                if (m == null || !m.IsPlayerHome)
+                if (m != null && m.IsPlayerHome)
                 {
-                    continue;
+                    przed[m.uniqueID] = Policz(m, tick);
                 }
-                przed[m.uniqueID] = Policz(m, tick);
             }
         }
 
         private static KontekstMapy Policz(Map m, int tick)
         {
-            return new KontekstMapy
+            var k = new KontekstMapy
             {
                 Tick = tick,
                 Kolonisci = m.mapPawns == null ? 0 : m.mapPawns.FreeColonistsCount,
                 NaMapie = WorldSnapshotBuilder.CountColonistsOnMap(m),
                 Powaleni = WorldSnapshotBuilder.CountAcutelyDownedColonists(m),
-                Zagrozenie = GenHostility.AnyHostileActiveThreatToPlayer(m)
+                Zagrozenie = GenHostility.AnyHostileActiveThreatToPlayer(m),
+                Pora = WorldSnapshotBuilder.SeasonIndex(GenLocalDate.Season(m)),
+                Noc = GenCelestial.CurCelestialSunGlow(m) <= WorldSnapshotBuilder.NocnaJasnosc ? 1 : 0,
+                Bogactwo = -1f,
+                BogactwoWiek = -1,
+                BogactwoWzgl = -1f,
+                Punkty = -1f
             };
+            // Pola pomocnicze nie moga wylaczyc obserwatora wyjatkiem.
+            try
+            {
+                float b;
+                int wiek;
+                if (!m.IsPocketMap && WealthReader.TryRead(m, out b, out wiek))
+                {
+                    k.Bogactwo = b;
+                    k.BogactwoWiek = wiek;
+                    k.BogactwoWzgl = WealthReference.Relative(b, GenDate.DaysPassedSinceSettle);
+                    if (WealthReader.NoRecount(m))
+                    {
+                        k.Punkty = StorytellerUtility.DefaultThreatPointsNow(m);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                k.Bogactwo = k.BogactwoWzgl = k.Punkty = -1f;
+                k.BogactwoWiek = -1;
+            }
+            return k;
         }
 
-        private void Zaloguj(DetectedFire f, int tick)
+        private void Zaloguj(DetectedFire f, int tick, List<Letter> listyTiku, bool wspolne, int wymuszone)
         {
             IncidentDef def = DefDatabase<IncidentDef>.GetNamedSilentFail(f.Incident);
             Map mapa = MapaCelu(f.Target);
-            bool nasz = nasze.Contains(f.Tick.ToString(CultureInfo.InvariantCulture) + "|" + f.Target + "|" + f.Incident);
+            bool nasz = wymuszone > 0
+                        || nasze.Contains(f.Tick.ToString(CultureInfo.InvariantCulture) + "|" + f.Target + "|" + f.Incident);
+            var etykiety = new List<string>(listyTiku.Count);
+            for (int i = 0; i < listyTiku.Count; i++)
+            {
+                etykiety.Add(Etykieta(listyTiku[i]));
+            }
 
-            string kontekst = "-";
-            KontekstMapy k = default(KontekstMapy);
-            bool maKontekst = false;
-            float bogactwo = -1f, bogactwoWzgl = -1f, punkty = -1f;
+            var z = new PNLog.FiredFields
+            {
+                Tick = f.Tick, Cel = f.Target, Mapa = mapa == null ? -1 : mapa.uniqueID, Dom = mapa != null && mapa.IsPlayerHome,
+                Incydent = f.Incident, Kategoria = def == null || def.category == null ? "?" : def.category.defName, Nasz = nasz,
+                Kontekst = "-", Opoznienie = f.Tick == tick ? 0 : tick - f.Tick, Etykiety = etykiety,
+                ListyWspolne = wspolne && etykiety.Count > 0, Wymuszone = wymuszone
+            };
             if (mapa != null)
             {
-                KontekstMapy zapisany;
-                if (f.Tick % 1000 == 0 && przed.TryGetValue(mapa.uniqueID, out zapisany) && zapisany.Tick == f.Tick - 1)
+                KontekstMapy k;
+                if (wymuszone == 0 && f.Tick % 1000 == 0 && przed.TryGetValue(mapa.uniqueID, out k) && k.Tick == f.Tick - 1)
                 {
-                    k = zapisany;
-                    kontekst = "przed";
+                    z.Kontekst = "przed";
                 }
                 else
                 {
                     k = Policz(mapa, tick);
-                    kontekst = "po";
+                    z.Kontekst = "po";
                 }
-                maKontekst = true;
-                // Bogactwo i punkty BEZ skutkow ubocznych (przeglad S10): tylko gdy getter nie wymusi przeliczenia
-                // WealthWatcher i tylko na mapie, ktorej punkty licza sie z niej samej (mapa kieszeniowa bierze
-                // AnyPlayerHomeMap - moze go nie byc). Pola pomocnicze nie moga wylaczyc obserwatora wyjatkiem.
-                try
+                z.Kolonisci = k.Kolonisci;
+                z.NaMapie = k.NaMapie;
+                z.Powaleni = k.Powaleni;
+                z.Zagrozenie = k.Zagrozenie ? 1 : 0;
+                z.Pora = k.Pora;
+                z.Noc = k.Noc;
+                z.Bogactwo = k.Bogactwo;
+                z.BogactwoWiek = k.BogactwoWiek;
+                z.BogactwoWzgl = k.BogactwoWzgl;
+                z.Punkty = k.Punkty;
+                if (def != null && def.Worker is IncidentWorker_Raid && mapa.StoryState != null
+                    && mapa.StoryState.lastRaidFaction != null)
                 {
-                    if (!mapa.IsPocketMap && BogactwoBezPrzeliczenia(mapa))
-                    {
-                        bogactwo = mapa.PlayerWealthForStoryteller;
-                        bogactwoWzgl = WealthReference.Relative(bogactwo, GenDate.DaysPassedSinceSettle);
-                        punkty = StorytellerUtility.DefaultThreatPointsNow(mapa);
-                    }
-                }
-                catch (Exception)
-                {
-                    bogactwo = bogactwoWzgl = punkty = -1f;
+                    z.Frakcja = ArcObservationBuilder.FactionId(mapa.StoryState.lastRaidFaction);
+                    z.FrakcjaDef = mapa.StoryState.lastRaidFaction.def == null ? null : mapa.StoryState.lastRaidFaction.def.defName;
                 }
             }
-
-            PNLog.Fired(f.Tick, f.Target, mapa == null ? -1 : mapa.uniqueID, mapa != null && mapa.IsPlayerHome,
-                        f.Incident, def == null || def.category == null ? "?" : def.category.defName, nasz,
-                        kontekst, maKontekst ? k.Kolonisci : -1, maKontekst ? k.NaMapie : -1,
-                        maKontekst ? k.Powaleni : -1, maKontekst ? (k.Zagrozenie ? 1 : 0) : -1,
-                        bogactwo, bogactwoWzgl, punkty, f.Tick == tick ? 0 : tick - f.Tick);
-        }
-
-        /// <summary>
-        /// Czy odczyt bogactwa mapy nie wymusi przeliczenia: WealthWatcher.RecountIfNeeded liczy od nowa, gdy od
-        /// ostatniego liczenia minelo &gt; 5000 tickow. Bez dostepu do pola - nie czytamy wcale (pola puste).
-        /// </summary>
-        private static bool BogactwoBezPrzeliczenia(Map m)
-        {
-            if (OstatnieLiczenie == null || m.wealthWatcher == null || OstatnieLiczenie.FieldType != typeof(float))
-            {
-                return false;
-            }
-            float ostatnie = (float)OstatnieLiczenie.GetValue(m.wealthWatcher);
-            return (float)Find.TickManager.TicksGame - ostatnie <= 5000f;
+            PNLog.Fired(z);
         }
 
         private static string KluczCelu(IIncidentTarget cel)
@@ -288,12 +408,9 @@ namespace ProceduralNarrator.Integration.Evaluation
 
         private static Map MapaCelu(string klucz)
         {
-            if (klucz == null || !klucz.StartsWith("map:") || Find.Maps == null)
-            {
-                return null;
-            }
             int id;
-            if (!int.TryParse(klucz.Substring(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
+            if (klucz == null || !klucz.StartsWith("map:", StringComparison.Ordinal) || Find.Maps == null
+                || !int.TryParse(klucz.Substring(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
             {
                 return null;
             }

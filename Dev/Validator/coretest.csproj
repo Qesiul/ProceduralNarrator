@@ -13,6 +13,7 @@
     <Compile Include="Harness.cs" />
     <Compile Include="TestsComposition.cs" />
     <Compile Include="TestsDlcContent.cs" />
+    <Compile Include="TestsStageL.cs" />
     <Compile Include="TestsDecision.cs" />
     <Compile Include="TestsTension.cs" />
     <Compile Include="TestsAudit2.cs" />

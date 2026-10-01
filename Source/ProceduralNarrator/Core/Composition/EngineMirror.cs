@@ -51,6 +51,24 @@ namespace ProceduralNarrator.Core.Composition
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Kolumna "lustroOdcina" (v11, etap L): odciete payloady po przecinku, "-" gdy lustro dzialalo i nic nie odcielo,
+        /// pusto gdy lustro nie dzialalo (brak pomiaru).
+        /// </summary>
+        public static string DataColumn(WorldSnapshot snapshot)
+        {
+            if (snapshot == null || !snapshot.EngineMirrorActive)
+            {
+                return string.Empty;
+            }
+            string c = snapshot.EngineBlockedPayloads;
+            if (string.IsNullOrEmpty(c) || c == ";")
+            {
+                return "-";
+            }
+            return c.Trim(';').Replace(';', ',');
+        }
+
         /// <summary>Czy gra i tak odrzucilaby ten payload (brak snapshotu = nic nie wiadomo = nie blokujemy).</summary>
         public static bool IsBlocked(WorldSnapshot snapshot, string payload)
         {

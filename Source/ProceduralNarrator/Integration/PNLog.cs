@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -13,20 +14,9 @@ using Verse;
 namespace ProceduralNarrator.Integration
 {
     /// <summary>
-    /// Logowanie decyzji narratora (sekcja 12 koncepcji - dane wejsciowe ewaluacji).
-    /// Dwa rozlaczne strumienie, celowo o roznych prefiksach:
-    ///
-    ///   [PN]       linia CZYTELNA dla czlowieka - slad kompozycji, ranking, powody odrzucen.
-    ///              Wolno ja przeformatowac miedzy wersjami, nikt jej nie parsuje.
-    ///   [PN-DATA]  linia MASZYNOWA - jeden wiersz na decyzje, staly zestaw i stala KOLEJNOSC
-    ///              kolumn, wylacznie InvariantCulture. To jest wejscie skryptow z kroku 8
-    ///              i jej format jest kontraktem, a nie wygoda.
-    ///
-    /// Cala lista kolumn linii maszynowej jest zadeklarowana W JEDNYM MIEJSCU (DataColumns)
-    /// i opatrzona numerem wersji. Powod jest praktyczny: kolumny dokladaja cztery rozne
-    /// warstwy (kompozycja, scoring, polityka, integracja), a krok 4 dolozy kolejne. Bez
-    /// jednej deklaracji kolejnosci skrypt w Pythonie pekalby po cichu - dostalby liczby
-    /// pod nazwami, ktorych sie nie spodziewa, i nikt by tego nie zauwazyl w wynikach.
+    /// Logowanie narratora. [PN] - log czytelny (wolno go przeformatowac). [PN-DATA] - jeden wiersz na decyzje,
+    /// stala lista i kolejnosc kolumn (DataColumns, jedno zrodlo prawdy), InvariantCulture - kontrakt z analiza.
+    /// Pozostale linie ([PN-LOAD], [PN-EXEC], [PN-FIRED]...) sa poza kontraktem kolumn: pola klucz=wartosc.
     /// </summary>
     public static class PNLog
     {
@@ -40,154 +30,18 @@ namespace ProceduralNarrator.Integration
         private const string ErrorDataPrefix = "[PN-ERR] ";
 
         /// <summary>
-        /// Wersja formatu linii maszynowej. PODBIC przy KAZDEJ zmianie zawartosci DataColumns -
-        /// dolozeniu, usunieciu albo przestawieniu kolumny. Numer wersji jest pierwsza kolumna
-        /// kazdego wiersza, wiec skrypt agregujacy moze odrzucic serie w nieznanym formacie
-        /// zamiast wymieszac ja z biezaca.
+        /// Wersja formatu [PN-DATA] - pierwsza kolumna kazdego wiersza. PODBIC przy KAZDEJ zmianie DataColumns
+        /// (dolozenie, usuniecie, przestawienie kolumny albo zmiana jej znaczenia), zeby analiza nie zmieszala serii.
+        /// Historia (szczegoly: dziennik, CLAUDE.md 2.7): v2 brama dwuetapowa; v3 runId; v4 profil i napiecie;
+        /// v5 pRunda, liczniki odmow i pytan; v6 tryb, eksperyment, czlony napiecia, kryzys; v7 kontekst i luki;
+        /// v8 faktow i konsekwencja (klucz 6 segmentow); v9 styl gracza; v10 brama Anomaly i lustro;
+        /// v11 (krok 9, etap L) lustroOdcina (nazwy akcji odcietych lustrem, K1-b) i czasMs (czas decyzji, L-2).
         /// </summary>
-        /// WERSJA 2 (brama dwuetapowa): doszla kolumna "pBrama", a kolumna "wSoftmaksie" zmienila
-        /// znaczenie - liczy teraz SAME zdarzenia etapu B, bez pseudo-kandydata PASS, ktory
-        /// rozstrzyga sie osobno w bramie. Kolumna "losowan" jest odtad rowna dwukrotnosci
-        /// liczby rund, nie liczbie rund.
-        ///
-        /// WERSJA 3 (trwalosc pamieci): doszla kolumna "runId" - identyfikator ROZGRYWKI,
-        /// staly przez cale zycie zapisu gry. Do wersji 2 wlacznie jedyna granica w danych byla
-        /// linia [PN-SESSION], ktora oznacza URUCHOMIENIE PROCESU: rozgrywka grana na raty
-        /// rozpadala sie wiec na N nieodroznialnych kawalkow, a dwie rozne rozgrywki z jednego
-        /// wieczoru zlewaly sie w jedna. Od tej wersji grupowanie idzie po runId, a [PN-SESSION]
-        /// zostaje wylacznie znacznikiem technicznym.
-        ///
-        /// WERSJA 4 (krzywa dramaturgiczna): doszly kolumny "profil" i "napiecie".
-        /// "profil" jest NIEZBEDNY, a nie ozdobny: od kroku 4 osobowosc narratora jest losowana
-        /// na starcie rozgrywki i nieujawniana graczowi, wiec bez tej kolumny dwie rozgrywki
-        /// "naszego narratora" prowadziliby DWAJ ROZNI narratorzy, a analiza nie mialaby jak
-        /// tego rozwarstwic - losowy przydzial stalby sie niekontrolowana zmienna w ewaluacji.
-        /// "napiecie" jest surowym wejsciem krzywej; bez niego z danych nie da sie odtworzyc,
-        /// dlaczego narrator wybral akurat te intencje.
-        ///
-        /// WERSJA 5 (polerowanie warstwy decyzyjnej - piec zarzutow). Trzy nowe kolumny, jedna
-        /// przemianowana, jedna o zmienionym znaczeniu. Wszystko w JEDNYM podbiciu, celowo:
-        /// seria v4 jest zamykana, a nie laczona z v5, wiec skrypty agregujace przepisuje sie raz.
-        ///
-        ///   + "pRunda"        - prawdopodobienstwo zwyciezcy w LOSOWANIU WYBORU, ktore go
-        ///                       wskazalo, WARUNKOWE (przy juz rozstrzygnietej bramie). PUSTE,
-        ///                       gdy wyniku nie wyprodukowalo losowanie wyboru - czyli przy
-        ///                       kazdej ciszy. Wklad bramy ma wlasna kolumne pBrama i nie jest
-        ///                       tu niesiony drugi raz.
-        ///   ~ "p"             - ZNACZENIE DOPRECYZOWANE, nie zmienione: jest to udzial kandydata
-        ///                       w rozkladzie RUNDY PIERWSZEJ (po prewerifikacji, przed odmowami
-        ///                       w petli), a suma po calym rankingu wynosi dokladnie 1 (przedtem
-        ///                       1.15 przy jednej odmowie i 2.73, gdy silnik odrzucil wszystko).
-        ///                       NIE jest to prawdopodobienstwo, ze tura skonczy sie tym wynikiem -
-        ///                       takiej liczby w wierszu nie ma, bo zalezy od tego, czemu silnik
-        ///                       odmowi, a to wiadomo dopiero po fakcie.
-        ///   + "wspoldzielona" - czy potwierdzenie od silnika wspoldzielono z wariantem
-        ///                       o IDENTYCZNYCH parametrach wykonania (rozniacym sie samym opisem).
-        ///                       To oszczedzone pytanie, nie niepewnosc: warianty o INNYCH
-        ///                       parametrach sa odkladane do nastepnej tury, bo cache
-        ///                       CanFireNowSub (jeden wynik na IncidentDef i tick) nie pozwala
-        ///                       ich sprawdzic. Kolumna jest kanarkiem na rozjazd miedzy
-        ///                       IncidentParmsBuilder.Apply a ExecutionKey.
-        ///   + "odlozonych"    - ile wariantow odlozono do nastepnej tury (inne parametry
-        ///                       wykonania albo niedostepny werdykt).
-        ///   + "niedostepnych" - ile razy silnik NIE MOGL dac swiezego werdyktu, bo o dany payload
-        ///                       pytano juz w tym ticku. Wartosc > 0 znaczy, ze tura dzieli tick
-        ///                       z inna tura narratora - w grze zachodzi to przy WIECEJ NIZ JEDNEJ
-        ///                       kolonii, bo Storyteller.MakeIncidentsForInterval iteruje po
-        ///                       wszystkich celach. Kolumna jest jedynym miejscem, w ktorym to
-        ///                       widac; bez niej druga kolonia wygladala by na w pelni
-        ///                       zweryfikowana.
-        ///   + "odmowCzola"    - ile odmow silnika padlo PRZED brama, w prewerifikacji czola.
-        ///   + "pytanDoGry"    - ile razy w turze zapytano silnik o wykonalnosc. Budzet jest
-        ///                       WSPOLNY dla calej tury, wiec obowiazuje niezmiennik
-        ///                       pytanDoGry <= maxSelectionRounds.
-        ///   ~ "seriaPass" -> "ciszaSwiadoma" - licznik liczy WYLACZNIE cisze wybrana przez brame
-        ///                       (PassReason.Competitive). Cisza z przeszkody technicznej nie
-        ///                       zuzywa juz limitu swiadomego milczenia. NAZWA zmieniona razem
-        ///                       ze znaczeniem: stara nazwa przy nowej semantyce dawalaby kolumne
-        ///                       parsujaca sie w obu seriach i znaczaca w nich co innego.
-        ///   ~ "wSoftmaksie"   - liczy zdarzenia WYKONALNE, ktore stanely do wyboru. Kandydaci
-        ///                       odrzuceni przez silnik odpadaja z tej liczby, ale ZOSTAJA
-        ///                       w "kandydatow" (mianownik opisuje ture) i w rankingu ze sladem.
-        ///   ~ "losowan"       - odtad 1 + 2 * liczba rund, bo wybor zdarzenia jest dwustopniowy
-        ///                       (akcja, potem jej wariant). Przedtem 1 + liczba rund.
-        ///
-        /// WERSJA 6 (polerowanie etapu 4 - napiecie, kryzys, tryb danych). Jedno podbicie, bo
-        /// kolumna "napiecie" ZMIENILA ZNACZENIE, a v5 trafilo juz do pliku (33 wiersze
-        /// z symulatora debugowego) - zmiana w obrebie v5 zmieszalaby dwie formuly pod jedna
-        /// nazwa kolumny. Seria v5 jest zamykana, nie laczona.
-        ///
-        ///   + "tryb"          - "gra" albo "symulacja". Wiersze z wlasnej akcji debugowej
-        ///                       "PN: test przyszlych incydentow" ida do TEGO SAMEGO pliku, ale
-        ///                       odroznia je ta kolumna - analiza filtruje tryb == "gra".
-        ///   + "eksperyment"   - pusta w grze; w symulacji "idEksperymentu/ramie", zeby ramiona
-        ///                       jednego eksperymentu (profile, ramie kontrolne) dalo sie rozdzielic.
-        ///   ~ "napiecie"      - ZNACZENIE ZMIENIONE w OBU czlonach. Narracyjny liczy zanik KAZDEGO
-        ///                       wpisu osobno (wczesniej: wspolny mnoznik z wieku najnowszego wpisu).
-        ///                       Sytuacyjny liczy powalonych OSTRO (AcuteDownedCount zamiast kazdego
-        ///                       Downed) wsrod kolonistow OBECNYCH na mapie (ColonistsOnMap zamiast
-        ///                       ColonistCount). Progi profili NIE zostaly przestrojone - rozklad
-        ///                       intencji w v6 jest przesuniety ku Escalate (patrz CLAUDE.md).
-        ///   + "napiecieNarr", "napiecieSyt" - czlony napiecia. Bez nich rozkladu napiecia nie
-        ///                       dalo sie odtworzyc z pliku (wagi profilu sa w kolumnie profil).
-        ///   + "powalonych", "kolonistowNaMapie", "zagrozenie" - wejscia czlonu sytuacyjnego
-        ///                       i predykatu kryzysu. "powalonych" liczy powalonych OSTRO
-        ///                       (szok bolowy, krwawienie albo cokolwiek do opatrzenia - takze
-        ///                       choroba nigdy nieopatrzona albo na 3 h przed koncem opatrunku);
-        ///                       bez niemowlat, a stany trwale tylko wtedy, gdy pionek ma cos do
-        ///                       opatrzenia. Mianownik z tej samej listy pionkow obecnych na mapie.
-        ///   + "kryzys"        - czy zachodzil kryzys skrajny (regula wspolna dla profili: Breathe,
-        ///                       moc &lt;= 0, straznik serii zawieszony).
-        ///   + "straznikZawieszony" - seria ciszy byla na limicie W KRYZYSIE, wiec straznik nie
-        ///                       zmuszal do dzialania. Liczona NIEZALEZNIE od tego, czy pula miala
-        ///                       zdarzenia (passStlumiony wymaga niepustej puli) - obie kolumny sie
-        ///                       wykluczaja, ale nie sa swoim lustrem.
-        ///   ~ "odlozonych"    - liczy WYLACZNIE odlozenia sprzed decyzji. W v5 dochodzily do niej
-        ///                       odlozenia rodzenstwa PO przyjeciu zwyciezcy w petli rund (36 ze 115
-        ///                       w danych v5 z waniliowego symulatora), ktore niczego nie zmienialy.
-        ///   ~ "ciszaSwiadoma" - bez zmiany znaczenia kolumny (stan PRZED decyzja), ale cisza
-        ///                       wybrana w kryzysie skrajnym NIE podnosi juz licznika. Taka cisza ma
-        ///                       nadal powodPass=Competitive (brama ja wybrala) - metryki swiadomego
-        ///                       milczenia per profil trzeba wiec filtrowac po kryzys=false.
-        ///   ~ ksiegowanie ThreatBig przy wylaczonych duzych zagrozeniach (Peaceful, okno po
-        ///                       metalowym piekle): kandydaci odpadaja w sicie przed scoringiem, wiec
-        ///                       przechodza z odmowSilnika/odmowCzola/pytanDoGry do roznicy
-        ///                       wygenerowanych - kandydatow (i zmniejszaja mianownik "kandydatow").
-        ///
-        /// KONFIGURACJA W PLIKU DANYCH: od v6 po [PN-DATA-COLS] ida linie [PN-CONFIG] z efektywnymi
-        /// parametrami (configStamp, kryzys, PASS, profile). Bez nich wylaczenie reguly kryzysu albo
-        /// zmiana progu bylyby w danych niewidoczne - kolumna "kryzys" jest boolem.
-        ///
-        /// v7 (krok 5, luki narracyjne): kolumny kontekstu (bogactwo, punkty) i stanu lukow w preambule
-        /// oraz moc zwyciezcy i kolumny lukowe na koncu czesci decyzyjnej; linie [PN-ARC] i [PN-EXEC]
-        /// poza kontraktem.
-        ///
-        /// v8 (krok 6, blackboard): kolumna "faktow" w preambule (obowiazujace fakty w snapshocie
-        /// decyzji) i "konsekwencja" na koncu czesci decyzyjnej; linia [PN-FACT] poza kontraktem;
-        /// pole "fakty=" w [PN-LOAD] i [PN-RESET]. Podbicie jest KONIECZNE takze z drugiego powodu:
-        /// kolumna "klucz" (sygnatura kompozycji) ma od kroku 6 szesc segmentow zamiast pieciu, a bez
-        /// nowego numeru skrypt analizy zszylby obie serie bez ostrzezenia - porownywalnosc pozorna
-        /// jest gorsza niz zerwana.
-        ///
-        /// v9 (krok 7, styl gracza): dziewiec kolumn stylu w preambule (dni w kolejce, aktywnosc, cztery
-        /// cechy na wspolnej skali, mocne strony, etykieta, kierunek d) i trzy na koncu czesci decyzyjnej
-        /// (wartosc stylu zwyciezcy, jego premia, liczba kandydatow z niezerowym stylem w pasmie); linia
-        /// [PN-GRACZ] poza kontraktem; pole "styl=" w [PN-LOAD] i [PN-RESET].
-        ///
-        /// v10 (krok 9, K0 - infrastruktura katalogu pod ewaluacje): dwie kolumny bramy Anomaly na koncu
-        /// preambuly (szansa gry na pule Anomaly - pusta bez DLC - i strona wylosowana w tej turze) oraz
-        /// "zablokowanychSilnik" na koncu grupy generowania (akcje odciete lustrem sprawdzen gry; pusta, gdy
-        /// lustro nie dzialalo).
-        public const int DataFormatVersion = 10;
+        public const int DataFormatVersion = 11;
 
         /// <summary>
-        /// PELNA lista kolumn linii [PN-DATA] w ich OBOWIAZUJACEJ kolejnosci. Jedyne zrodlo
-        /// prawdy o formacie: naglowek wypisywany na starcie powstaje z tej tablicy, a kontrola
-        /// spojnosci przy pierwszym wierszu porownuje z nia faktycznie zbudowana linie.
-        ///
-        /// Grupa trzecia pochodzi z NarratorDecision.ToDataFragment(), czyli z rdzenia - tu jest
-        /// tylko jej deklaracja. Rozjazd miedzy rdzeniem a ta lista wychwytuje kontrola w runtime
-        /// (VerifyFormatOnce), bo kompilator nie ma jak zwiazac tekstu z tablica.
+        /// Kolumny [PN-DATA] w obowiazujacej kolejnosci. Grupa decyzyjna powstaje w rdzeniu (NarratorDecision);
+        /// rozjazd z ta lista wychwytuje VerifyFormatOnce przy pierwszym wierszu i check_columns.py offline.
         /// </summary>
         private static readonly string[] DataColumns =
         {
@@ -210,8 +64,8 @@ namespace ProceduralNarrator.Integration
             // --- generowanie kandydatow (CandidateSet) ---
             "wygenerowanych", "budzet", "akcji", "limitNaAkcje", "przestrzen",
             "wyczerpano", "ucieto", "budzetPrzekroczony",
-            // --- krok 9 (v10): lustro sprawdzen gry ---
-            "zablokowanychSilnik",
+            // --- krok 9 (v10): lustro sprawdzen gry; (v11, etap L) jego lista i czas decyzji ---
+            "zablokowanychSilnik", "lustroOdcina", "czasMs",
 
             // --- decyzja: scoring i polityka wyboru (NarratorDecision.ToDataFragment) ---
             "decyzja", "wybor", "klucz", "wynik", "p", "pRunda",
@@ -232,19 +86,8 @@ namespace ProceduralNarrator.Integration
 
         private static bool formatVerified;
 
-        // =====================================================================================
-        //  KONTEKST EKSPERYMENTU - wlasna akcja debugowa "PN: test przyszlych incydentow"
-        // =====================================================================================
-        //  W trakcie eksperymentu:
-        //    - wiersze [PN-DATA] ida do TEGO SAMEGO pliku co dane z gry, z tryb=symulacja
-        //      i niepusta kolumna eksperyment - jedna seria plikow, rozdzielana kolumna;
-        //    - linie CZYTELNE ([PN]) NIE ida do Verse.Log, tylko do osobnego pliku
-        //      PN_symulacje.log. Powod zmierzony: 33 decyzje symulatora daly 614 wiadomosci,
-        //      a Verse.Log wylacza sie po 1000 - trzy ramiona po 100 dni wygasilyby log calej gry
-        //      (takze innych modow) w jednym kliknieciu;
-        //    - Warn i Error nadal ida do Verse.Log, z prefiksem [PN][SYM], bo sa rzadkie i musza
-        //      byc widoczne tam, gdzie szuka sie bledow.
-        // =====================================================================================
+        // Eksperyment ("PN: test przyszlych incydentow"): wiersze [PN-DATA] ida do pliku danych z tryb=symulacja,
+        // log czytelny do PN_symulacje.log (Verse.Log wylacza sie po 1000 komunikatach procesu), Warn/Error tez do Verse.Log.
 
         private const string SimFileName = "PN_symulacje.log";
         private static StreamWriter simWriter;
@@ -336,34 +179,9 @@ namespace ProceduralNarrator.Integration
             }
         }
 
-        // =====================================================================================
-        //  UJSCIE DANYCH BADAWCZYCH - WLASNY PLIK, NIE Player.log
-        // =====================================================================================
-        //  Verse.Log ma twardy limit 1000 KOMUNIKATOW (zweryfikowane dekompilacja 1.5.4063:
-        //  Log.Notify_MessageReceivedThreadedInternal). Przy tysiecznym gra wypisuje "Reached max
-        //  messages limit. Stopping logging to avoid spam." i WYLACZA logowanie calkowicie -
-        //  Message, Warning i Error koncza sie odtad pustym return. Licznik obejmuje CALY proces
-        //  (wanilie i wszystkie mody), a zeruje sie tylko na koncu ladowania gry, przy
-        //  przeladowaniu Defow w trybie deweloperskim i przyciskiem Clear w oknie logu -
-        //  WCZYTANIE ZAPISU GO NIE ZERUJE, wiec druga rozgrywka w tym samym procesie dziedziczy
-        //  nasycenie.
-        //
-        //  Wczesniejsze wydanie tego komentarza liczylo "szesc linii na decyzje, limit po ok. 150
-        //  decyzjach". Zmierzone bylo gorzej: jedna decyzja dawala ok. 19 komunikatow (kazda linia
-        //  rankingu osobno; 33 decyzje symulatora = 614 komunikatow), czyli sufit ok. 50 decyzji
-        //  w jednej sesji. Od drugiego przegladu etapu 4 log czytelny calej tury idzie JEDNYM
-        //  komunikatem wieloliniowym (limit liczy komunikaty, nie linie) - sufit rosnie do rzedu
-        //  1000 decyzji minus komunikaty innych modow.
-        //
-        //  Dlatego:
-        //    - strumien MASZYNOWY idzie do wlasnego pliku obok Player.log - jego utrata byla by
-        //      cicha awaria w danych badawczych;
-        //    - Warn i Error sa LUSTRZANE w pliku danych ([PN-WARN] / [PN-ERR]), bo po nasyceniu
-        //      Verse.Log znikalyby dokladnie te komunikaty, ktorych szuka sie przy diagnozie;
-        //      parsery filtruja po prefiksie, wiec te linie niczego nie psuja;
-        //    - kryteria odbioru testu w grze opieraja sie na pliku danych, a gdy siegaja do
-        //      Player.log, to z warunkiem, ze nie padlo w nim "Reached max messages limit".
-        // =====================================================================================
+        // Dane badawcze ida do WLASNEGO pliku obok Player.log: Verse.Log wylacza sie calkowicie po 1000 komunikatach
+        // procesu (Log.Notify_MessageReceivedThreadedInternal), a wczytanie zapisu licznika nie zeruje. Warn i Error
+        // sa lustrzane w pliku danych ([PN-WARN] / [PN-ERR]).
 
         private const string DataFileName = "PN_decyzje.log";
         private static StreamWriter dataWriter;
@@ -376,16 +194,8 @@ namespace ProceduralNarrator.Integration
         }
 
         /// <summary>
-        /// Zapisuje jedna linie danych. Otwiera plik leniwie i trzyma go otwartego, bo linii jest
-        /// jedna na 1000 tickow - koszt otwierania za kazdym razem bylby wiekszy niz zysk.
-        ///
-        /// Tryb DOPISYWANIA, nie nadpisywania: seria ewaluacyjna to wiele uruchomien gry i kazde
-        /// ma dolozyc swoje dane, a nie skasowac poprzednie. Sesje rozdziela linia [PN-SESSION].
-        ///
-        /// AutoFlush jest wlaczony celowo. Rozgrywka konczy sie zwykle zabiciem procesu albo
-        /// wyjsciem do pulpitu, wiec finalizator moze nigdy nie dobiec - bez flushowania ostatnie
-        /// decyzje siedzialyby w buforze i przepadly. Utrata wydajnosci jest zerowa przy jednej
-        /// linii na 1000 tickow.
+        /// Jedna linia do pliku danych: otwarcie leniwe, dopisywanie (seria to wiele uruchomien, granica [PN-SESSION]),
+        /// AutoFlush (proces bywa zabijany). Blad zapisu - jedno glosne ostrzezenie i koniec prob.
         /// </summary>
         private static void WriteData(string line)
         {
@@ -399,15 +209,7 @@ namespace ProceduralNarrator.Integration
                 if (dataWriter == null)
                 {
                     string sciezka = DataFilePath;
-                    // UTF8Encoding(false), a NIE Encoding.UTF8 - ten drugi dopisuje BOM przy
-                    // TWORZENIU pliku. Znacznik ladowal wtedy przed pierwsza linia [PN-SESSION]
-                    // i naiwne open(..., encoding='utf-8') w Pythonie zwracalo pierwsza linie
-                    // z doklejonym znakiem U+FEFF, wiec startswith('[PN-SESSION]') nie trafialo.
-        // (Znaku BOM celowo NIE wklejamy tu doslownie - komentarz opisujacy usterke
-        //  nie moze sam byc nosnikiem tej samej pulapki dla narzedzi czytajacych plik.)
-                    // Awaria dotyczy WYLACZNIE pierwszego uruchomienia po skasowaniu pliku -
-                    // czyli dokladnie tego przypadku, od ktorego zaczyna sie kazda czysta seria
-                    // pomiarowa. Zlapane przy pierwszym uruchomieniu skryptu analizujacego.
+                    // UTF8Encoding(false): Encoding.UTF8 dopisuje BOM przy tworzeniu pliku i psuje pierwsza linie w Pythonie.
                     dataWriter = new StreamWriter(sciezka, true, new UTF8Encoding(false));
                     dataWriter.AutoFlush = true;
                     dataWriter.WriteLine("[PN-SESSION] start; wersjaLogu="
@@ -420,9 +222,6 @@ namespace ProceduralNarrator.Integration
             }
             catch (Exception e)
             {
-                // Jedno glosne ostrzezenie i koniec prob. Brak danych badawczych nie moze
-                // przewrocic rozgrywki, ale nie moze tez zostac niezauwazony - inaczej gracz
-                // przechodzi cala seriee i dopiero potem odkrywa, ze plik jest pusty.
                 dataSinkBroken = true;
                 Error("Nie udalo sie pisac do pliku danych badawczych (" + DataFilePath + "): "
                       + e.Message + ". Dalsze linie [PN-DATA] beda pomijane.");
@@ -810,6 +609,16 @@ namespace ProceduralNarrator.Integration
                                 string frakcjaZrodlo, int tickDecyzji, string list, int nowychListow,
                                 string warianty, string tekstListu)
         {
+            Exec(mapId, decyzjaNr, incydent, klucz, status, ostatniPrzed, ostatniPo, frakcja, frakcjaZwiazana, tick,
+                 frakcjaZrodlo, tickDecyzji, list, nowychListow, warianty, tekstListu, 0);
+        }
+
+        /// <summary>Jak wyzej; wymuszone = 0 albo numer akcji debugowej "PN: wymus akcje" (etap L, L-3) - bez wiersza [PN-DATA].</summary>
+        public static void Exec(int mapId, int decyzjaNr, string incydent, string klucz, string status,
+                                int ostatniPrzed, int ostatniPo, string frakcja, string frakcjaZwiazana, int tick,
+                                string frakcjaZrodlo, int tickDecyzji, string list, int nowychListow,
+                                string warianty, string tekstListu, int wymuszone)
+        {
             WriteData(ExecPrefix
                       + "runId=" + CurrentRunId()
                       + "; tryb=" + (InExperiment ? "symulacja" : "gra")
@@ -833,48 +642,285 @@ namespace ProceduralNarrator.Integration
                       + "; list=" + (string.IsNullOrEmpty(list) ? "-" : list)
                       + "; nowychListow=" + nowychListow.ToString(CultureInfo.InvariantCulture)
                       + "; warianty=" + (string.IsNullOrEmpty(warianty) ? "-" : JednaLinia(warianty))
+                      + "; wymuszone=" + wymuszone.ToString(CultureInfo.InvariantCulture)
                       + "; tekstListu=" + JednaLinia(tekstListu));
         }
 
         private const string FiredPrefix = "[PN-FIRED] ";
 
-        /// <summary>
-        /// Odpalenie incydentu przez narratora - KAZDEGO narratora, w KAZDEJ grze (krok 8, decyzja K8-2).
-        /// Poza kontraktem [PN-DATA]. Pola:
-        ///   narrator=       defName storytellera gry (Cassandra, PN_GenerativeNarrator...);
-        ///   tick=/dzien=    chwila odpalenia (lastFireTicks), nie wykrycia;
-        ///   cel=            map:uid | world | caravan:id;  mapa= uid albo -1;  dom= mapa domowa gracza;
-        ///   incydent=/kategoria=  IncidentDef i jego kategoria;
-        ///   pn=             1 = zdarzenie oddane grze przez nasz comp w tym ticku;
-        ///   kontekst=       przed (tick 999 mod 1000, dla odpalen w ticku interwalu) | po (chwila wykrycia) | -;
-        ///   kolonisci=, kolonisciNaMapie=, powaleni=, zagrozenie=(0/1) - z chwili wedlug kontekst=;
-        ///   bogactwo=, bogactwoWzgl=, punkty= - z chwili wykrycia (puste poza mapa);
-        ///   opoznienie=     ticki miedzy odpaleniem a wykryciem (0 = ten sam tick).
-        /// </summary>
-        public static void Fired(int tick, string cel, int mapa, bool dom, string incydent, string kategoria, bool nasz,
-                                 string kontekst, int kolonisci, int naMapie, int powaleni, int zagrozenie,
-                                 float bogactwo, float bogactwoWzgl, float punkty, int opoznienie)
+        /// <summary>Pola linii [PN-FIRED]; -1 / null = brak pomiaru (puste pole).</summary>
+        internal sealed class FiredFields
         {
+            public int Tick;
+            public string Cel;
+            public int Mapa = -1;
+            public bool Dom;
+            public string Incydent;
+            public string Kategoria;
+            public bool Nasz;
+            public string Kontekst;
+            public int Kolonisci = -1;
+            public int NaMapie = -1;
+            public int Powaleni = -1;
+            public int Zagrozenie = -1;
+            public float Bogactwo = -1f;
+            public float BogactwoWzgl = -1f;
+            public float Punkty = -1f;
+            public int Opoznienie;
+            public int Pora = -1;
+            public int Noc = -1;
+            public int BogactwoWiek = -1;
+            public string Frakcja;
+            public string FrakcjaDef;
+            public List<string> Etykiety;
+            public bool ListyWspolne;
+            public int Wymuszone;
+        }
+
+        /// <summary>
+        /// Odpalenie incydentu - KAZDEGO narratora, w KAZDEJ grze (krok 8, K8-2; etap L kroku 9). Pola:
+        ///   narrator=, tick=/dzien= (chwila odpalenia), cel= (map:uid | world | caravan:id), mapa=, dom=, incydent=, kategoria=;
+        ///   pn= 1 = zdarzenie naszego compa (takze "PN: wymus akcje");
+        ///   kontekst= przed (tick 999 mod 1000) | po (chwila wykrycia) | - - dotyczy WSZYSTKICH pol kontekstu:
+        ///   kolonisci=, kolonisciNaMapie=, powaleni=, zagrozenie=, pora= 0-3, noc= 0/1 (jasnosc &lt;= 0,3),
+        ///   bogactwo=, bogactwoWzgl= z pol gry bez przeliczania, bogactwoWiek= ticki od ich liczenia, punkty= tylko bez
+        ///   przeliczania; opoznienie= ticki od odpalenia do wykrycia;
+        ///   frakcja=/frakcjaDef= tylko napady (StoryState.lastRaidFaction); wymuszone= 0 albo numer akcji "PN: wymus akcje";
+        ///   listow=, listyWspolne= (kilka odpalen w ticku);
+        ///   listy= etykiety nowych listow z ticku, " | " miedzy nimi - OSTATNIE pole, do konca linii.
+        /// </summary>
+        internal static void Fired(FiredFields z)
+        {
+            int listow = z.Etykiety == null ? 0 : z.Etykiety.Count;
+            var etykiety = new List<string>(listow);
+            for (int i = 0; i < listow; i++)
+            {
+                etykiety.Add(JednaLinia(z.Etykiety[i]));
+            }
             WriteData(FiredPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; narrator=" + CurrentStorytellerName()
+                      + "; tick=" + z.Tick.ToString(CultureInfo.InvariantCulture)
+                      + "; dzien=" + (z.Tick / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
+                      + "; cel=" + (z.Cel ?? "-")
+                      + "; mapa=" + z.Mapa.ToString(CultureInfo.InvariantCulture)
+                      + "; dom=" + (z.Dom ? "true" : "false")
+                      + "; incydent=" + (z.Incydent ?? "-")
+                      + "; kategoria=" + (z.Kategoria ?? "-")
+                      + "; pn=" + (z.Nasz ? "1" : "0")
+                      + "; kontekst=" + (z.Kontekst ?? "-")
+                      + "; kolonisci=" + Liczba(z.Kolonisci)
+                      + "; kolonisciNaMapie=" + Liczba(z.NaMapie)
+                      + "; powaleni=" + Liczba(z.Powaleni)
+                      + "; zagrozenie=" + Liczba(z.Zagrozenie)
+                      + "; bogactwo=" + (z.Bogactwo < 0f ? string.Empty : z.Bogactwo.ToString("0", CultureInfo.InvariantCulture))
+                      + "; bogactwoWzgl=" + (z.BogactwoWzgl < 0f ? string.Empty : z.BogactwoWzgl.ToString("0.000", CultureInfo.InvariantCulture))
+                      + "; punkty=" + (z.Punkty < 0f ? string.Empty : z.Punkty.ToString("0.0", CultureInfo.InvariantCulture))
+                      + "; opoznienie=" + z.Opoznienie.ToString(CultureInfo.InvariantCulture)
+                      + "; pora=" + Liczba(z.Pora)
+                      + "; noc=" + Liczba(z.Noc)
+                      + "; bogactwoWiek=" + Liczba(z.BogactwoWiek)
+                      + "; frakcja=" + (string.IsNullOrEmpty(z.Frakcja) ? "-" : z.Frakcja)
+                      + "; frakcjaDef=" + (string.IsNullOrEmpty(z.FrakcjaDef) ? "-" : z.FrakcjaDef)
+                      + "; wymuszone=" + z.Wymuszone.ToString(CultureInfo.InvariantCulture)
+                      + "; listow=" + listow.ToString(CultureInfo.InvariantCulture)
+                      + "; listyWspolne=" + (z.ListyWspolne ? "tak" : "nie")
+                      + "; listy=" + string.Join(" | ", etykiety.ToArray()));
+        }
+
+        private const string ListPrefix = "[PN-LIST] ";
+
+        /// <summary>
+        /// Nowy list gracza - KAZDY, kazdego narratora (poprawka metodologii etapu L: widoczne formy porownywane jedna zasada
+        /// normalizacji dla wszystkich). incydenty= odpalenia wykryte w tym ticku ("-" = list bez odpalenia: pozniejszy,
+        /// zadanie); wymuszone= 0 albo numer akcji "PN: wymus akcje"; typ= LetterDef; frakcja= nazwa relatedFaction; pionki= imiona pionkow
+        /// wskazanych przez list (pelne, krotkie, imie, nazwisko; " | " miedzy nimi) - do znacznikow w analizie; tytul= bez
+        /// srednikow; tresc= pelny tekst bez znacznikow formatowania - OSTATNIE pole, do konca linii.
+        /// </summary>
+        internal static void List(int tick, int mapa, string incydenty, int wymuszone, string typ, string frakcja,
+                                  List<string> pionki, string tytul, string tresc)
+        {
+            var imiona = new List<string>();
+            if (pionki != null)
+            {
+                for (int i = 0; i < pionki.Count; i++)
+                {
+                    imiona.Add(BezSrednika(pionki[i]));
+                }
+            }
+            WriteData(ListPrefix
                       + "runId=" + CurrentRunId()
                       + "; narrator=" + CurrentStorytellerName()
                       + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
                       + "; dzien=" + (tick / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
-                      + "; cel=" + (cel ?? "-")
                       + "; mapa=" + mapa.ToString(CultureInfo.InvariantCulture)
-                      + "; dom=" + (dom ? "true" : "false")
-                      + "; incydent=" + (incydent ?? "-")
-                      + "; kategoria=" + (kategoria ?? "-")
-                      + "; pn=" + (nasz ? "1" : "0")
-                      + "; kontekst=" + (kontekst ?? "-")
-                      + "; kolonisci=" + Liczba(kolonisci)
-                      + "; kolonisciNaMapie=" + Liczba(naMapie)
-                      + "; powaleni=" + Liczba(powaleni)
-                      + "; zagrozenie=" + Liczba(zagrozenie)
-                      + "; bogactwo=" + (bogactwo < 0f ? string.Empty : bogactwo.ToString("0", CultureInfo.InvariantCulture))
-                      + "; bogactwoWzgl=" + (bogactwoWzgl < 0f ? string.Empty : bogactwoWzgl.ToString("0.000", CultureInfo.InvariantCulture))
-                      + "; punkty=" + (punkty < 0f ? string.Empty : punkty.ToString("0.0", CultureInfo.InvariantCulture))
-                      + "; opoznienie=" + opoznienie.ToString(CultureInfo.InvariantCulture));
+                      + "; incydenty=" + (string.IsNullOrEmpty(incydenty) ? "-" : incydenty)
+                      + "; wymuszone=" + wymuszone.ToString(CultureInfo.InvariantCulture)
+                      + "; typ=" + (typ ?? "?")
+                      + "; frakcja=" + (string.IsNullOrEmpty(frakcja) ? "-" : BezSrednika(frakcja))
+                      + "; pionki=" + string.Join(" | ", imiona.ToArray())
+                      + "; tytul=" + BezSrednika(tytul)
+                      + "; tresc=" + JednaLinia(tresc));
+        }
+
+        /// <summary>Pole w srodku linii: jedna linia i bez srednikow (separator pol).</summary>
+        private static string BezSrednika(string s)
+        {
+            return JednaLinia(s).Replace(';', ',');
+        }
+
+        private const string DayPrefix = "[PN-DZIEN] ";
+        private const string ColonistPrefix = "[PN-KOLONISTA] ";
+        private const string PerfPrefix = "[PN-PERF] ";
+        private const string EvalPrefix = "[PN-EVAL] ";
+
+        /// <summary>Pola linii [PN-DZIEN]; -1 / NaN / null = brak pomiaru (puste pole).</summary>
+        internal sealed class DayFields
+        {
+            public int Dzien;
+            public int Mapa;
+            public int Kolonisci = -1;
+            public int NaMapie = -1;
+            public int Powaleni = -1;
+            public int Zagrozenie = -1;
+            public float Bogactwo = -1f;
+            public int BogactwoWiek = -1;
+            public float BogactwoWzgl = -1f;
+            public float Punkty = -1f;
+            public int Pora = -1;
+            public float Temperatura = float.NaN;
+            public string Warunki;
+            public int Monolit = -1;
+            public string MonolitDef;
+            public float Zywnosc = -1f;
+            public float Nastroj = float.NaN;
+            public float Adaptacja = float.NaN;
+            public int Napadow = -1;
+            public int ThreatBig = -1;
+            public int Poleglych = -1;
+        }
+
+        /// <summary>
+        /// Stan mapy domowej na koniec doby (krok 9, etap L, decyzja L-1) - kazdy narrator, pierwszy tick nastepnej doby.
+        /// dzien= doba zamknieta (tick div 60000 - 1); warunki= aktywne warunki gry mapy i swiata ("-" = zadne);
+        /// monolit= poziom (puste bez Anomaly); zywnosc= suma wartosci odzywczej jedzenia dla ludzi; nastroj= sredni nastroj
+        /// wolnych kolonistow na mapie; adaptacja= dni adaptacji narratora gry; napadow/threatBig/poleglych = StatsRecord.
+        /// </summary>
+        internal static void Day(DayFields d)
+        {
+            WriteData(DayPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; narrator=" + CurrentStorytellerName()
+                      + "; tick=" + CurrentTickText()
+                      + "; dzien=" + d.Dzien.ToString(CultureInfo.InvariantCulture)
+                      + "; mapa=" + d.Mapa.ToString(CultureInfo.InvariantCulture)
+                      + "; kolonisci=" + Liczba(d.Kolonisci)
+                      + "; kolonisciNaMapie=" + Liczba(d.NaMapie)
+                      + "; powaleni=" + Liczba(d.Powaleni)
+                      + "; zagrozenie=" + Liczba(d.Zagrozenie)
+                      + "; bogactwo=" + (d.Bogactwo < 0f ? string.Empty : d.Bogactwo.ToString("0", CultureInfo.InvariantCulture))
+                      + "; bogactwoWiek=" + Liczba(d.BogactwoWiek)
+                      + "; bogactwoWzgl=" + (d.BogactwoWzgl < 0f ? string.Empty : d.BogactwoWzgl.ToString("0.000", CultureInfo.InvariantCulture))
+                      + "; punkty=" + (d.Punkty < 0f ? string.Empty : d.Punkty.ToString("0.0", CultureInfo.InvariantCulture))
+                      + "; pora=" + Liczba(d.Pora)
+                      + "; temperatura=" + Num1(d.Temperatura)
+                      + "; warunki=" + (string.IsNullOrEmpty(d.Warunki) ? "-" : d.Warunki)
+                      + "; monolit=" + Liczba(d.Monolit)
+                      + "; monolitDef=" + (d.MonolitDef ?? string.Empty)
+                      + "; zywnosc=" + (d.Zywnosc < 0f ? string.Empty : Num1(d.Zywnosc))
+                      + "; nastroj=" + Num(d.Nastroj)
+                      + "; adaptacja=" + Num(d.Adaptacja)
+                      + "; napadow=" + Liczba(d.Napadow)
+                      + "; threatBig=" + Liczba(d.ThreatBig)
+                      + "; poleglych=" + Liczba(d.Poleglych));
+        }
+
+        /// <summary>
+        /// Zmiana skladu wolnych kolonistow (etap L, L-5): start (kotwica: pionek=-1, liczebnosc) | dolaczyl | zginal |
+        /// porwany | uwieziony | zdziczal | odszedl | inne. mapa = ostatnia znana (-1 = karawana, kapsula).
+        /// </summary>
+        internal static void Colonist(int tick, Core.Evaluation.RosterEvent e)
+        {
+            WriteData(ColonistPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; narrator=" + CurrentStorytellerName()
+                      + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
+                      + "; dzien=" + (tick / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
+                      + "; zdarzenie=" + (e.Kind ?? "?")
+                      + "; pionek=" + e.Id.ToString(CultureInfo.InvariantCulture)
+                      + "; mapa=" + e.Map.ToString(CultureInfo.InvariantCulture)
+                      + "; liczebnosc=" + e.CountAfter.ToString(CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>
+        /// Stan mapy domowej dla regul RN (etap L, PLAN_EWALUACJI.md 5): start | zmiana (ktorykolwiek z kryzys/zagrozenie/pusta)
+        /// | koniec (mapa przestala byc domem, pola stanu puste). Stan obowiazuje od linii do nastepnej linii tej mapy.
+        /// </summary>
+        internal static void State(int tick, int mapa, string zdarzenie, int naMapie, int powaleni, Core.Evaluation.RuleState s)
+        {
+            WriteData(StatePrefix + StateHead(tick, mapa, zdarzenie)
+                      + "; kolonisciNaMapie=" + naMapie.ToString(CultureInfo.InvariantCulture)
+                      + "; powaleni=" + powaleni.ToString(CultureInfo.InvariantCulture)
+                      + "; zagrozenie=" + (s.Threat ? "1" : "0")
+                      + "; kryzys=" + (s.Crisis ? "1" : "0")
+                      + "; pusta=" + (s.Empty ? "1" : "0"));
+        }
+
+        internal static void StateEnd(int tick, int mapa)
+        {
+            WriteData(StatePrefix + StateHead(tick, mapa, Core.Evaluation.RuleStateTracker.End)
+                      + "; kolonisciNaMapie=; powaleni=; zagrozenie=; kryzys=; pusta=");
+        }
+
+        private const string StatePrefix = "[PN-STAN] ";
+
+        private static string StateHead(int tick, int mapa, string zdarzenie)
+        {
+            return "runId=" + CurrentRunId()
+                   + "; narrator=" + CurrentStorytellerName()
+                   + "; tick=" + tick.ToString(CultureInfo.InvariantCulture)
+                   + "; dzien=" + (tick / 60000f).ToString("0.000", CultureInfo.InvariantCulture)
+                   + "; mapa=" + mapa.ToString(CultureInfo.InvariantCulture)
+                   + "; zdarzenie=" + zdarzenie;
+        }
+
+        /// <summary>Koszt czasu za zamknieta dobe (etap L, L-2): fragment pol sklada PerfMonitor.</summary>
+        internal static void Perf(int dzien, string pola)
+        {
+            WriteData(PerfPrefix
+                      + "runId=" + CurrentRunId()
+                      + "; narrator=" + CurrentStorytellerName()
+                      + "; tick=" + CurrentTickText()
+                      + "; dzien=" + dzien.ToString(CultureInfo.InvariantCulture)
+                      + (pola ?? string.Empty));
+        }
+
+        /// <summary>
+        /// Start gry ewaluacyjnej (etap L, L-4): nowy runId od tej linii; pola mapy/luki/fakty/styl = stan SPRZED
+        /// wyczyszczenia pamieci i stylu. Analiza traktuje linie jako poczatek nowej rozgrywki.
+        /// </summary>
+        internal static void Eval(string runIdPoprzedni, string runIdNowy, string etykieta, string profil, bool profilWymuszony,
+                                  string mapy, string luki, string fakty, string styl)
+        {
+            WriteData(EvalPrefix
+                      + "runIdPoprzedni=" + (string.IsNullOrEmpty(runIdPoprzedni) ? "?" : runIdPoprzedni)
+                      + "; runId=" + runIdNowy
+                      + "; etykieta=" + etykieta
+                      + "; narrator=" + CurrentStorytellerName()
+                      + "; profil=" + (string.IsNullOrEmpty(profil) ? "-" : profil)
+                      + "; profilWymuszony=" + (profilWymuszony ? "tak" : "nie")
+                      + "; tick=" + CurrentTickText()
+                      + "; dzien=" + CurrentDayText()
+                      + CurrentGameConditionsText()
+                      + "; mapy=" + (mapy ?? string.Empty)
+                      + "; luki=" + (luki ?? string.Empty)
+                      + "; fakty=" + (fakty ?? string.Empty)
+                      + "; styl=" + (styl ?? string.Empty));
+        }
+
+        private static string Num1(float v)
+        {
+            return float.IsNaN(v) || float.IsInfinity(v) ? string.Empty : v.ToString("0.0", CultureInfo.InvariantCulture);
         }
 
         private const string CachePrefix = "[PN-CACHE] ";
@@ -977,7 +1023,7 @@ namespace ProceduralNarrator.Integration
         public static void Data(int tick, int mapId, DecisionContext context, CandidateSet candidates,
                                 NarratorDecision decision, int engineRefusals,
                                 int preGateRefusals, int acceptorCalls,
-                                TensionReading tension, CrisisReading crisis)
+                                TensionReading tension, CrisisReading crisis, float czasMs)
         {
             if (decision == null)
             {
@@ -1099,6 +1145,11 @@ namespace ProceduralNarrator.Integration
             // KROK 9 (v10): akcje, ktore przeszly tag i wlasne warunki, a odpadly przez lustro sprawdzen gry. PUSTE,
             // gdy lustro w tej turze nie dzialalo (bezpiecznik) - wtedy zero znaczyloby "nic nie zablokowano".
             Append(sb, "zablokowanychSilnik", swiat != null && swiat.EngineMirrorActive ? Int(zbior.EngineBlocked) : string.Empty);
+            // v11 (etap L): pelna lista odcietych lustrem ("-" = nic, puste = lustro nie dzialalo) i czas decyzji w ms
+            // (od wejscia w decyzje po bramce MTB do tego wiersza; puste = brak pomiaru).
+            Append(sb, "lustroOdcina", Core.Composition.EngineMirror.DataColumn(swiat));
+            Append(sb, "czasMs", czasMs < 0f || float.IsNaN(czasMs) ? string.Empty
+                                                             : czasMs.ToString("0.###", CultureInfo.InvariantCulture));
 
             // ---- decyzja (rdzen) ----
             string czescDecyzyjna = decision.ToDataFragment();

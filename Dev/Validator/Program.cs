@@ -530,6 +530,7 @@ class Program
         TestsCoreContent.Run(composer, blocks, cfg);
         // Krok 9, K2: tresc Royalty i Anomaly.
         TestsDlcContent.Run(blocks, klockiBezDlc);
+        TestsStageL.Run(composer);
         TestKopiaSnapshotu();
 
         Console.WriteLine();

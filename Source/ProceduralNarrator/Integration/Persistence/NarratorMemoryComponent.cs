@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using ProceduralNarrator.Core.Arcs;
 using ProceduralNarrator.Core.Blackboard;
@@ -15,44 +16,17 @@ using Verse;
 namespace ProceduralNarrator.Integration.Persistence
 {
     /// <summary>
-    /// TRWALY MAGAZYN STANU NARRATORA (krok 6, wycinek: sama trwalosc pamieci zdarzen).
-    ///
-    /// Dlaczego GameComponent, a nie pole w StorytellerComp_Generative: comp NIE PRZEZYWA
-    /// wczytania. Zweryfikowane dekompilacja Assembly-CSharp 1.5.4063 - Storyteller.ExposeData
-    /// w fazie ResolvingCrossRefs wola InitializeStorytellerComps(), a ta robi
-    ///     Activator.CreateInstance(def.comps[i].compClass)
-    /// czyli buduje KAZDY comp od zera z Defa. StorytellerComp nie implementuje IExposable
-    /// i nie ma zadnego wlasnego mechanizmu trwalosci. Kazde pole instancyjne compa jest wiec
-    /// kasowane przy kazdym wczytaniu ORAZ przy kazdej zmianie narratora w trakcie gry.
-    ///
-    /// Skutek braku tej klasy byl niewidoczny w logu i przez to grozny: po wczytaniu swiezosc
-    /// wracala na maksimum dla wszystkiego, DaysSinceLastEvent gubil sie (wiec Cond_CalmPeriod
-    /// przepuszczal "okres spokoju" tuz po napadzie), a gestosc PASS tracila historie. Dane
-    /// z rozgrywki granej na raty byly NIEPELNE W SPOSOB NIEODROZNIALNY OD POPRAWNYCH.
-    ///
-    /// REJESTRACJA JEST AUTOMATYCZNA, BEZ ZADNEGO XML. Game.FillComponents() chodzi po
-    /// typeof(GameComponent).AllSubclassesNonAbstract() i wola Activator.CreateInstance(typ, this).
-    /// Stad wymagany ksztalt konstruktora - patrz nizej.
+    /// Trwaly stan narratora i obserwatory dzialajace w kazdej grze. GameComponent, bo comp NIE przezywa wczytania ani
+    /// zmiany narratora (Storyteller.ExposeData buduje compy od zera z Defa - dekompilacja 1.5.4063). Rejestracja
+    /// automatyczna (Game.FillComponents), stad konstruktor z parametrem Game.
     /// </summary>
     public class NarratorMemoryComponent : GameComponent
     {
         /// <summary>
-        /// Wersja formatu zapisu pamieci. PODBIC przy zmianie ksztaltu MapMemoryRecord albo
-        /// kodowania linii w EventHistoryEntry.Encode(). Numer jest zapisywany i porownywany
-        /// przy wczytaniu - rozjazd daje ostrzezenie, a nie ciche przemilczenie.
+        /// Wersja formatu zapisu pamieci - PODBIC przy zmianie ksztaltu MapMemoryRecord albo kodowania linii ksiag.
+        /// v2 (krok 5) wezel "luki"; v3 (krok 6) osobny wezel "fakty" (blad jednego kodeka nie kaskaduje); v4 (krok 7)
+        /// wezel "stylGracza" (jeden na gre). Starsze zapisy wczytuja sie bez straty - brakujace ksiegi startuja puste.
         /// </summary>
-        /// Wersja 2 (krok 5): wezel "luki" w rekordzie mapy - ksiega lukow narracyjnych. Zapis
-        /// w wersji 1 wczytuje sie bez straty: luki startuja puste, bo wtedy ich nie bylo.
-        /// Wersja 3 (krok 6): wezel "fakty" - ksiega faktow blackboardu razem z kolejka faktow
-        /// czekajacych na rozstrzygniecie wykonania. OSOBNY wezel (nie dopisek do "luki"), zeby
-        /// ewentualny blad kodeka jednej ksiegi nie kaskadowal na druga - decyzja autora przy
-        /// starcie kroku 6, bo pamiec v2 nie przeszla jeszcze w grze cyklu zapis-wczytanie.
-        /// Slad po zamknietych watkach (linie Z) jedzie w istniejacym wezle "luki" - nowy znacznik
-        /// linii nie zmienia liczby pol linii istniejacych, wiec nie wymagal nowego wezla.
-        /// Wersja 4 (krok 7): wezel "stylGracza" - ksiega stylu gracza (kolejka dni, dzien w toku, bazy
-        /// rekordow, otwarte epizody zagrozen, oferty, dzicy ludzie). Styl jest JEDEN NA GRE, wiec to
-        /// wezel komponentu, a nie rekordu mapy. Zapis v3 wczytuje sie bez straty: styl startuje pusty,
-        /// a rozgrzewka liczy sie od chwili wczytania.
         private const int MemoryFormatVersion = 4;
 
         /// <summary>Wersja, od ktorej zapis niesie ksiege lukow - do rozroznienia komunikatu przy wczytaniu.</summary>
@@ -65,23 +39,8 @@ namespace ProceduralNarrator.Integration.Persistence
         private const int StyleSinceVersion = 4;
 
         /// <summary>
-        /// Pamiec zdarzen narratora, OSOBNA DLA KAZDEJ MAPY (klucz: Map.uniqueID).
-        ///
-        /// Dlaczego nie jedna wspolna: StorytellerComp istnieje JEDEN na cala gre, nie jeden
-        /// na mape. Przy drugiej kolonii wspolny bufor psulby trzy rzeczy naraz, kazda po cichu:
-        ///   swiezosc - zdarzenie na kolonii A "zuzywaloby" temat dla kolonii B, wiec narrator
-        ///              unikalby na drugiej mapie tego, czego uzyl na pierwszej, bez powodu,
-        ///   kontrast - rytm mieszalby dwa niezalezne ciagi, wiec "po serii katastrof" znaczyloby
-        ///              katastrofy w zupelnie innym miejscu,
-        ///   gestosc PASS - licznik decyzji roslby dwa razy szybciej, wiec narrator uznalby, ze
-        ///              jest gesto, i zaczalby milczec na OBU mapach.
-        /// Kazda kolonia prowadzi wlasna narracje, wiec kazda ma wlasna pamiec.
-        ///
-        /// Map.uniqueID, a NIE Map.Index: indeks jest pozycja na liscie map i przesuwa sie,
-        /// gdy gracz porzuci kolonie, wiec pamiec przeskoczylaby wtedy na inna mape. uniqueID
-        /// jest przydzielane raz w MapGenerator.GenerateMap z monotonicznego, serializowanego
-        /// licznika UniqueIDsManager.nextMapID i NIGDY nie jest recyklingowane - wiec martwy
-        /// wpis nie moze "ozyc" na nowej kolonii.
+        /// Pamiec zdarzen OSOBNA DLA KAZDEJ MAPY (Map.uniqueID - nie Index, ktory sie przesuwa; uniqueID nie jest
+        /// recyklingowane): kazda kolonia prowadzi wlasna narracje, a wspolny bufor psulby swiezosc, kontrast i gestosc PASS.
         /// </summary>
         private Dictionary<int, EventHistory> histories = new Dictionary<int, EventHistory>();
 
@@ -127,34 +86,15 @@ namespace ProceduralNarrator.Integration.Persistence
         private Dictionary<int, MapMemoryRecord> zapis = new Dictionary<int, MapMemoryRecord>();
 
         /// <summary>
-        /// Identyfikator ROZGRYWKI (nie sesji gry). Nadawany raz, przy pierwszym FinalizeInit,
-        /// i od tego momentu jedzie w zapisie.
-        ///
-        /// Po co: linia [PN-SESSION] w pliku danych oznacza URUCHOMIENIE PROCESU, a nie rozgrywke.
-        /// Jedna rozgrywka grana na raty rozpada sie wiec w danych na N nieodroznialnych sesji
-        /// i nie da sie jej zszyc w Pythonie. runId jest kolumna w kazdym wierszu [PN-DATA],
-        /// wiec grupowanie po rozgrywce jest proste - z jednym zastrzezeniem: wczytanie zapisu
-        /// ROZWIDLA rozgrywke pod tym samym runId (regula parsera przy PNLog.Load).
-        ///
-        /// NIE WCHODZI DO ZADNEGO ZIARNA ANI WZORU SCORINGU - jest wylacznie etykieta danych.
-        /// Wymaganie odtwarzalnosci z sekcji 11 zostaje przez to nietkniete. Z tego samego powodu
-        /// uzywamy Guid, a nie Verse.Rand: Rand ruszylby globalny generator gry.
+        /// Identyfikator ROZGRYWKI (nie sesji procesu) - kolumna runId, grupowanie danych; nadawany przy pierwszym
+        /// FinalizeInit (Guid, nie Rand gry) i zapisywany. Wczytanie rozwidla rozgrywke pod tym samym runId (PNLog.Load);
+        /// "PN: rozpocznij gre ewaluacyjna" nadaje nowy (etap L). Nie wchodzi do scoringu - tylko ziarno tekstu listu.
         /// </summary>
         private string runId = string.Empty;
 
         /// <summary>
-        /// OSOBOWOSC NARRATORA przydzielona tej rozgrywce. Losowana RAZ, w StartedNewGame(),
-        /// i od tego momentu jedzie w zapisie.
-        ///
-        /// Dlaczego nie wybiera jej gracz: menu wyboru narratora jest dokladnie tym modelem,
-        /// ktory ta praca krytykuje - Cassandra, Phoebe i Randy to trzy pozycje na liscie,
-        /// a cala ich osobowosc to siedem liczb sterujacych tempem. Tutaj profil jest stanem
-        /// WEWNETRZNYM systemu: gracz go nie wybiera i nie zna, wiec kolejna rozgrywka to nie
-        /// tylko inne zdarzenia, ale inny narrator. To wprost obsluguje teze o grywalnosci
-        /// powtornej z sekcji 1.
-        ///
-        /// Utrwalenie jest KONIECZNE, nie wygodne: bez niego wczytanie zapisu moglo by dac
-        /// innego narratora niz przed zapisem, co lamie wymog odtwarzalnosci z sekcji 11.
+        /// Profil narratora tej rozgrywki: losowany raz z runId (nie wybiera go gracz - decyzja autora, krok 4) i zapisywany,
+        /// zeby wczytanie nie zmienilo narratora.
         /// </summary>
         private string profileId = string.Empty;
 
@@ -174,14 +114,7 @@ namespace ProceduralNarrator.Integration.Persistence
 
         private bool kanarekWypisany;
 
-        /// <summary>
-        /// KONSTRUKTOR MUSI PRZYJMOWAC Game. Game.FillComponents() wola
-        /// Activator.CreateInstance(typ, this), wiec brak tego ctora konczy sie wpisem
-        /// "Could not instantiate a GameComponent of type ..." w logu i komponent po prostu
-        /// nie powstaje - a narrator dziala dalej, tylko bez trwalosci. Parametru nie
-        /// przechowujemy: baza GameComponent, w odroznieniu od MapComponent, nie ma pola na gre,
-        /// a Current.Game i tak jest dostepne wszedzie tam, gdzie go potrzebujemy.
-        /// </summary>
+        /// <summary>Konstruktor MUSI przyjmowac Game (Game.FillComponents: Activator.CreateInstance(typ, this)).</summary>
         public NarratorMemoryComponent(Game game)
         {
         }
@@ -371,14 +304,8 @@ namespace ProceduralNarrator.Integration.Persistence
         }
 
         /// <summary>
-        /// Kasuje CALA pamiec narratora. Uzywane przez akcje debugowa.
-        ///
-        /// Powstalo, bo waniliowy symulator DebugLogTestFutureIncidents przechodzil przez pelny
-        /// nasz kod decyzyjny i MUTOWAL te pamiec - 100 dni symulacji zostawialo kilkadziesiat
-        /// fikcyjnych decyzji, ktore zapis gry utrwalal na stale. Od polerowania etapu 4 comp
-        /// odrzuca wywolania spoza zegara gry (straznik zakotwiczony w ZegarGry ponizej), a do
-        /// testow sluzy "PN: test przyszlych incydentow" ze zrzutem stanu. Akcja zostaje dla
-        /// zapisow skazonych przed ta zmiana.
+        /// Kasuje pamiec narratora - historie, luki i fakty razem (inaczej pamiec bylaby wewnetrznie sprzeczna); styl zostaje
+        /// (opisuje gracza, ma wlasna akcje). Akcja debugowa "PN: skasuj pamiec".
         /// </summary>
         public void ClearAll()
         {
@@ -388,10 +315,7 @@ namespace ProceduralNarrator.Integration.Persistence
                                         + "; luki=" + OpisLukow() + "; fakty=" + OpisFaktow() + "; styl=" + OpisStylu());
             histories = new Dictionary<int, EventHistory>();
             ledgers = new Dictionary<int, ArcLedger>();
-            // Fakty RAZEM z reszta: skasowana ksiega lukow obok zachowanych faktow dawalaby pamiec
-            // wewnetrznie sprzeczna (fakt "po walce" bez historii tej walki).
             facts = new Dictionary<int, FactLedger>();
-            // Styl gracza ZOSTAJE (krok 7): opisuje gracza, nie narracje - do jego kasowania jest osobna akcja.
             PNLog.Decision("PAMIEC NARRATORA SKASOWANA recznie (akcja debugowa). Zwolniono map: "
                            + map.ToString(CultureInfo.InvariantCulture)
                            + ". Swiezosc, kontrast i gestosc PASS licza sie od zera.");
@@ -818,8 +742,179 @@ namespace ProceduralNarrator.Integration.Persistence
         {
             // Zegar NAJPIERW - obserwatory nie moga go opoznic ani zablokowac wyjatkiem.
             zegarGry = Find.TickManager.TicksGame;
+            bool mierz = perf != null && !perfBroken && eksperyment == null;
+            if (mierz)
+            {
+                try
+                {
+                    perf.BeginTick(zegarGry);
+                }
+                catch (Exception e)
+                {
+                    perfBroken = true;
+                    mierz = false;
+                    PNLog.Error("POMIAR CZASU ([PN-PERF]) rzucil wyjatek i jest WYLACZONY do wczytania zapisu.\n" + e);
+                }
+            }
+            long t0 = Stopwatch.GetTimestamp();
             ObserwujOdpalenia(zegarGry);
+            long t1 = Stopwatch.GetTimestamp();
             ObserwujStyl(zegarGry);
+            long t2 = Stopwatch.GetTimestamp();
+            ObserwujDobe(zegarGry);
+            long t3 = Stopwatch.GetTimestamp();
+            ObserwujKolonistow(zegarGry);
+            ObserwujStanRegul(zegarGry);
+            long t4 = Stopwatch.GetTimestamp();
+            if (mierz)
+            {
+                perf.RecordObservers(Evaluation.PerfMonitor.Us(t0, t1), Evaluation.PerfMonitor.Us(t1, t2),
+                                     Evaluation.PerfMonitor.Us(t2, t3), Evaluation.PerfMonitor.Us(t3, t4));
+            }
+        }
+
+        // ---------------------------------------------------------------- OBSERWATORY ETAPU L (krok 9)
+
+        private Evaluation.DayLogger doba;
+        private Evaluation.ColonistWatcher kolonisci;
+        private Evaluation.RuleStateWatcher stanRegul;
+        private Evaluation.PerfMonitor perf;
+        private bool dobaBroken;
+        private bool kolonisciBroken;
+        private bool stanRegulBroken;
+        private bool perfBroken;
+
+        /// <summary>Pomiar czasu dla compa; null w symulatorze albo po awarii.</summary>
+        internal Evaluation.PerfMonitor Perf
+        {
+            get { return perfBroken || eksperyment != null ? null : perf; }
+        }
+
+        private void ObserwujDobe(int tick)
+        {
+            if (dobaBroken || eksperyment != null || doba == null)
+            {
+                return;
+            }
+            try
+            {
+                uint rand0 = Arcs.RandCanary.Read();
+                doba.Tick(tick);
+                Arcs.RandCanary.Check(rand0, "linia dobowa [PN-DZIEN]");
+            }
+            catch (Exception e)
+            {
+                dobaBroken = true;
+                PNLog.Error("LINIA DOBOWA ([PN-DZIEN]) rzucila wyjatek i jest WYLACZONA do wczytania zapisu - luka w danych "
+                            + "ewaluacji, nie brak zmian w kolonii.\n" + e);
+            }
+        }
+
+        private void ObserwujKolonistow(int tick)
+        {
+            if (kolonisciBroken || eksperyment != null || kolonisci == null)
+            {
+                return;
+            }
+            try
+            {
+                uint rand0 = Arcs.RandCanary.Read();
+                kolonisci.Tick(tick);
+                Arcs.RandCanary.Check(rand0, "obserwator kolonistow [PN-KOLONISTA]");
+            }
+            catch (Exception e)
+            {
+                kolonisciBroken = true;
+                PNLog.Error("OBSERWATOR KOLONISTOW ([PN-KOLONISTA]) rzucil wyjatek i jest WYLACZONY do wczytania zapisu.\n" + e);
+            }
+        }
+
+        private void ObserwujStanRegul(int tick)
+        {
+            if (stanRegulBroken || eksperyment != null || stanRegul == null)
+            {
+                return;
+            }
+            try
+            {
+                uint rand0 = Arcs.RandCanary.Read();
+                stanRegul.Tick(tick);
+                Arcs.RandCanary.Check(rand0, "stan regul RN [PN-STAN]");
+            }
+            catch (Exception e)
+            {
+                stanRegulBroken = true;
+                PNLog.Error("STAN REGUL RN ([PN-STAN]) rzucil wyjatek i jest WYLACZONY do wczytania zapisu - ekspozycja regul RN "
+                            + "od tej chwili nieznana.\n" + e);
+            }
+        }
+
+        /// <summary>Numer kolejnej akcji "PN: wymus akcje" w sesji (1, 2...) - kilka akcji w jednej pauzie ma ten sam tick.</summary>
+        private int wymuszen;
+
+        internal int NastepneWymuszenie()
+        {
+            return ++wymuszen;
+        }
+
+        /// <summary>Odpalenie z "PN: wymus akcje" - detektor go nie zobaczy (UI po przegladzie ticku), wiec logujemy wprost.</summary>
+        internal void LogujWymuszoneOdpalenie(int tick, Map map, string incydent, List<Letter> listy, int numer)
+        {
+            if (strazOdpalen == null || odpaleniaBroken || eksperyment != null)
+            {
+                return;
+            }
+            try
+            {
+                strazOdpalen.LogForced(tick, map, incydent, listy, numer);
+            }
+            catch (Exception e)
+            {
+                PNLog.Warn("Nie udalo sie zalogowac wymuszonego odpalenia w [PN-FIRED]: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Start gry ewaluacyjnej (etap L, decyzja L-4): nowy runId "etykieta-narrator-guid", profil wymuszony albo
+        /// wylosowany z nowego runId, wyczyszczona pamiec narratora i styl gracza, kotwica skladu kolonii od nowa.
+        /// Linia [PN-EVAL] niesie stan sprzed czyszczenia.
+        /// </summary>
+        internal void StartEvaluationGame(string etykieta, string profil)
+        {
+            string poprzedni = runId;
+            string mapy = OpisMap(), luki = OpisLukow(), fakty = OpisFaktow(), stylOpis = OpisStylu();
+            string narrator = Current.Game == null || Current.Game.storyteller == null || Current.Game.storyteller.def == null
+                ? "?" : Current.Game.storyteller.def.defName;
+            runId = etykieta + "-" + narrator + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            histories = new Dictionary<int, EventHistory>();
+            ledgers = new Dictionary<int, ArcLedger>();
+            facts = new Dictionary<int, FactLedger>();
+            styl = new PlayerStyleLedger();
+            if (string.IsNullOrEmpty(profil))
+            {
+                PrzydzielProfil("gra ewaluacyjna " + etykieta);
+            }
+            else
+            {
+                profileId = profil;
+            }
+            PNLog.Eval(poprzedni, runId, etykieta, EffectiveProfileId, !string.IsNullOrEmpty(profil), mapy, luki, fakty, stylOpis);
+            if (kolonisci != null)
+            {
+                kolonisci.Reset();
+            }
+            if (stanRegul != null)
+            {
+                stanRegul.Reset();
+            }
+            // Pomiar czasu od nowa: pomiary sprzed startu nie moga trafic do linii [PN-PERF] nowego runId.
+            if (perf != null)
+            {
+                perf.Reset();
+            }
+            PNLog.Decision("GRA EWALUACYJNA: runId=" + runId + " (poprzednio " + poprzedni + "), narrator=" + narrator
+                           + ", profil=" + EffectiveProfileId + (string.IsNullOrEmpty(profil) ? " (losowany)" : " (wymuszony)")
+                           + ". Pamiec narratora i styl gracza wyczyszczone.");
         }
 
         // ---------------------------------------------------------------- LOG ODPALEN (krok 8)
@@ -917,9 +1012,15 @@ namespace ProceduralNarrator.Integration.Persistence
             // Po wczytaniu gra stoi na ticku zapisu; pierwszy prawdziwy DoSingleTick to tick+1.
             zegarGry = Find.TickManager != null ? Find.TickManager.TicksGame : int.MinValue;
 
-            // Obserwator odpalen od nowa: odpalenia do ticku wczytania (wlacznie) sa juz za nami.
+            // Obserwatory od nowa: odpalenia do ticku wczytania (wlacznie) sa juz za nami; doba i sklad kolonii
+            // zaczynaja od pierwszego ticku (kotwica), czas od najblizszej granicy doby.
             strazOdpalen = new Evaluation.IncidentFireWatcher(Find.TickManager != null ? Find.TickManager.TicksGame : 0);
             odpaleniaBroken = false;
+            doba = new Evaluation.DayLogger();
+            kolonisci = new Evaluation.ColonistWatcher();
+            stanRegul = new Evaluation.RuleStateWatcher();
+            perf = new Evaluation.PerfMonitor();
+            dobaBroken = kolonisciBroken = stanRegulBroken = perfBroken = false;
 
             if (histories == null)
             {
@@ -1013,19 +1114,9 @@ namespace ProceduralNarrator.Integration.Persistence
 
         public override void LoadedGame()
         {
-            // Trzy stany, nie dwa - i to rozroznienie jest cala wartoscia tej linii:
-            //   "zapis"           - nasz blok byl w zapisie i wczytal sie. Przypadek poprawny.
-            //   "zapisBezPamieci" - zapis wczytany, ale bloku w nim nie bylo. To NIE jest awaria:
-            //                       tak wyglada kazdy zapis sprzed tej zmiany oraz mod dolozony
-            //                       do trwajacej rozgrywki. Komponent zostal wtedy dostawiony
-            //                       przez FillComponents() i nie przeszedl przez ScribeExtractor.
-            // Bez tego rozroznienia "trwalosc nie dziala" i "ten zapis jest starszy niz trwalosc"
-            // wygladalyby w logu identycznie - czyli dokladnie ta dwuznacznosc, ktora kanarek
-            // ma usuwac.
-            // Zapis sprzed kroku 4 albo mod dolozony do trwajacej rozgrywki nie ma profilu.
-            // Przydzielamy go wtedy awaryjnie, zamiast zostawiac narratora bez osobowosci -
-            // ale odnotowujemy w logu, bo to znaczy, ze rozgrywka zaczela sie bez krzywej
-            // dramaturgicznej i jej wczesniejsze decyzje nie sa porownywalne z pozniejszymi.
+            // "zapis" = nasz blok wczytany; "zapisBezPamieci" = zapis bez bloku (sprzed trwalosci albo mod dolozony do
+            // trwajacej gry) - bez tego rozroznienia "trwalosc nie dziala" i "zapis jest starszy" wygladalyby tak samo.
+            // Zapis bez profilu dostaje go awaryjnie (odnotowane w logu).
             if (string.IsNullOrEmpty(profileId))
             {
                 PrzydzielProfil("wczytany zapis bez profilu");
@@ -1035,19 +1126,8 @@ namespace ProceduralNarrator.Integration.Persistence
         }
 
         /// <summary>
-        /// Losuje profil deterministycznie z runId.
-        ///
-        /// ZIARNO Z runId, A NIE Z Verse.Rand. Waniliowy generator jest wspoldzielony z cala
-        /// gra, wiec pobranie z niego jednej liczby przesunelo by KAZDY pozniejszy losowy wynik
-        /// w tej sesji - od generacji mapy po zachowania pionkow. Wyprowadzenie ziarna z runId
-        /// daje przy okazji to, czego wymaga sekcja 11: rozgrywka z NADANYM runId (zapis z kroku 6
-        /// albo pozniejszy) zawsze dostaje ten sam profil, takze po wczytaniu zapisu sprzed
-        /// przydzialu. Zapis BEZ bloku pamieci dostaje przy kazdym wczytaniu nowy runId (FinalizeInit),
-        /// wiec i nowy profil - dopoki nie zostanie zapisany; w danych jest to wtedy za kazdym razem
-        /// osobna rozgrywka, wiec profil zostaje spojny ze swoim runId.
-        ///
-        /// Hash przez GenText.StableStringHash, a nie string.GetHashCode: ten sam co w eksperymencie
-        /// symulacyjnym i stabilny niezaleznie od implementacji srodowiska uruchomieniowego.
+        /// Losuje profil deterministycznie z runId (GenText.StableStringHash + Avalanche), nie z Verse.Rand - pobranie
+        /// z generatora gry przesunelo by kazdy pozniejszy losowy wynik sesji.
         /// </summary>
         private void PrzydzielProfil(string powod)
         {
@@ -1069,13 +1149,7 @@ namespace ProceduralNarrator.Integration.Persistence
                            + " \"" + wybrany.label + "\". Katalog: " + NarratorProfileCatalog.DescribeCatalog());
         }
 
-        /// <summary>
-        /// Kanarek wczytania. Bez niego nie da sie z logu odroznic "pamiec wczytala sie poprawnie"
-        /// od "pamiec byla pusta i narrator zaczal od zera" - a to jest dokladnie ta awaria,
-        /// ktorej ta klasa ma zapobiegac. Idzie do OBU strumieni: czytelnego, zeby bylo widac
-        /// w Player.log, i maszynowego, bo jest zarazem GRANICA WCZYTANIA dla skryptu w Pythonie
-        /// (wiersze [PN-DATA] po tej linii naleza do tej samej rozgrywki, mimo nowej sesji).
-        /// </summary>
+        /// <summary>Kanarek wczytania [PN-LOAD] - diagnoza trwalosci i granica rozwidlenia dla analizy (PNLog.Load).</summary>
         private void WypiszKanarka(string zrodlo)
         {
             if (kanarekWypisany)
